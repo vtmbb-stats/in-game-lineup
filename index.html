@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VT Basketball Lineup Tracker</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const BasketballLineupTracker = () => {
+            // Virginia Tech Basketball Roster
+            const [roster] = useState([
+                { id: 0, name: 'Jailen Bedford', position: 'G', onCourt: false },
+                { id: 1, name: 'Tobi Lawal', position: 'F', onCourt: true },
+                { id: 2, name: 'Jaden Schutt', position: 'G', onCourt: true },
+                { id: 3, name: 'Ben Hammond', position: 'G', onCourt: true },
+                { id: 4, name: 'Izaiah Pasha', position: 'G', onCourt: false },
+                { id: 5, name: 'Sin\'Cere Jones', position: 'F', onCourt: false },
+                { id: 7, name: 'Brett Freeman', position: 'F', onCourt: false },
+                { id: 10, name: 'Tyler Johnson', position: 'G', onCourt: false },
+                { id: 13, name: 'Amani Hansberry', position: 'F', onCourt: true },
+                { id: 15, name: 'Snook Peterkin', position: 'F', onCourt: false },
+                { id: 17, name: 'Neo Avdalas', position: 'G', onCourt: true },
+                { id: 22, name: 'Solomon Davis', position: 'F', onCourt: false },
+                { id: 32, name: 'Christian Gurdak', position: 'C', onCourt: false },
+                { id: 77, name: 'Antonio Dorn', position: 'C', onCourt: false }
+            ]);
+
+            const [currentLineup, setCurrentLineup] = useState([3, 2, 17, 1, 13]);
+            const [playerStatus, setPlayerStatus] = useState(
+                roster.reduce((acc, player) => {
+                    acc[player.id] = player.onCourt;
+                    return acc;
+                }, {})
+            );
+
+            const [pendingChange, setPendingChange] = useState(null);
+            const [showTimeScoreModal, setShowTimeScoreModal] = useState(false);
+            const [gameTime, setGameTime] = useState('');
+            const [ourScore, setOurScore] = useState('');
+            const [oppScore, setOppScore] = useState('');
+            const [lineupHistory, setLineupHistory] = useState([]);
+            const [currentStats, setCurrentStats] = useState({
+                points: 0,
+                rebounds: 0,
+                assists: 0,
+                steals: 0,
+                blocks: 0,
+                turnovers: 0,
+                fouls: 0
+            });
+
+            const handleLineupChange = (positionIndex, newPlayerId) => {
+                if (newPlayerId === currentLineup[positionIndex]) return;
+                
+                setPendingChange({
+                    positionIndex,
+                    oldPlayerId: currentLineup[positionIndex],
+                    newPlayerId: parseInt(newPlayerId)
+                });
+                setShowTimeScoreModal(true);
+            };
+
+            const confirmLineupChange = () => {
+                if (!gameTime || ourScore === '' || oppScore === '') {
+                    alert('Please fill in game time and scores before making the change.');
+                    return;
+                }
+
+                const { positionIndex, oldPlayerId, newPlayerId } = pendingChange;
+                
+                // Update lineup
+                const newLineup = [...currentLineup];
+                newLineup[positionIndex] = newPlayerId;
+                setCurrentLineup(newLineup);
+                
+                // Update player status
+                const newStatus = { ...playerStatus };
+                newStatus[oldPlayerId] = false;
+                newStatus[newPlayerId] = true;
+                setPlayerStatus(newStatus);
+                
+                // Save to history
+                const changeRecord = {
+                    timestamp: new Date().toLocaleTimeString(),
+                    gameTime,
+                    ourScore: parseInt(ourScore),
+                    oppScore: parseInt(oppScore),
+                    change: `${roster.find(p => p.id === oldPlayerId)?.name} OUT, ${roster.find(p => p.id === newPlayerId)?.name} IN`,
+                    lineup: newLineup.map(id => roster.find(p => p.id === id)?.name).join(', ')
+                };
+                
+                setLineupHistory([...lineupHistory, changeRecord]);
+                
+                // Reset modal
+                setShowTimeScoreModal(false);
+                setPendingChange(null);
+                setGameTime('');
+                setOurScore('');
+                setOppScore('');
+            };
+
+            const updateStat = (statName, value) => {
+                setCurrentStats({
+                    ...currentStats,
+                    [statName]: Math.max(0, currentStats[statName] + value)
+                });
+            };
+
+            const exportData = () => {
+                const data = {
+                    lineupHistory,
+                    currentStats,
+                    timestamp: new Date().toISOString()
+                };
+                
+                const dataStr = JSON.stringify(data, null, 2);
+                const dataBlob = new Blob([dataStr], {type: 'application/json'});
+                const url = URL.createObjectURL(dataBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `lineup-data-${new Date().toISOString().split('T')[0]}.json`;
+                link.click();
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-100 p-4">
+                    <div className="max-w-6xl mx-auto">
+                        <div className="flex justify-between items-center mb-6">
+                            <h1 className="text-3xl font-bold">VT Basketball Lineup Tracker</h1>
+                            <button
+                                onClick={exportData}
+                                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                            >
+                                Export Data
+                            </button>
+                        </div>
+                        
+                        {/* Current Lineup Selectors */}
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                            <h2 className="text-xl font-semibold mb-4">Current Lineup (5 Active Players)</h2>
+                            <div className="grid grid-cols-5 gap-4">
+                                {currentLineup.map((playerId, index) => (
+                                    <div key={index} className="text-center">
+                                        <label className="block text-sm font-medium mb-2">Player {index + 1}</label>
+                                        <select
+                                            value={playerId}
+                                            onChange={(e) => handleLineupChange(index, e.target.value)}
+                                            className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value={playerId}>
+                                                {roster.find(p => p.id === playerId)?.name}
+                                            </option>
+                                            {roster.filter(player => !playerStatus[player.id]).map(player => (
+                                                <option key={player.id} value={player.id}>
+                                                    {player.name} ({player.position})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Time/Score Modal */}
+                        {showTimeScoreModal && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+                                    <h3 className="text-lg font-semibold mb-4">Record Time & Score</h3>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Game Time</label>
+                                            <input
+                                                type="text"
+                                                value={gameTime}
+                                                onChange={(e) => setGameTime(e.target.value)}
+                                                placeholder="e.g., 15:42 2nd"
+                                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">VT Score</label>
+                                                <input
+                                                    type="text"
+                                                    value={ourScore}
+                                                    onChange={(e) => setOurScore(e.target.value)}
+                                                    placeholder="0"
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">Opponent Score</label>
+                                                <input
+                                                    type="text"
+                                                    value={oppScore}
+                                                    onChange={(e) => setOppScore(e.target.value)}
+                                                    placeholder="0"
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3 mt-6">
+                                        <button
+                                            onClick={() => setShowTimeScoreModal(false)}
+                                            className="flex-1 px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={confirmLineupChange}
+                                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                        >
+                                            Confirm Change
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Stats Tracking */}
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                            <h2 className="text-xl font-semibold mb-4">Team Stats (Current Lineup)</h2>
+                            <div className="grid grid-cols-4 md:grid-cols-7 gap-4">
+                                {Object.entries(currentStats).map(([stat, value]) => (
+                                    <div key={stat} className="text-center">
+                                        <div className="text-lg font-bold text-blue-600">{value}</div>
+                                        <div className="text-sm text-gray-600 capitalize">{stat}</div>
+                                        <div className="flex justify-center gap-1 mt-2">
+                                            <button
+                                                onClick={() => updateStat(stat, -1)}
+                                                className="w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600"
+                                            >
+                                                -
+                                            </button>
+                                            <button
+                                                onClick={() => updateStat(stat, 1)}
+                                                className="w-6 h-6 bg-green-500 text-white rounded-full text-xs hover:bg-green-600"
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Lineup History */}
+                        <div className="bg-white rounded-lg shadow-lg p-6">
+                            <h2 className="text-xl font-semibold mb-4">Lineup Changes History</h2>
+                            {lineupHistory.length === 0 ? (
+                                <p className="text-gray-500 text-center py-4">No lineup changes yet</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {lineupHistory.map((record, index) => (
+                                        <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <div className="font-medium">{record.change}</div>
+                                                    <div className="text-sm text-gray-600">
+                                                        {record.gameTime} | Score: {record.ourScore}-{record.oppScore}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 mt-1">
+                                                        Lineup: {record.lineup}
+                                                    </div>
+                                                </div>
+                                                <div className="text-xs text-gray-500">{record.timestamp}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<BasketballLineupTracker />, document.getElementById('root'));
+    </script>
+</body>
+</html>
