@@ -373,38 +373,68 @@
                                         </thead>
                                         <tbody>
                                             {lineupStats.map((stat, index) => (
-                                                <tr key={index} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-                                                    <td className={`p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'} max-w-xs`}>
+                                                <tr key={index} className={`border-b ${
+                                                    stat.isActive ? (darkMode ? 'bg-blue-900/30 border-blue-600' : 'bg-blue-50 border-blue-300') :
+                                                    (darkMode ? 'border-gray-700' : 'border-gray-100')
+                                                }`}>
+                                                    <td className={`p-3 max-w-xs ${
+                                                        stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
+                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
+                                                    }`}>
                                                         <div className="truncate" title={stat.lineup}>
                                                             {stat.lineup}
+                                                            {stat.isActive && <span className="ml-2 text-xs font-bold">(ACTIVE)</span>}
                                                         </div>
                                                     </td>
-                                                    <td className={`p-3 text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    <td className={`p-3 text-center ${
+                                                        stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
+                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
+                                                    }`}>
                                                         {stat.appearances}
                                                     </td>
-                                                    <td className={`p-3 text-center font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                    <td className={`p-3 text-center font-semibold ${
+                                                        stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
+                                                        (darkMode ? 'text-white' : 'text-gray-900')
+                                                    }`}>
                                                         {stat.minutes}
                                                     </td>
                                                     <td className={`p-3 text-center font-bold ${
+                                                        stat.plusMinus === 'Active' ? (darkMode ? 'text-blue-400' : 'text-blue-600') :
                                                         stat.plusMinus > 0 ? 'text-green-600' : 
                                                         stat.plusMinus < 0 ? 'text-red-600' : (darkMode ? 'text-white' : 'text-gray-900')
                                                     }`}>
-                                                        {stat.plusMinus > 0 ? `+${stat.plusMinus}` : stat.plusMinus}
+                                                        {stat.plusMinus === 'Active' ? 'Active' :
+                                                         stat.plusMinus > 0 ? `+${stat.plusMinus}` : stat.plusMinus}
                                                     </td>
-                                                    <td className={`p-3 text-center font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                    <td className={`p-3 text-center font-semibold ${
+                                                        stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
+                                                        (darkMode ? 'text-white' : 'text-gray-900')
+                                                    }`}>
                                                         {stat.vtPointsPerPoss}
                                                     </td>
-                                                    <td className={`p-3 text-center font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                    <td className={`p-3 text-center font-semibold ${
+                                                        stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
+                                                        (darkMode ? 'text-white' : 'text-gray-900')
+                                                    }`}>
                                                         {stat.oppPointsPerPoss}
                                                     </td>
-                                                    <td className={`p-3 text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        {stat.vtOffRebPct}%
+                                                    <td className={`p-3 text-center ${
+                                                        stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
+                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
+                                                    }`}>
+                                                        {stat.vtOffRebPct}{stat.vtOffRebPct !== '--' ? '%' : ''}
                                                     </td>
-                                                    <td className={`p-3 text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        {stat.vtDefRebPct}%
+                                                    <td className={`p-3 text-center ${
+                                                        stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
+                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
+                                                    }`}>
+                                                        {stat.vtDefRebPct}{stat.vtDefRebPct !== '--' ? '%' : ''}
                                                     </td>
-                                                    <td className={`p-3 text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        {stat.vtTurnoverRate}%
+                                                    <td className={`p-3 text-center ${
+                                                        stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
+                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
+                                                    }`}>
+                                                        {stat.vtTurnoverRate}{stat.vtTurnoverRate !== '--' ? '%' : ''}
                                                     </td>
                                                 </tr>
                                             ))}
