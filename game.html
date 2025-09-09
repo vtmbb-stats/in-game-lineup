@@ -84,6 +84,21 @@
                 if (!window.database) return;
 
                 const loadGameData = () => {
+                    // Load game info first
+                    firebase.database().ref(`game-info/${currentGame}`).on('value', (snapshot) => {
+                        const gameInfo = snapshot.val();
+                        if (gameInfo && gameInfo.started) {
+                            // Game has started, load initial lineup if available
+                            if (gameInfo.currentLineup) {
+                                const lineupNames = gameInfo.currentLineup.split(', ');
+                                const lineupIds = lineupNames.map(name => 
+                                    roster.find(p => p.name === name)?.id
+                                ).filter(id => id !== undefined);
+                                setCurrentLineup(lineupIds);
+                            }
+                        }
+                    });
+
                     // Load current stats
                     firebase.database().ref(`current-stats/${currentGame}`).on('value', (snapshot) => {
                         const stats = snapshot.val();
@@ -96,9 +111,21 @@
                     firebase.database().ref(`lineup-changes/${currentGame}`).on('value', (snapshot) => {
                         const changes = snapshot.val();
                         if (changes) {
-                            const changesArray = Object.values(changes).sort((a, b) => 
-                                new Date(`1970/01/01 ${a.timestamp}`) - new Date(`1970/01/01 ${b.timestamp}`)
-                            );
+                            const changesArray = Object.values(changes)
+                                .filter(change => change.gameTime !== '20:00 1st') // Filter out game start marker
+                                .sort((a, b) => {
+                                    // Sort by game time properly
+                                    const parseTime = (timeStr) => {
+                                        const parts = timeStr.split(' ');
+                                        const [minutes, seconds] = parts[0].split(':').map(Number);
+                                        const period = parts[1];
+                                        if (period === '1st') return (20 - minutes) * 60 + (60 - seconds);
+                                        if (period === '2nd') return (40 - minutes) * 60 + (60 - seconds);
+                                        if (period === 'OT') return (45 - minutes) * 60 + (60 - seconds);
+                                        return 0;
+                                    };
+                                    return parseTime(a.gameTime) - parseTime(b.gameTime);
+                                });
                             setLineupHistory(changesArray);
                             
                             // Get current lineup from most recent change
@@ -109,12 +136,7 @@
                                     roster.find(p => p.name === name)?.id
                                 ).filter(id => id !== undefined);
                                 setCurrentLineup(lineupIds);
-                            } else {
-                                // Default starting lineup
-                                setCurrentLineup([3, 2, 17, 1, 13]);
                             }
-                        } else {
-                            setCurrentLineup([3, 2, 17, 1, 13]);
                         }
                         setLastUpdate(new Date().toLocaleTimeString());
                     });
@@ -126,6 +148,7 @@
                 return () => {
                     clearTimeout(timer);
                     if (window.database) {
+                        firebase.database().ref(`game-info/${currentGame}`).off();
                         firebase.database().ref(`current-stats/${currentGame}`).off();
                         firebase.database().ref(`lineup-changes/${currentGame}`).off();
                     }
