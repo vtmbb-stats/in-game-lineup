@@ -386,16 +386,24 @@
                                             <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                 {stat.replace(/([A-Z])/g, ' $1').trim()}
                                             </div>
-                                            <div className="flex justify-center gap-1 mt-2">
+                                            <div className="flex justify-center gap-2 mt-3">
                                                 <button
                                                     onClick={() => updateStat('opponent', stat, -1)}
-                                                    className="w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600"
+                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                        darkMode 
+                                                            ? 'bg-red-600 text-white hover:bg-red-700' 
+                                                            : 'bg-red-500 text-white hover:bg-red-600'
+                                                    }`}
                                                 >
                                                     -
                                                 </button>
                                                 <button
                                                     onClick={() => updateStat('opponent', stat, 1)}
-                                                    className="w-6 h-6 bg-green-500 text-white rounded-full text-xs hover:bg-green-600"
+                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                        darkMode 
+                                                            ? 'bg-green-600 text-white hover:bg-green-700' 
+                                                            : 'bg-green-500 text-white hover:bg-green-600'
+                                                    }`}
                                                 >
                                                     +
                                                 </button>
