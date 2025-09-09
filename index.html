@@ -349,25 +349,35 @@
                                     Virginia Tech
                                 </h3>
                                 <div className="grid grid-cols-4 gap-4">
-                                    {Object.entries(currentStats.vt).map(([stat, value]) => (
+                                    {Object.entries(currentStats.opponent).map(([stat, value]) => (
                                         <div key={stat} className="text-center">
-                                            <div className="text-lg font-bold" style={{color: '#800020'}}>{value}</div>
-                                            <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat.replace(/([A-Z])/g, ' $1').trim()}
-                                            </div>
-                                            <div className="flex justify-center gap-1 mt-2">
+                                            <div className="flex justify-center items-center gap-2 mb-2">
                                                 <button
-                                                    onClick={() => updateStat('vt', stat, -1)}
-                                                    className="w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600"
+                                                    onClick={() => updateStat('opponent', stat, -1)}
+                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                        darkMode 
+                                                            ? 'bg-red-600 text-white hover:bg-red-700' 
+                                                            : 'bg-red-500 text-white hover:bg-red-600'
+                                                    }`}
                                                 >
                                                     -
                                                 </button>
+                                                <div className="text-lg font-bold min-w-[2rem]" style={{color: '#CC5500'}}>
+                                                    {value}
+                                                </div>
                                                 <button
-                                                    onClick={() => updateStat('vt', stat, 1)}
-                                                    className="w-6 h-6 bg-green-500 text-white rounded-full text-xs hover:bg-green-600"
+                                                    onClick={() => updateStat('opponent', stat, 1)}
+                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                        darkMode 
+                                                            ? 'bg-green-600 text-white hover:bg-green-700' 
+                                                            : 'bg-green-500 text-white hover:bg-green-600'
+                                                    }`}
                                                 >
                                                     +
                                                 </button>
+                                            </div>
+                                            <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                {stat.replace(/([A-Z])/g, ' $1').trim()}
                                             </div>
                                         </div>
                                     ))}
