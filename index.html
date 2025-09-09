@@ -305,7 +305,7 @@
                                         <div className={`text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                                             <div className="flex items-center gap-2">
                                                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                                                Game Time: {gameStartTime}
+                                                {lineupHistory.length === 0 ? `Game Time: ${gameStartTime}` : `Last Sub: ${gameStartTime}`}
                                             </div>
                                         </div>
                                     )}
