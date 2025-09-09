@@ -8,25 +8,6 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase SDK -->
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
-        
-        const firebaseConfig = {
-            apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
-            authDomain: "vtmbb-gameday.firebaseapp.com",
-            databaseURL: "https://vtmbb-gameday-default-rtdb.firebaseio.com",
-            projectId: "vtmbb-gameday",
-            storageBucket: "vtmbb-gameday.firebasestorage.app",
-            messagingSenderId: "1012073356538",
-            appId: "1:1012073356538:web:7a41a93d00920d4d00bd43"
-        };
-        
-        const app = initializeApp(firebaseConfig);
-        window.database = getDatabase(app);
-    </script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 </head>
 <body class="transition-colors duration-200">
     <div id="root"></div>
@@ -66,167 +47,31 @@
             ]);
 
             const [currentLineup, setCurrentLineup] = useState([3, 2, 17, 1, 13]);
-            const [playerStatus, setPlayerStatus] = useState(
-                roster.reduce((acc, player) => {
-                    acc[player.id] = player.onCourt;
-                    return acc;
-                }, {})
-            );
-
-            const [pendingChanges, setPendingChanges] = useState([]);
-            const [showTimeScoreModal, setShowTimeScoreModal] = useState(false);
-            const [gameTime, setGameTime] = useState('');
-            const [ourScore, setOurScore] = useState('');
-            const [oppScore, setOppScore] = useState('');
-            const [lineupHistory, setLineupHistory] = useState([]);
             const [currentStats, setCurrentStats] = useState({
-                points: 0,
-                rebounds: 0,
-                assists: 0,
-                steals: 0,
-                blocks: 0,
-                turnovers: 0,
-                fouls: 0
+                vt: {
+                    possessions: 0,
+                    offensiveRebounds: 0,
+                    defensiveRebounds: 0,
+                    turnovers: 0
+                },
+                opponent: {
+                    possessions: 0,
+                    offensiveRebounds: 0,
+                    defensiveRebounds: 0,
+                    turnovers: 0
+                }
             });
 
-            // Track if any changes are pending
-            const [hasChanges, setHasChanges] = useState(false);
-
-            const handleLineupChange = (positionIndex, newPlayerId) => {
-                newPlayerId = parseInt(newPlayerId);
-                if (newPlayerId === currentLineup[positionIndex]) return;
-                
-                const oldPlayerId = currentLineup[positionIndex];
-                
-                // Check if this position already has a pending change
-                const existingChangeIndex = pendingChanges.findIndex(change => change.positionIndex === positionIndex);
-                
-                if (existingChangeIndex !== -1) {
-                    // Update existing pending change
-                    const newPendingChanges = [...pendingChanges];
-                    newPendingChanges[existingChangeIndex] = {
-                        positionIndex,
-                        oldPlayerId,
-                        newPlayerId
-                    };
-                    setPendingChanges(newPendingChanges);
-                } else {
-                    // Add new pending change
-                    setPendingChanges([...pendingChanges, {
-                        positionIndex,
-                        oldPlayerId,
-                        newPlayerId
-                    }]);
-                }
-                
-                // Update lineup preview
-                const newLineup = [...currentLineup];
-                newLineup[positionIndex] = newPlayerId;
-                setCurrentLineup(newLineup);
-                
-                setHasChanges(true);
-            };
-
-            const confirmAllChanges = () => {
-                if (!gameTime || ourScore === '' || oppScore === '') {
-                    alert('Please fill in game time and scores before making changes.');
-                    return;
-                }
-
-                if (pendingChanges.length === 0) {
-                    alert('No changes to confirm.');
-                    return;
-                }
-
-                // Update player status for all changes
-                const newStatus = { ...playerStatus };
-                pendingChanges.forEach(change => {
-                    newStatus[change.oldPlayerId] = false;
-                    newStatus[change.newPlayerId] = true;
-                });
-                setPlayerStatus(newStatus);
-                
-                // Create change records
-                const changeRecords = pendingChanges.map(change => ({
-                    timestamp: new Date().toLocaleTimeString(),
-                    gameTime,
-                    ourScore: parseInt(ourScore),
-                    oppScore: parseInt(oppScore),
-                    change: `${roster.find(p => p.id === change.oldPlayerId)?.name} OUT, ${roster.find(p => p.id === change.newPlayerId)?.name} IN`,
-                    lineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ')
-                }));
-                
-                // Add to history
-                setLineupHistory([...lineupHistory, ...changeRecords]);
-                
-                // Save to Firebase
-                saveToFirebase(changeRecords);
-                
-                // Reset
-                setPendingChanges([]);
-                setShowTimeScoreModal(false);
-                setGameTime('');
-                setOurScore('');
-                setOppScore('');
-                setHasChanges(false);
-            };
-
-            const saveToFirebase = async (records) => {
-                if (!window.database) return;
-                
-                try {
-                    const gameDate = new Date().toISOString().split('T')[0];
-                    const timestamp = Date.now();
-                    
-                    // Save lineup changes
-                    for (const record of records) {
-                        await firebase.database().ref(`lineup-changes/${gameDate}/${timestamp + Math.random()}`).set(record);
-                    }
-                    
-                    // Save current stats
-                    await firebase.database().ref(`current-stats/${gameDate}`).set(currentStats);
-                    
-                    console.log('Data saved to Firebase successfully');
-                } catch (error) {
-                    console.error('Error saving to Firebase:', error);
-                }
-            };
-
-            const showConfirmModal = () => {
-                if (pendingChanges.length === 0) {
-                    alert('No changes to confirm. Make some substitutions first.');
-                    return;
-                }
-                setShowTimeScoreModal(true);
-            };
-
-            const cancelChanges = () => {
-                // Revert lineup to original state
-                const originalLineup = [...currentLineup];
-                pendingChanges.forEach(change => {
-                    const index = originalLineup.findIndex((_, i) => i === change.positionIndex);
-                    if (index !== -1) {
-                        originalLineup[change.positionIndex] = change.oldPlayerId;
-                    }
-                });
-                
-                setCurrentLineup([3, 2, 17, 1, 13]); // Reset to original starters
-                setPendingChanges([]);
-                setHasChanges(false);
-            };
-
-            const updateStat = (statName, value) => {
+            const updateStat = (team, statName, value) => {
                 const newStats = {
                     ...currentStats,
-                    [statName]: Math.max(0, currentStats[statName] + value)
+                    [team]: {
+                        ...currentStats[team],
+                        [statName]: Math.max(0, currentStats[team][statName] + value)
+                    }
                 };
                 setCurrentStats(newStats);
-                
-                // Auto-save stats to Firebase
-                if (window.database) {
-                    const gameDate = new Date().toISOString().split('T')[0];
-                    firebase.database().ref(`current-stats/${gameDate}`).set(newStats);
-                }
+                console.log('Stats updated:', newStats);
             };
 
             return (
@@ -234,7 +79,7 @@
                     <div className="max-w-6xl mx-auto">
                         <div className="flex justify-between items-center mb-6">
                             <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                VT Basketball Lineup Tracker
+                                VT Basketball Lineup Tracker (Debug)
                             </h1>
                             <button
                                 onClick={() => setDarkMode(!darkMode)}
@@ -248,159 +93,26 @@
                             </button>
                         </div>
                         
-                        {/* Pending Changes Alert */}
-                        {hasChanges && (
-                            <div className={`rounded-lg p-4 mb-6 ${darkMode ? 'bg-yellow-800 border-yellow-600' : 'bg-yellow-100 border-yellow-400'} border`}>
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <h3 className={`font-semibold ${darkMode ? 'text-yellow-100' : 'text-yellow-800'}`}>
-                                            Pending Substitutions ({pendingChanges.length})
-                                        </h3>
-                                        <div className={`text-sm ${darkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>
-                                            {pendingChanges.map((change, index) => (
-                                                <div key={index}>
-                                                    {roster.find(p => p.id === change.oldPlayerId)?.name} → {roster.find(p => p.id === change.newPlayerId)?.name}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={cancelChanges}
-                                            className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={showConfirmModal}
-                                            className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
-                                        >
-                                            Confirm All
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        
-                        {/* Current Lineup Selectors */}
+                        {/* Current Lineup Display */}
                         <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                             <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Current Lineup (5 Active Players)
+                                Current Lineup
                             </h2>
                             <div className="grid grid-cols-5 gap-4">
                                 {currentLineup.map((playerId, index) => (
                                     <div key={index} className="text-center">
-                                        <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                            Player {index + 1}
-                                        </label>
-                                        <select
-                                            value={playerId}
-                                            onChange={(e) => handleLineupChange(index, e.target.value)}
-                                            className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                darkMode 
-                                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                                    : 'bg-white border-gray-300 text-gray-900'
-                                            }`}
-                                        >
-                                            <option value={playerId}>
-                                                {roster.find(p => p.id === playerId)?.name}
-                                            </option>
-                                            {roster.filter(player => !playerStatus[player.id] || player.id === playerId).map(player => (
-                                                <option key={player.id} value={player.id}>
-                                                    {player.name} ({player.position})
-                                                </option>
-                                            ))}
-                                        </select>
+                                        <div className={`p-2 rounded ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-900'}`}>
+                                            {roster.find(p => p.id === playerId)?.name}
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
 
-                        {/* Time/Score Modal */}
-                        {showTimeScoreModal && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                                <div className={`p-6 rounded-lg shadow-xl max-w-md w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Record Time & Score
-                                    </h3>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                Game Time
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={gameTime}
-                                                onChange={(e) => setGameTime(e.target.value)}
-                                                placeholder="e.g., 15:42 2nd"
-                                                className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                    darkMode 
-                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                }`}
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                    VT Score
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={ourScore}
-                                                    onChange={(e) => setOurScore(e.target.value)}
-                                                    placeholder="0"
-                                                    className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                        darkMode 
-                                                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                    }`}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                    Opponent Score
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={oppScore}
-                                                    onChange={(e) => setOppScore(e.target.value)}
-                                                    placeholder="0"
-                                                    className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                        darkMode 
-                                                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                    }`}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-3 mt-6">
-                                        <button
-                                            onClick={() => setShowTimeScoreModal(false)}
-                                            className={`flex-1 px-4 py-2 border rounded-md hover:bg-gray-50 ${
-                                                darkMode 
-                                                    ? 'text-gray-300 border-gray-600 hover:bg-gray-700' 
-                                                    : 'text-gray-600 border-gray-300 hover:bg-gray-50'
-                                            }`}
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={confirmAllChanges}
-                                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                                        >
-                                            Confirm Changes
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
                         {/* Stats Tracking */}
                         <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                             <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Game Stats (Current Lineup)
+                                Game Stats
                             </h2>
                             
                             {/* VT Stats */}
@@ -466,46 +178,25 @@
                             </div>
                         </div>
 
-                        {/* Lineup History */}
+                        {/* Debug Info */}
                         <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                             <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Lineup Changes History
+                                Debug Info
                             </h2>
-                            {lineupHistory.length === 0 ? (
-                                <p className={`text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                    No lineup changes yet
-                                </p>
-                            ) : (
-                                <div className="space-y-3">
-                                    {lineupHistory.map((record, index) => (
-                                        <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {record.change}
-                                                    </div>
-                                                    <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        {record.gameTime} | Score: {record.ourScore}-{record.oppScore}
-                                                    </div>
-                                                    <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                        Lineup: {record.lineup}
-                                                    </div>
-                                                </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                    {record.timestamp}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                            <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                <p>App is working! Dark mode: {darkMode ? 'ON' : 'OFF'}</p>
+                                <p>Roster loaded: {roster.length} players</p>
+                                <p>Current lineup: {currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ')}</p>
+                            </div>
                         </div>
                     </div>
                 </div>
             );
         };
 
+        console.log('Starting app...');
         ReactDOM.render(<BasketballLineupTracker />, document.getElementById('root'));
+        console.log('App rendered!');
     </script>
 </body>
 </html>
