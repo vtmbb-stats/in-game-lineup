@@ -382,11 +382,7 @@
                                 <div className="grid grid-cols-4 gap-4">
                                     {Object.entries(currentStats.opponent).map(([stat, value]) => (
                                         <div key={stat} className="text-center">
-                                            <div className="text-lg font-bold" style={{color: '#CC5500'}}>{value}</div>
-                                            <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat.replace(/([A-Z])/g, ' $1').trim()}
-                                            </div>
-                                            <div className="flex justify-center gap-2 mt-3">
+                                            <div className="flex justify-center items-center gap-2 mb-2">
                                                 <button
                                                     onClick={() => updateStat('opponent', stat, -1)}
                                                     className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
@@ -397,6 +393,9 @@
                                                 >
                                                     -
                                                 </button>
+                                                <div className="text-lg font-bold min-w-[2rem]" style={{color: '#CC5500'}}>
+                                                    {value}
+                                                </div>
                                                 <button
                                                     onClick={() => updateStat('opponent', stat, 1)}
                                                     className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
@@ -407,6 +406,9 @@
                                                 >
                                                     +
                                                 </button>
+                                            </div>
+                                            <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                {stat.replace(/([A-Z])/g, ' $1').trim()}
                                             </div>
                                         </div>
                                     ))}
