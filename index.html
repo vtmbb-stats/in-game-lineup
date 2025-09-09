@@ -462,7 +462,10 @@
                                             <div className="flex justify-center items-center gap-2 mb-2">
                                                 <button
                                                     onClick={() => updateStat('opponent', stat, -1)}
+                                                    disabled={!gameStarted}
                                                     className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                                    } ${
                                                         darkMode 
                                                             ? 'bg-red-600 text-white hover:bg-red-700' 
                                                             : 'bg-red-500 text-white hover:bg-red-600'
@@ -475,7 +478,10 @@
                                                 </div>
                                                 <button
                                                     onClick={() => updateStat('opponent', stat, 1)}
+                                                    disabled={!gameStarted}
                                                     className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                                    } ${
                                                         darkMode 
                                                             ? 'bg-green-600 text-white hover:bg-green-700' 
                                                             : 'bg-green-500 text-white hover:bg-green-600'
