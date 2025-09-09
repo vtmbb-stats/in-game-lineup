@@ -71,6 +71,8 @@
             ];
 
             const [selectedGame, setSelectedGame] = useState('2024-11-03');
+            const [gameStarted, setGameStarted] = useState(false);
+            const [gameStartTime, setGameStartTime] = useState(null);
             const [currentLineup, setCurrentLineup] = useState([3, 2, 17, 1, 13]);
             const [playerStatus, setPlayerStatus] = useState({
                 0: false, 1: true, 2: true, 3: true, 4: false, 5: false,
@@ -98,6 +100,45 @@
                     turnovers: 0
                 }
             });
+
+            const startGame = () => {
+                setGameStarted(true);
+                setGameStartTime('20:00 1st');
+                
+                // Save game start and initial lineup to Firebase
+                if (window.database) {
+                    const initialLineup = currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ');
+                    
+                    firebase.database().ref(`game-info/${selectedGame}`).set({
+                        started: true,
+                        gameTime: '20:00 1st',
+                        opponent: gameSchedule.find(g => g.date === selectedGame)?.opponent || 'Opponent',
+                        currentLineup: initialLineup
+                    });
+                    
+                    // Save initial lineup as first "change" so display app can show it
+                    firebase.database().ref(`lineup-changes/${selectedGame}/game-start`).set({
+                        timestamp: '20:00 1st',
+                        gameTime: '20:00 1st',
+                        ourScore: 0,
+                        oppScore: 0,
+                        change: 'Game Started',
+                        lineup: initialLineup
+                    });
+                }
+            };
+
+            const endGame = () => {
+                setGameStarted(false);
+                setGameStartTime(null);
+                
+                if (window.database) {
+                    firebase.database().ref(`game-info/${selectedGame}`).update({
+                        ended: true,
+                        endTime: new Date().toLocaleTimeString()
+                    });
+                }
+            };
 
             const handleLineupChange = (positionIndex, newPlayerId) => {
                 newPlayerId = parseInt(newPlayerId);
@@ -147,8 +188,9 @@
                 });
                 setPlayerStatus(newStatus);
                 
+                // Create change records using game time
                 const changeRecords = pendingChanges.map(change => ({
-                    timestamp: new Date().toLocaleTimeString(),
+                    timestamp: gameTime,
                     gameTime,
                     ourScore: parseInt(ourScore),
                     oppScore: parseInt(oppScore),
@@ -233,25 +275,57 @@
 
                         {/* Game Selector */}
                         <div className={`rounded-lg shadow-lg p-4 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <div className="flex items-center justify-center gap-4">
-                                <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                    Select Game:
-                                </label>
-                                <select
-                                    value={selectedGame}
-                                    onChange={(e) => setSelectedGame(e.target.value)}
-                                    className={`px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                        darkMode 
-                                            ? 'bg-gray-700 border-gray-600 text-white' 
-                                            : 'bg-white border-gray-300 text-gray-900'
-                                    }`}
-                                >
-                                    {gameSchedule.map(game => (
-                                        <option key={game.date} value={game.date}>
-                                            {game.displayName}
-                                        </option>
-                                    ))}
-                                </select>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        Select Game:
+                                    </label>
+                                    <select
+                                        value={selectedGame}
+                                        onChange={(e) => setSelectedGame(e.target.value)}
+                                        disabled={gameStarted}
+                                        className={`px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                            gameStarted ? 'opacity-50 cursor-not-allowed' : ''
+                                        } ${
+                                            darkMode 
+                                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                                : 'bg-white border-gray-300 text-gray-900'
+                                        }`}
+                                    >
+                                        {gameSchedule.map(game => (
+                                            <option key={game.date} value={game.date}>
+                                                {game.displayName}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                
+                                <div className="flex items-center gap-3">
+                                    {gameStarted && gameStartTime && (
+                                        <div className={`text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                                Game Time: {gameStartTime}
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {!gameStarted ? (
+                                        <button
+                                            onClick={startGame}
+                                            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium"
+                                        >
+                                            ▶️ Start Game
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={endGame}
+                                            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium"
+                                        >
+                                            ⏹️ End Game
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
                         
@@ -290,9 +364,12 @@
                         )}
                         
                         {/* Current Lineup Selectors */}
-                        <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                        <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'} ${
+                            !gameStarted ? 'opacity-50' : ''
+                        }`}>
                             <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                 Current Lineup (5 Active Players)
+                                {!gameStarted && <span className="text-sm font-normal text-orange-500 ml-2">Start game to enable</span>}
                             </h2>
                             <div className="grid grid-cols-5 gap-4">
                                 {currentLineup.map((playerId, index) => (
@@ -303,7 +380,10 @@
                                         <select
                                             value={playerId}
                                             onChange={(e) => handleLineupChange(index, e.target.value)}
+                                            disabled={!gameStarted}
                                             className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                                !gameStarted ? 'cursor-not-allowed' : ''
+                                            } ${
                                                 darkMode 
                                                     ? 'bg-gray-700 border-gray-600 text-white' 
                                                     : 'bg-white border-gray-300 text-gray-900'
@@ -405,9 +485,12 @@
                         )}
 
                         {/* Stats Tracking */}
-                        <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                        <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'} ${
+                            !gameStarted ? 'opacity-50' : ''
+                        }`}>
                             <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                 Game Stats
+                                {!gameStarted && <span className="text-sm font-normal text-orange-500 ml-2">Start game to enable</span>}
                             </h2>
                             
                             {/* VT Stats */}
@@ -421,7 +504,10 @@
                                             <div className="flex justify-center items-center gap-2 mb-2">
                                                 <button
                                                     onClick={() => updateStat('vt', stat, -1)}
+                                                    disabled={!gameStarted}
                                                     className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                                    } ${
                                                         darkMode 
                                                             ? 'bg-red-600 text-white hover:bg-red-700' 
                                                             : 'bg-red-500 text-white hover:bg-red-600'
@@ -434,7 +520,10 @@
                                                 </div>
                                                 <button
                                                     onClick={() => updateStat('vt', stat, 1)}
+                                                    disabled={!gameStarted}
                                                     className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                                    } ${
                                                         darkMode 
                                                             ? 'bg-green-600 text-white hover:bg-green-700' 
                                                             : 'bg-green-500 text-white hover:bg-green-600'
@@ -517,30 +606,4 @@
                                                     <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                                         {record.change}
                                                     </div>
-                                                    <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        {record.gameTime} | Score: {record.ourScore}-{record.oppScore}
-                                                    </div>
-                                                    <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                        Lineup: {record.lineup}
-                                                    </div>
-                                                </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                    {record.timestamp}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        console.log('Starting app...');
-        ReactDOM.render(<BasketballLineupTracker />, document.getElementById('root'));
-        console.log('App should be loaded!');
-    </script>
-</body>
-</html>
+                                                    <div className={`text-
