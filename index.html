@@ -9,7 +9,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="transition-colors duration-200">
+<body>
     <div id="root"></div>
 
     <script type="text/babel">
@@ -17,19 +17,15 @@
 
         const BasketballLineupTracker = () => {
             // Dark mode state
-            const [darkMode, setDarkMode] = useState(() => {
-                const saved = localStorage.getItem('darkMode');
-                return saved ? JSON.parse(saved) : false;
-            });
+            const [darkMode, setDarkMode] = useState(false);
 
-            // Update body class and localStorage when dark mode changes
+            // Update body class when dark mode changes
             useEffect(() => {
-                document.body.className = darkMode ? 'bg-gray-900 transition-colors duration-200' : 'bg-gray-100 transition-colors duration-200';
-                localStorage.setItem('darkMode', JSON.stringify(darkMode));
+                document.body.className = darkMode ? 'bg-gray-900' : 'bg-gray-100';
             }, [darkMode]);
 
             // Virginia Tech Basketball Roster
-            const [roster] = useState([
+            const roster = [
                 { id: 0, name: 'Jailen Bedford', position: 'G', onCourt: false },
                 { id: 1, name: 'Tobi Lawal', position: 'F', onCourt: true },
                 { id: 2, name: 'Jaden Schutt', position: 'G', onCourt: true },
@@ -44,9 +40,21 @@
                 { id: 22, name: 'Solomon Davis', position: 'F', onCourt: false },
                 { id: 32, name: 'Christian Gurdak', position: 'C', onCourt: false },
                 { id: 77, name: 'Antonio Dorn', position: 'C', onCourt: false }
-            ]);
+            ];
 
             const [currentLineup, setCurrentLineup] = useState([3, 2, 17, 1, 13]);
+            const [playerStatus, setPlayerStatus] = useState({
+                0: false, 1: true, 2: true, 3: true, 4: false, 5: false,
+                7: false, 10: false, 13: true, 15: false, 17: true, 22: false, 32: false, 77: false
+            });
+
+            const [pendingChanges, setPendingChanges] = useState([]);
+            const [showTimeScoreModal, setShowTimeScoreModal] = useState(false);
+            const [gameTime, setGameTime] = useState('');
+            const [ourScore, setOurScore] = useState('');
+            const [oppScore, setOppScore] = useState('');
+            const [lineupHistory, setLineupHistory] = useState([]);
+            
             const [currentStats, setCurrentStats] = useState({
                 vt: {
                     possessions: 0,
@@ -62,6 +70,94 @@
                 }
             });
 
+            const handleLineupChange = (positionIndex, newPlayerId) => {
+                newPlayerId = parseInt(newPlayerId);
+                if (newPlayerId === currentLineup[positionIndex]) return;
+                
+                const oldPlayerId = currentLineup[positionIndex];
+                
+                // Check if this position already has a pending change
+                const existingChangeIndex = pendingChanges.findIndex(change => change.positionIndex === positionIndex);
+                
+                let newPendingChanges;
+                if (existingChangeIndex !== -1) {
+                    // Update existing pending change
+                    newPendingChanges = [...pendingChanges];
+                    newPendingChanges[existingChangeIndex] = {
+                        positionIndex,
+                        oldPlayerId,
+                        newPlayerId
+                    };
+                } else {
+                    // Add new pending change
+                    newPendingChanges = [...pendingChanges, {
+                        positionIndex,
+                        oldPlayerId,
+                        newPlayerId
+                    }];
+                }
+                setPendingChanges(newPendingChanges);
+                
+                // Update lineup preview
+                const newLineup = [...currentLineup];
+                newLineup[positionIndex] = newPlayerId;
+                setCurrentLineup(newLineup);
+            };
+
+            const confirmAllChanges = () => {
+                if (!gameTime || ourScore === '' || oppScore === '') {
+                    alert('Please fill in game time and scores before making changes.');
+                    return;
+                }
+
+                if (pendingChanges.length === 0) {
+                    alert('No changes to confirm.');
+                    return;
+                }
+
+                // Update player status for all changes
+                const newStatus = { ...playerStatus };
+                pendingChanges.forEach(change => {
+                    newStatus[change.oldPlayerId] = false;
+                    newStatus[change.newPlayerId] = true;
+                });
+                setPlayerStatus(newStatus);
+                
+                // Create change records
+                const changeRecords = pendingChanges.map(change => ({
+                    timestamp: new Date().toLocaleTimeString(),
+                    gameTime,
+                    ourScore: parseInt(ourScore),
+                    oppScore: parseInt(oppScore),
+                    change: `${roster.find(p => p.id === change.oldPlayerId)?.name} OUT, ${roster.find(p => p.id === change.newPlayerId)?.name} IN`,
+                    lineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ')
+                }));
+                
+                // Add to history
+                setLineupHistory([...lineupHistory, ...changeRecords]);
+                
+                // Reset
+                setPendingChanges([]);
+                setShowTimeScoreModal(false);
+                setGameTime('');
+                setOurScore('');
+                setOppScore('');
+            };
+
+            const showConfirmModal = () => {
+                if (pendingChanges.length === 0) {
+                    alert('No changes to confirm. Make some substitutions first.');
+                    return;
+                }
+                setShowTimeScoreModal(true);
+            };
+
+            const cancelChanges = () => {
+                // Reset to original starters
+                setCurrentLineup([3, 2, 17, 1, 13]);
+                setPendingChanges([]);
+            };
+
             const updateStat = (team, statName, value) => {
                 const newStats = {
                     ...currentStats,
@@ -71,19 +167,18 @@
                     }
                 };
                 setCurrentStats(newStats);
-                console.log('Stats updated:', newStats);
             };
 
             return (
-                <div className={`min-h-screen p-4 transition-colors duration-200 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+                <div className={`min-h-screen p-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
                     <div className="max-w-6xl mx-auto">
                         <div className="flex justify-between items-center mb-6">
                             <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                VT Basketball Lineup Tracker (Debug)
+                                VT Basketball Lineup Tracker
                             </h1>
                             <button
                                 onClick={() => setDarkMode(!darkMode)}
-                                className={`px-4 py-2 rounded-md transition-colors ${
+                                className={`px-4 py-2 rounded-md ${
                                     darkMode 
                                         ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-600' 
                                         : 'bg-gray-800 text-white hover:bg-gray-700'
@@ -93,21 +188,154 @@
                             </button>
                         </div>
                         
-                        {/* Current Lineup Display */}
+                        {/* Pending Changes Alert */}
+                        {pendingChanges.length > 0 && (
+                            <div className={`rounded-lg p-4 mb-6 border ${darkMode ? 'bg-yellow-800 border-yellow-600' : 'bg-yellow-100 border-yellow-400'}`}>
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h3 className={`font-semibold ${darkMode ? 'text-yellow-100' : 'text-yellow-800'}`}>
+                                            Pending Substitutions ({pendingChanges.length})
+                                        </h3>
+                                        <div className={`text-sm ${darkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>
+                                            {pendingChanges.map((change, index) => (
+                                                <div key={index}>
+                                                    {roster.find(p => p.id === change.oldPlayerId)?.name} → {roster.find(p => p.id === change.newPlayerId)?.name}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={cancelChanges}
+                                            className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={showConfirmModal}
+                                            className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                                        >
+                                            Confirm All
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Current Lineup Selectors */}
                         <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                             <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Current Lineup
+                                Current Lineup (5 Active Players)
                             </h2>
                             <div className="grid grid-cols-5 gap-4">
                                 {currentLineup.map((playerId, index) => (
                                     <div key={index} className="text-center">
-                                        <div className={`p-2 rounded ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-900'}`}>
-                                            {roster.find(p => p.id === playerId)?.name}
-                                        </div>
+                                        <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            Player {index + 1}
+                                        </label>
+                                        <select
+                                            value={playerId}
+                                            onChange={(e) => handleLineupChange(index, e.target.value)}
+                                            className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                                darkMode 
+                                                    ? 'bg-gray-700 border-gray-600 text-white' 
+                                                    : 'bg-white border-gray-300 text-gray-900'
+                                            }`}
+                                        >
+                                            <option value={playerId}>
+                                                {roster.find(p => p.id === playerId)?.name}
+                                            </option>
+                                            {roster.filter(player => !playerStatus[player.id] || player.id === playerId).map(player => (
+                                                <option key={player.id} value={player.id}>
+                                                    {player.name} ({player.position})
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
                                 ))}
                             </div>
                         </div>
+
+                        {/* Time/Score Modal */}
+                        {showTimeScoreModal && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                <div className={`p-6 rounded-lg shadow-xl max-w-md w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        Record Time & Score
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                Game Time
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={gameTime}
+                                                onChange={(e) => setGameTime(e.target.value)}
+                                                placeholder="e.g., 15:42 2nd"
+                                                className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                                    darkMode 
+                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                                                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                                                }`}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    VT Score
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={ourScore}
+                                                    onChange={(e) => setOurScore(e.target.value)}
+                                                    placeholder="0"
+                                                    className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                                        darkMode 
+                                                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                                                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                                                    }`}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    Opponent Score
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={oppScore}
+                                                    onChange={(e) => setOppScore(e.target.value)}
+                                                    placeholder="0"
+                                                    className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                                        darkMode 
+                                                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                                                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                                                    }`}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3 mt-6">
+                                        <button
+                                            onClick={() => setShowTimeScoreModal(false)}
+                                            className={`flex-1 px-4 py-2 border rounded-md ${
+                                                darkMode 
+                                                    ? 'text-gray-300 border-gray-600 hover:bg-gray-700' 
+                                                    : 'text-gray-600 border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={confirmAllChanges}
+                                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                        >
+                                            Confirm Changes
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Stats Tracking */}
                         <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
@@ -117,7 +345,7 @@
                             
                             {/* VT Stats */}
                             <div className="mb-6">
-                                <h3 className={`text-lg font-medium mb-3 text-center`} style={{color: '#800020'}}>
+                                <h3 className="text-lg font-medium mb-3 text-center" style={{color: '#800020'}}>
                                     Virginia Tech
                                 </h3>
                                 <div className="grid grid-cols-4 gap-4">
@@ -148,7 +376,7 @@
 
                             {/* Opponent Stats */}
                             <div>
-                                <h3 className={`text-lg font-medium mb-3 text-center`} style={{color: '#CC5500'}}>
+                                <h3 className="text-lg font-medium mb-3 text-center" style={{color: '#CC5500'}}>
                                     Opponent
                                 </h3>
                                 <div className="grid grid-cols-4 gap-4">
@@ -178,25 +406,46 @@
                             </div>
                         </div>
 
-                        {/* Debug Info */}
+                        {/* Lineup History */}
                         <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                             <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Debug Info
+                                Lineup Changes History
                             </h2>
-                            <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                <p>App is working! Dark mode: {darkMode ? 'ON' : 'OFF'}</p>
-                                <p>Roster loaded: {roster.length} players</p>
-                                <p>Current lineup: {currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ')}</p>
-                            </div>
+                            {lineupHistory.length === 0 ? (
+                                <p className={`text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    No lineup changes yet
+                                </p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {lineupHistory.map((record, index) => (
+                                        <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {record.change}
+                                                    </div>
+                                                    <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        {record.gameTime} | Score: {record.ourScore}-{record.oppScore}
+                                                    </div>
+                                                    <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                        Lineup: {record.lineup}
+                                                    </div>
+                                                </div>
+                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                    {record.timestamp}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             );
         };
 
-        console.log('Starting app...');
         ReactDOM.render(<BasketballLineupTracker />, document.getElementById('root'));
-        console.log('App rendered!');
     </script>
 </body>
 </html>
