@@ -187,6 +187,33 @@
                                 {darkMode ? '☀️ Light' : '🌙 Dark'}
                             </button>
                         </div>
+
+                        {/* Game Selector */}
+                        <div className={`rounded-lg shadow-lg p-4 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <div className="flex items-center justify-center gap-4">
+                                <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    Select Game:
+                                </label>
+                                <input
+                                    type="date"
+                                    value={selectedGame}
+                                    onChange={(e) => setSelectedGame(e.target.value)}
+                                    className={`px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                        darkMode 
+                                            ? 'bg-gray-700 border-gray-600 text-white' 
+                                            : 'bg-white border-gray-300 text-gray-900'
+                                    }`}
+                                />
+                                <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                    Game: {new Date(selectedGame + 'T12:00:00').toLocaleDateString('en-US', { 
+                                        weekday: 'short', 
+                                        month: 'short', 
+                                        day: 'numeric',
+                                        year: 'numeric'
+                                    })}
+                                </div>
+                            </div>
+                        </div>
                         
                         {/* Pending Changes Alert */}
                         {pendingChanges.length > 0 && (
@@ -299,7 +326,7 @@
                                             </div>
                                             <div>
                                                 <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                    Opponent Score
+                                                    {gameSchedule.find(game => game.date === selectedGame)?.opponent || 'Opponent'} Score
                                                 </label>
                                                 <input
                                                     type="text"
