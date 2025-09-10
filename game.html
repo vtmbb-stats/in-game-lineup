@@ -8,10 +8,9 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+        import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
         
         const firebaseConfig = {
             apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
@@ -24,9 +23,16 @@
         };
         
         const app = initializeApp(firebaseConfig);
-        window.database = getDatabase(app);
+        const database = getDatabase(app);
+        
+        window.firebaseDb = {
+            ref: (path) => ref(database, path),
+            onValue: (dbRef, callback) => onValue(dbRef, callback),
+            off: (dbRef) => off(dbRef)
+        };
+        
+        console.log('Firebase initialized successfully');
     </script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 </head>
 <body>
     <div id="root"></div>
@@ -36,6 +42,7 @@
 
         const GameDisplay = () => {
             const [darkMode, setDarkMode] = useState(false);
+            const [gameInfo, setGameInfo] = useState(null);
             const [currentLineup, setCurrentLineup] = useState([]);
             const [currentStats, setCurrentStats] = useState({
                 vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
@@ -45,7 +52,6 @@
             const [lineupStats, setLineupStats] = useState([]);
             const [lastUpdate, setLastUpdate] = useState(null);
 
-            // Game schedule
             const gameSchedule = [
                 { 
                     date: '2024-11-03', 
@@ -57,7 +63,6 @@
             const currentGame = '2024-11-03';
             const currentOpponent = gameSchedule.find(game => game.date === currentGame)?.opponent || 'Opponent';
 
-            // Virginia Tech Basketball Roster
             const roster = [
                 { id: 0, name: 'Jailen Bedford', position: 'G' },
                 { id: 1, name: 'Tobi Lawal', position: 'F' },
@@ -79,130 +84,138 @@
                 document.body.className = darkMode ? 'bg-gray-900' : 'bg-gray-100';
             }, [darkMode]);
 
-            // Load data from Firebase
             useEffect(() => {
-                if (!window.database) return;
+                if (!window.firebaseDb) return;
 
-                const loadGameData = () => {
-                    // Load game info first
-                    firebase.database().ref(`game-info/${currentGame}`).on('value', (snapshot) => {
-                        const gameInfo = snapshot.val();
-                        if (gameInfo && gameInfo.started) {
-                            // Game has started, load initial lineup if available
-                            if (gameInfo.currentLineup) {
-                                const lineupNames = gameInfo.currentLineup.split(', ');
-                                const lineupIds = lineupNames.map(name => 
-                                    roster.find(p => p.name === name)?.id
-                                ).filter(id => id !== undefined);
-                                setCurrentLineup(lineupIds);
-                            }
-                        }
-                    });
+                const gameInfoRef = window.firebaseDb.ref(`game-info/${currentGame}`);
+                const statsRef = window.firebaseDb.ref(`current-stats/${currentGame}`);
+                const changesRef = window.firebaseDb.ref(`lineup-changes/${currentGame}`);
 
-                    // Load current stats
-                    firebase.database().ref(`current-stats/${currentGame}`).on('value', (snapshot) => {
-                        const stats = snapshot.val();
-                        if (stats) {
-                            setCurrentStats(stats);
-                        }
-                    });
-
-                    // Load lineup changes
-                    firebase.database().ref(`lineup-changes/${currentGame}`).on('value', (snapshot) => {
-                        const changes = snapshot.val();
-                        if (changes) {
-                            const changesArray = Object.values(changes)
-                                .filter(change => change.gameTime !== '20:00 1st') // Filter out game start marker
-                                .sort((a, b) => {
-                                    // Sort by game time properly
-                                    const parseTime = (timeStr) => {
-                                        const parts = timeStr.split(' ');
-                                        const [minutes, seconds] = parts[0].split(':').map(Number);
-                                        const period = parts[1];
-                                        if (period === '1st') return (20 - minutes) * 60 + (60 - seconds);
-                                        if (period === '2nd') return (40 - minutes) * 60 + (60 - seconds);
-                                        if (period === 'OT') return (45 - minutes) * 60 + (60 - seconds);
-                                        return 0;
-                                    };
-                                    return parseTime(a.gameTime) - parseTime(b.gameTime);
-                                });
-                            setLineupHistory(changesArray);
-                            
-                            // Get current lineup from most recent change
-                            if (changesArray.length > 0) {
-                                const mostRecent = changesArray[changesArray.length - 1];
-                                const lineupNames = mostRecent.lineup.split(', ');
-                                const lineupIds = lineupNames.map(name => 
-                                    roster.find(p => p.name === name)?.id
-                                ).filter(id => id !== undefined);
-                                setCurrentLineup(lineupIds);
-                            }
+                // Listen to game info
+                window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        setGameInfo(data);
+                        if (data.currentLineup) {
+                            const lineupNames = data.currentLineup.split(', ');
+                            const lineupIds = lineupNames.map(name => 
+                                roster.find(p => p.name === name)?.id
+                            ).filter(id => id !== undefined);
+                            setCurrentLineup(lineupIds);
                         }
                         setLastUpdate(new Date().toLocaleTimeString());
-                    });
-                };
-
-                // Initial load and set up real-time updates
-                const timer = setTimeout(loadGameData, 1000); // Give Firebase time to initialize
-                
-                return () => {
-                    clearTimeout(timer);
-                    if (window.database) {
-                        firebase.database().ref(`game-info/${currentGame}`).off();
-                        firebase.database().ref(`current-stats/${currentGame}`).off();
-                        firebase.database().ref(`lineup-changes/${currentGame}`).off();
                     }
+                });
+
+                // Listen to current stats
+                window.firebaseDb.onValue(statsRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        setCurrentStats(data);
+                        setLastUpdate(new Date().toLocaleTimeString());
+                    }
+                });
+
+                // Listen to lineup changes
+                window.firebaseDb.onValue(changesRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const changesArray = Object.values(data)
+                            .filter(change => change.gameTime && change.gameTime !== '20:00 1st')
+                            .sort((a, b) => {
+                                const parseTime = (timeStr) => {
+                                    const parts = timeStr.split(' ');
+                                    const [minutes, seconds] = parts[0].split(':').map(Number);
+                                    const period = parts[1];
+                                    if (period === '1st') return (20 - minutes) * 60 + (60 - seconds);
+                                    if (period === '2nd') return (40 - minutes) * 60 + (60 - seconds);
+                                    if (period === 'OT') return (45 - minutes) * 60 + (60 - seconds);
+                                    return 0;
+                                };
+                                return parseTime(a.gameTime) - parseTime(b.gameTime);
+                            });
+                        setLineupHistory(changesArray);
+                        setLastUpdate(new Date().toLocaleTimeString());
+                    }
+                });
+
+                return () => {
+                    // Cleanup listeners
+                    window.firebaseDb.off(gameInfoRef);
+                    window.firebaseDb.off(statsRef);
+                    window.firebaseDb.off(changesRef);
                 };
             }, [currentGame]);
 
-            // Calculate lineup performance stats
+            // Calculate lineup analytics
             useEffect(() => {
                 if (lineupHistory.length === 0) return;
 
-                const lineupPerformance = [];
-                let currentLineupNames = ['Ben Hammond', 'Jaden Schutt', 'Neo Avdalas', 'Tobi Lawal', 'Amani Hansberry'];
-                let startTime = null;
-                let startVTScore = 0;
-                let startOppScore = 0;
-
+                const lineupMap = new Map();
+                
+                // Process each lineup change to calculate combined stats
                 lineupHistory.forEach((change, index) => {
-                    if (startTime) {
-                        // Calculate stats for previous lineup
-                        const duration = `${startTime} - ${change.gameTime}`;
-                        const vtScoreDiff = change.ourScore - startVTScore;
-                        const oppScoreDiff = change.oppScore - startOppScore;
-                        const plusMinus = vtScoreDiff - oppScoreDiff;
-
-                        lineupPerformance.push({
-                            id: index,
-                            lineup: currentLineupNames.join(', '),
-                            duration: duration,
-                            vtPoints: vtScoreDiff,
-                            oppPoints: oppScoreDiff,
-                            plusMinus: plusMinus
+                    const lineupKey = change.lineup;
+                    
+                    if (!lineupMap.has(lineupKey)) {
+                        lineupMap.set(lineupKey, {
+                            lineup: lineupKey,
+                            appearances: 0,
+                            totalPlusMinus: 0,
+                            totalVTPoints: 0,
+                            totalOppPoints: 0,
+                            totalMinutes: 0,
+                            isActive: false
                         });
                     }
-
-                    // Update for next segment
-                    startTime = change.gameTime;
-                    startVTScore = change.ourScore;
-                    startOppScore = change.oppScore;
-                    currentLineupNames = change.lineup.split(', ');
+                    
+                    const lineupData = lineupMap.get(lineupKey);
+                    lineupData.appearances += 1;
+                    
+                    // Calculate duration and plus/minus if there's a next change
+                    if (index < lineupHistory.length - 1) {
+                        const nextChange = lineupHistory[index + 1];
+                        const vtScoreDiff = nextChange.ourScore - change.ourScore;
+                        const oppScoreDiff = nextChange.oppScore - change.oppScore;
+                        const plusMinus = vtScoreDiff - oppScoreDiff;
+                        
+                        lineupData.totalPlusMinus += plusMinus;
+                        lineupData.totalVTPoints += vtScoreDiff;
+                        lineupData.totalOppPoints += oppScoreDiff;
+                        
+                        // Calculate minutes (simplified)
+                        lineupData.totalMinutes += 2; // Rough estimate
+                    } else {
+                        // This is the current lineup
+                        lineupData.isActive = true;
+                    }
                 });
 
-                // Add current lineup (still playing)
-                if (startTime) {
-                    lineupPerformance.push({
-                        id: lineupHistory.length,
-                        lineup: currentLineupNames.join(', '),
-                        duration: `${startTime} - Current`,
-                        vtPoints: currentStats.vt.possessions > 0 ? '...' : 0,
-                        oppPoints: currentStats.opponent.possessions > 0 ? '...' : 0,
-                        plusMinus: 'Active'
-                    });
-                }
+                // Convert to array and calculate averages
+                const analyticsArray = Array.from(lineupMap.values()).map(data => ({
+                    ...data,
+                    plusMinus: data.isActive ? 'Active' : data.totalPlusMinus,
+                    minutes: data.isActive ? 'Active' : `${data.totalMinutes}:00`,
+                    vtPointsPerPoss: data.totalVTPoints > 0 && currentStats.vt.possessions > 0 ? 
+                        (data.totalVTPoints / Math.max(1, Math.floor(currentStats.vt.possessions / lineupMap.size))).toFixed(2) : '--',
+                    oppPointsPerPoss: data.totalOppPoints > 0 && currentStats.opponent.possessions > 0 ? 
+                        (data.totalOppPoints / Math.max(1, Math.floor(currentStats.opponent.possessions / lineupMap.size))).toFixed(2) : '--',
+                    vtOffRebPct: currentStats.vt.offensiveRebounds > 0 ? 
+                        Math.round((currentStats.vt.offensiveRebounds / Math.max(1, currentStats.vt.offensiveRebounds + currentStats.opponent.defensiveRebounds)) * 100) : '--',
+                    vtDefRebPct: currentStats.vt.defensiveRebounds > 0 ? 
+                        Math.round((currentStats.vt.defensiveRebounds / Math.max(1, currentStats.vt.defensiveRebounds + currentStats.opponent.offensiveRebounds)) * 100) : '--',
+                    vtTurnoverRate: currentStats.vt.turnovers > 0 && currentStats.vt.possessions > 0 ? 
+                        Math.round((currentStats.vt.turnovers / currentStats.vt.possessions) * 100) : '--'
+                }));
 
-                setLineupStats(lineupPerformance);
+                // Sort by total plus/minus (active lineup last)
+                analyticsArray.sort((a, b) => {
+                    if (a.isActive) return 1;
+                    if (b.isActive) return -1;
+                    return b.totalPlusMinus - a.totalPlusMinus;
+                });
+
+                setLineupStats(analyticsArray);
             }, [lineupHistory, currentStats]);
 
             return (
@@ -215,13 +228,26 @@
                                     VT vs {currentOpponent}
                                 </h1>
                                 <p className={`text-lg ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    In-Game Lineup Display
+                                    Live Game Display
+                                    {gameInfo && gameInfo.started && (
+                                        <span className="ml-2">
+                                            • {gameInfo.gameTime} {gameInfo.currentHalf === 1 ? '1st' : gameInfo.currentHalf === 2 ? '2nd' : 'OT'}
+                                        </span>
+                                    )}
                                 </p>
                             </div>
                             <div className="flex items-center gap-4">
+                                {gameInfo && gameInfo.started && (
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                                        <span className={`text-sm font-medium ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                            LIVE
+                                        </span>
+                                    </div>
+                                )}
                                 {lastUpdate && (
                                     <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                        Last Update: {lastUpdate}
+                                        Updated: {lastUpdate}
                                     </div>
                                 )}
                                 <button
@@ -237,255 +263,268 @@
                             </div>
                         </div>
 
-                        {/* Current Lineup & Live Stats */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                            {/* Current Lineup */}
-                            <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    Current Lineup
+                        {!gameInfo || !gameInfo.started ? (
+                            <div className={`rounded-lg shadow-lg p-12 text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                    Game Not Started
                                 </h2>
-                                <div className="grid grid-cols-1 gap-3">
-                                    {currentLineup.map((playerId, index) => {
-                                        const player = roster.find(p => p.id === playerId);
-                                        return (
-                                            <div key={index} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                                                <div className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {player?.name || 'Unknown'}
-                                                </div>
-                                                <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    {player?.position}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Live Game Stats */}
-                            <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    Live Game Stats
-                                </h2>
-                                
-                                {/* VT Stats */}
-                                <div className="mb-4">
-                                    <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Virginia Tech
-                                    </h3>
-                                    <div className="grid grid-cols-4 gap-2 text-center">
-                                        <div>
-                                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {currentStats.vt.possessions}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Possessions
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {currentStats.vt.offensiveRebounds}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Off Reb
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {currentStats.vt.defensiveRebounds}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Def Reb
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {currentStats.vt.turnovers}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Turnovers
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Opponent Stats */}
-                                <div>
-                                    <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        {currentOpponent}
-                                    </h3>
-                                    <div className="grid grid-cols-4 gap-2 text-center">
-                                        <div>
-                                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {currentStats.opponent.possessions}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Possessions
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {currentStats.opponent.offensiveRebounds}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Off Reb
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {currentStats.opponent.defensiveRebounds}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Def Reb
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {currentStats.opponent.turnovers}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Turnovers
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Lineup Analytics Table */}
-                        <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Lineup Analytics - Combined Performance
-                            </h2>
-                            {lineupStats.length === 0 ? (
-                                <p className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                    No lineup changes yet - analytics will appear here
+                                <p className={`text-lg ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                    Waiting for game to begin...
                                 </p>
-                            ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead>
-                                            <tr className={`border-b ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                                                <th className={`text-left p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    Lineup
-                                                </th>
-                                                <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    Apps
-                                                </th>
-                                                <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    Min
-                                                </th>
-                                                <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    +/-
-                                                </th>
-                                                <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    Off PPP
-                                                </th>
-                                                <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    Def PPP
-                                                </th>
-                                                <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    OReb%
-                                                </th>
-                                                <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    DReb%
-                                                </th>
-                                                <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    TO Rate
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {lineupStats.map((stat, index) => (
-                                                <tr key={index} className={`border-b ${
-                                                    stat.isActive ? (darkMode ? 'bg-blue-900/30 border-blue-600' : 'bg-blue-50 border-blue-300') :
-                                                    (darkMode ? 'border-gray-700' : 'border-gray-100')
-                                                }`}>
-                                                    <td className={`p-3 max-w-xs ${
-                                                        stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                    }`}>
-                                                        <div className="truncate" title={stat.lineup}>
-                                                            {stat.lineup}
-                                                            {stat.isActive && <span className="ml-2 text-xs font-bold">(ACTIVE)</span>}
-                                                        </div>
-                                                    </td>
-                                                    <td className={`p-3 text-center ${
-                                                        stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                    }`}>
-                                                        {stat.appearances}
-                                                    </td>
-                                                    <td className={`p-3 text-center font-semibold ${
-                                                        stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
-                                                        (darkMode ? 'text-white' : 'text-gray-900')
-                                                    }`}>
-                                                        {stat.minutes}
-                                                    </td>
-                                                    <td className={`p-3 text-center font-bold ${
-                                                        stat.plusMinus === 'Active' ? (darkMode ? 'text-blue-400' : 'text-blue-600') :
-                                                        stat.plusMinus > 0 ? 'text-green-600' : 
-                                                        stat.plusMinus < 0 ? 'text-red-600' : (darkMode ? 'text-white' : 'text-gray-900')
-                                                    }`}>
-                                                        {stat.plusMinus === 'Active' ? 'Active' :
-                                                         stat.plusMinus > 0 ? `+${stat.plusMinus}` : stat.plusMinus}
-                                                    </td>
-                                                    <td className={`p-3 text-center font-semibold ${
-                                                        stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
-                                                        (darkMode ? 'text-white' : 'text-gray-900')
-                                                    }`}>
-                                                        {stat.vtPointsPerPoss}
-                                                    </td>
-                                                    <td className={`p-3 text-center font-semibold ${
-                                                        stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
-                                                        (darkMode ? 'text-white' : 'text-gray-900')
-                                                    }`}>
-                                                        {stat.oppPointsPerPoss}
-                                                    </td>
-                                                    <td className={`p-3 text-center ${
-                                                        stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                    }`}>
-                                                        {stat.vtOffRebPct}{stat.vtOffRebPct !== '--' ? '%' : ''}
-                                                    </td>
-                                                    <td className={`p-3 text-center ${
-                                                        stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                    }`}>
-                                                        {stat.vtDefRebPct}{stat.vtDefRebPct !== '--' ? '%' : ''}
-                                                    </td>
-                                                    <td className={`p-3 text-center ${
-                                                        stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                    }`}>
-                                                        {stat.vtTurnoverRate}{stat.vtTurnoverRate !== '--' ? '%' : ''}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                            
-                            {/* Legend */}
-                            <div className={`mt-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                    <div><strong>Apps:</strong> Appearances</div>
-                                    <div><strong>Min:</strong> Minutes Played</div>
-                                    <div><strong>Off PPP:</strong> Offensive Points Per Possession</div>
-                                    <div><strong>Def PPP:</strong> Defensive Points Per Possession</div>
-                                    <div><strong>OReb%:</strong> Offensive Rebound Percentage</div>
-                                    <div><strong>DReb%:</strong> Defensive Rebound Percentage</div>
-                                    <div><strong>TO Rate:</strong> Turnover Rate</div>
-                                    <div><strong>+/-:</strong> Net Point Differential</div>
-                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            <>
+                                {/* Current Lineup & Live Stats */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                    {/* Current Lineup */}
+                                    <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                        <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                            Current Lineup
+                                        </h2>
+                                        <div className="grid grid-cols-1 gap-3">
+                                            {currentLineup.map((playerId, index) => {
+                                                const player = roster.find(p => p.id === playerId);
+                                                return (
+                                                    <div key={index} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                                                        <div className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {player?.name || 'Unknown'}
+                                                        </div>
+                                                        <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                            {player?.position}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Live Game Stats */}
+                                    <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                        <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                            Live Game Stats
+                                        </h2>
+                                        
+                                        {/* VT Stats */}
+                                        <div className="mb-4">
+                                            <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                Virginia Tech
+                                            </h3>
+                                            <div className="grid grid-cols-4 gap-2 text-center">
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.vt.possessions}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Possessions
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.vt.offensiveRebounds}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Off Reb
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.vt.defensiveRebounds}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Def Reb
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.vt.turnovers}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Turnovers
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Opponent Stats */}
+                                        <div>
+                                            <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                {currentOpponent}
+                                            </h3>
+                                            <div className="grid grid-cols-4 gap-2 text-center">
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.opponent.possessions}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Possessions
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.opponent.offensiveRebounds}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Off Reb
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.opponent.defensiveRebounds}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Def Reb
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.opponent.turnovers}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Turnovers
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Lineup Analytics Table */}
+                                <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                    <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        Lineup Analytics
+                                    </h2>
+                                    {lineupStats.length === 0 ? (
+                                        <p className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                            No lineup changes yet - analytics will appear here
+                                        </p>
+                                    ) : (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm">
+                                                <thead>
+                                                    <tr className={`border-b ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                                                        <th className={`text-left p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            Lineup
+                                                        </th>
+                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            Apps
+                                                        </th>
+                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            Min
+                                                        </th>
+                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            +/-
+                                                        </th>
+                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            Off PPP
+                                                        </th>
+                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            Def PPP
+                                                        </th>
+                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            OReb%
+                                                        </th>
+                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            DReb%
+                                                        </th>
+                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            TO Rate
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {lineupStats.map((stat, index) => (
+                                                        <tr key={index} className={`border-b ${
+                                                            stat.isActive ? (darkMode ? 'bg-blue-900/30 border-blue-600' : 'bg-blue-50 border-blue-300') :
+                                                            (darkMode ? 'border-gray-700' : 'border-gray-100')
+                                                        }`}>
+                                                            <td className={`p-3 max-w-xs ${
+                                                                stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
+                                                                (darkMode ? 'text-gray-300' : 'text-gray-700')
+                                                            }`}>
+                                                                <div className="truncate" title={stat.lineup}>
+                                                                    {stat.lineup}
+                                                                    {stat.isActive && <span className="ml-2 text-xs font-bold">(ACTIVE)</span>}
+                                                                </div>
+                                                            </td>
+                                                            <td className={`p-3 text-center ${
+                                                                stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
+                                                                (darkMode ? 'text-gray-300' : 'text-gray-700')
+                                                            }`}>
+                                                                {stat.appearances}
+                                                            </td>
+                                                            <td className={`p-3 text-center font-semibold ${
+                                                                stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
+                                                                (darkMode ? 'text-white' : 'text-gray-900')
+                                                            }`}>
+                                                                {stat.minutes}
+                                                            </td>
+                                                            <td className={`p-3 text-center font-bold ${
+                                                                stat.plusMinus === 'Active' ? (darkMode ? 'text-blue-400' : 'text-blue-600') :
+                                                                stat.plusMinus > 0 ? 'text-green-600' : 
+                                                                stat.plusMinus < 0 ? 'text-red-600' : (darkMode ? 'text-white' : 'text-gray-900')
+                                                            }`}>
+                                                                {stat.plusMinus === 'Active' ? 'Active' :
+                                                                 stat.plusMinus > 0 ? `+${stat.plusMinus}` : stat.plusMinus}
+                                                            </td>
+                                                            <td className={`p-3 text-center font-semibold ${
+                                                                stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
+                                                                (darkMode ? 'text-white' : 'text-gray-900')
+                                                            }`}>
+                                                                {stat.vtPointsPerPoss}
+                                                            </td>
+                                                            <td className={`p-3 text-center font-semibold ${
+                                                                stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
+                                                                (darkMode ? 'text-white' : 'text-gray-900')
+                                                            }`}>
+                                                                {stat.oppPointsPerPoss}
+                                                            </td>
+                                                            <td className={`p-3 text-center ${
+                                                                stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
+                                                                (darkMode ? 'text-gray-300' : 'text-gray-700')
+                                                            }`}>
+                                                                {stat.vtOffRebPct}{stat.vtOffRebPct !== '--' ? '%' : ''}
+                                                            </td>
+                                                            <td className={`p-3 text-center ${
+                                                                stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
+                                                                (darkMode ? 'text-gray-300' : 'text-gray-700')
+                                                            }`}>
+                                                                {stat.vtDefRebPct}{stat.vtDefRebPct !== '--' ? '%' : ''}
+                                                            </td>
+                                                            <td className={`p-3 text-center ${
+                                                                stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
+                                                                (darkMode ? 'text-gray-300' : 'text-gray-700')
+                                                            }`}>
+                                                                {stat.vtTurnoverRate}{stat.vtTurnoverRate !== '--' ? '%' : ''}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Legend */}
+                                    <div className={`mt-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                            <div><strong>Apps:</strong> Appearances</div>
+                                            <div><strong>Min:</strong> Minutes Played</div>
+                                            <div><strong>Off PPP:</strong> Offensive Points Per Possession</div>
+                                            <div><strong>Def PPP:</strong> Defensive Points Per Possession</div>
+                                            <div><strong>OReb%:</strong> Offensive Rebound Percentage</div>
+                                            <div><strong>DReb%:</strong> Defensive Rebound Percentage</div>
+                                            <div><strong>TO Rate:</strong> Turnover Rate</div>
+                                        </div>
+                                    </div>
+                                }
+                            </>
+                        )}
                     </div>
                 </div>
             );
         };
 
-        ReactDOM.render(<GameDisplay />, document.getElementById('root'));
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<GameDisplay />);
     </script>
 </body>
 </html>
