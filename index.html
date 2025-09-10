@@ -413,13 +413,13 @@
                                     <div className="space-y-4">
                                         <div>
                                             <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                Game Time
+                                                Game Time ({currentHalf === 1 ? '1st Half' : currentHalf === 2 ? '2nd Half' : 'Overtime'})
                                             </label>
                                             <input
                                                 type="text"
-                                                value={gameTime}
-                                                onChange={(e) => setGameTime(e.target.value)}
-                                                placeholder="e.g., 15:42 2nd"
+                                                value={pendingGameTime}
+                                                onChange={(e) => setPendingGameTime(e.target.value)}
+                                                placeholder="e.g., 15:42"
                                                 className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
                                                     darkMode 
                                                         ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
