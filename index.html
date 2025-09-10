@@ -297,8 +297,10 @@
                 try {
                     const timestamp = Date.now();
                     
-                    for (const record of records) {
-                        const recordRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}/${timestamp + Math.random()}`);
+                    for (let i = 0; i < records.length; i++) {
+                        const record = records[i];
+                        // Use timestamp + index instead of Math.random() to avoid dots in path
+                        const recordRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}/${timestamp}-${i}`);
                         await window.firebaseDb.set(recordRef, record);
                     }
                     
