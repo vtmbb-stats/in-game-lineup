@@ -87,63 +87,70 @@
             useEffect(() => {
                 if (!window.firebaseDb) return;
 
-                const gameInfoRef = window.firebaseDb.ref(`game-info/${currentGame}`);
-                const statsRef = window.firebaseDb.ref(`current-stats/${currentGame}`);
-                const changesRef = window.firebaseDb.ref(`lineup-changes/${currentGame}`);
+                let gameInfoUnsubscribe, statsUnsubscribe, changesUnsubscribe;
 
-                // Listen to game info
-                window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        setGameInfo(data);
-                        if (data.currentLineup) {
-                            const lineupNames = data.currentLineup.split(', ');
-                            const lineupIds = lineupNames.map(name => 
-                                roster.find(p => p.name === name)?.id
-                            ).filter(id => id !== undefined);
-                            setCurrentLineup(lineupIds);
+                const setupListeners = () => {
+                    const gameInfoRef = window.firebaseDb.ref(`game-info/${currentGame}`);
+                    const statsRef = window.firebaseDb.ref(`current-stats/${currentGame}`);
+                    const changesRef = window.firebaseDb.ref(`lineup-changes/${currentGame}`);
+
+                    // Listen to game info
+                    gameInfoUnsubscribe = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
+                        const data = snapshot.val();
+                        if (data) {
+                            setGameInfo(data);
+                            if (data.currentLineup) {
+                                const lineupNames = data.currentLineup.split(', ');
+                                const lineupIds = lineupNames.map(name => 
+                                    roster.find(p => p.name === name)?.id
+                                ).filter(id => id !== undefined);
+                                setCurrentLineup(lineupIds);
+                            }
+                            setLastUpdate(new Date().toLocaleTimeString());
                         }
-                        setLastUpdate(new Date().toLocaleTimeString());
-                    }
-                });
+                    });
 
-                // Listen to current stats
-                window.firebaseDb.onValue(statsRef, (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        setCurrentStats(data);
-                        setLastUpdate(new Date().toLocaleTimeString());
-                    }
-                });
+                    // Listen to current stats
+                    statsUnsubscribe = window.firebaseDb.onValue(statsRef, (snapshot) => {
+                        const data = snapshot.val();
+                        if (data) {
+                            setCurrentStats(data);
+                            setLastUpdate(new Date().toLocaleTimeString());
+                        }
+                    });
 
-                // Listen to lineup changes
-                window.firebaseDb.onValue(changesRef, (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        const changesArray = Object.values(data)
-                            .filter(change => change.gameTime && change.gameTime !== '20:00 1st')
-                            .sort((a, b) => {
-                                const parseTime = (timeStr) => {
-                                    const parts = timeStr.split(' ');
-                                    const [minutes, seconds] = parts[0].split(':').map(Number);
-                                    const period = parts[1];
-                                    if (period === '1st') return (20 - minutes) * 60 + (60 - seconds);
-                                    if (period === '2nd') return (40 - minutes) * 60 + (60 - seconds);
-                                    if (period === 'OT') return (45 - minutes) * 60 + (60 - seconds);
-                                    return 0;
-                                };
-                                return parseTime(a.gameTime) - parseTime(b.gameTime);
-                            });
-                        setLineupHistory(changesArray);
-                        setLastUpdate(new Date().toLocaleTimeString());
-                    }
-                });
+                    // Listen to lineup changes
+                    changesUnsubscribe = window.firebaseDb.onValue(changesRef, (snapshot) => {
+                        const data = snapshot.val();
+                        if (data) {
+                            const changesArray = Object.values(data)
+                                .filter(change => change.gameTime && change.gameTime !== '20:00 1st')
+                                .sort((a, b) => {
+                                    const parseTime = (timeStr) => {
+                                        const parts = timeStr.split(' ');
+                                        const [minutes, seconds] = parts[0].split(':').map(Number);
+                                        const period = parts[1];
+                                        if (period === '1st') return (20 - minutes) * 60 + (60 - seconds);
+                                        if (period === '2nd') return (40 - minutes) * 60 + (60 - seconds);
+                                        if (period === 'OT') return (45 - minutes) * 60 + (60 - seconds);
+                                        return 0;
+                                    };
+                                    return parseTime(a.gameTime) - parseTime(b.gameTime);
+                                });
+                            setLineupHistory(changesArray);
+                            setLastUpdate(new Date().toLocaleTimeString());
+                        }
+                    });
+                };
+
+                // Small delay to ensure Firebase is ready
+                const timer = setTimeout(setupListeners, 1000);
 
                 return () => {
-                    // Cleanup listeners
-                    window.firebaseDb.off(gameInfoRef);
-                    window.firebaseDb.off(statsRef);
-                    window.firebaseDb.off(changesRef);
+                    clearTimeout(timer);
+                    if (gameInfoUnsubscribe) gameInfoUnsubscribe();
+                    if (statsUnsubscribe) statsUnsubscribe();
+                    if (changesUnsubscribe) changesUnsubscribe();
                 };
             }, [currentGame]);
 
