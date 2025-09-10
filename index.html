@@ -248,7 +248,7 @@
                 setCurrentStats(newStats);
                 
                 if (window.database) {
-                    firebase.database().ref(`current-stats/${selectedGame}`).set(newStats);
+                    window.database.ref(`current-stats/${selectedGame}`).set(newStats);
                 }
             };
 
