@@ -486,7 +486,10 @@
                                             <option value={playerId}>
                                                 {roster.find(p => p.id === playerId)?.name}
                                             </option>
-                                            {roster.filter(player => !playerStatus[player.id] || player.id === playerId).map(player => (
+                                            {roster.filter(player => 
+                                                // Filter out players currently in the lineup (except the current player in this position)
+                                                (!currentLineup.includes(player.id) || player.id === playerId)
+                                            ).map(player => (
                                                 <option key={player.id} value={player.id}>
                                                     {player.name} ({player.position})
                                                 </option>
@@ -530,6 +533,22 @@
                                                     type="text"
                                                     value={ourScore}
                                                     onChange={(e) => setOurScore(e.target.value)}
+                                                    placeholder="0"
+                                                    className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                                        darkMode 
+                                                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                                                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                                                    }`}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    {currentOpponent} Score
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={oppScore}
+                                                    onChange={(e) => setOppScore(e.target.value)}
                                                     placeholder="0"
                                                     className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
                                                         darkMode 
@@ -593,135 +612,4 @@
                                                 >
                                                     -
                                                 </button>
-                                                <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {value}
-                                                </div>
-                                                <button
-                                                    onClick={() => updateStat('vt', stat, 1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-green-600 text-white hover:bg-green-700' 
-                                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                                    }`}
-                                                >
-                                                    +
-                                                </button>
-                                            </div>
-                                            <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat.replace(/([A-Z])/g, ' $1').trim()}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Opponent Stats */}
-                            <div>
-                                <h3 className={`text-lg font-medium mb-3 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    {currentOpponent}
-                                </h3>
-                                <div className="grid grid-cols-4 gap-4">
-                                    {Object.entries(currentStats.opponent).map(([stat, value]) => (
-                                        <div key={stat} className="text-center">
-                                            <div className="flex justify-center items-center gap-2 mb-2">
-                                                <button
-                                                    onClick={() => updateStat('opponent', stat, -1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-red-600 text-white hover:bg-red-700' 
-                                                            : 'bg-red-500 text-white hover:bg-red-600'
-                                                    }`}
-                                                >
-                                                    -
-                                                </button>
-                                                <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {value}
-                                                </div>
-                                                <button
-                                                    onClick={() => updateStat('opponent', stat, 1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-green-600 text-white hover:bg-green-700' 
-                                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                                    }`}
-                                                >
-                                                    +
-                                                </button>
-                                            </div>
-                                            <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat.replace(/([A-Z])/g, ' $1').trim()}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Lineup History */}
-                        <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Lineup Changes History
-                            </h2>
-                            {lineupHistory.length === 0 ? (
-                                <p className={`text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                    No lineup changes yet
-                                </p>
-                            ) : (
-                                <div className="space-y-3">
-                                    {lineupHistory.map((record, index) => (
-                                        <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {record.change}
-                                                    </div>
-                                                    <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        {record.gameTime} | Score: {record.ourScore}-{record.oppScore}
-                                                    </div>
-                                                    <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                        Lineup: {record.lineup}
-                                                    </div>
-                                                </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                    {record.timestamp}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        ReactDOM.render(<BasketballLineupTracker />, document.getElementById('root'));
-    </script>
-</body>
-</html> rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                        darkMode 
-                                                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                    }`}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                    {currentOpponent} Score
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={oppScore}
-                                                    onChange={(e) => setOppScore(e.target.value)}
-                                                    placeholder="0"
-                                                    className={`w-full p-2 border
+                                                <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-
