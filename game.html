@@ -85,17 +85,25 @@
             }, [darkMode]);
 
             useEffect(() => {
-                if (!window.firebaseDb) return;
+                console.log('Setting up Firebase listeners...');
+                
+                if (!window.firebaseDb) {
+                    console.error('Firebase not initialized');
+                    return;
+                }
 
                 let gameInfoUnsubscribe, statsUnsubscribe, changesUnsubscribe;
 
                 const setupListeners = () => {
+                    console.log('Creating Firebase references for game:', currentGame);
+                    
                     const gameInfoRef = window.firebaseDb.ref(`game-info/${currentGame}`);
                     const statsRef = window.firebaseDb.ref(`current-stats/${currentGame}`);
                     const changesRef = window.firebaseDb.ref(`lineup-changes/${currentGame}`);
 
                     // Listen to game info
                     gameInfoUnsubscribe = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
+                        console.log('Game info snapshot:', snapshot.val());
                         const data = snapshot.val();
                         if (data) {
                             setGameInfo(data);
@@ -107,20 +115,30 @@
                                 setCurrentLineup(lineupIds);
                             }
                             setLastUpdate(new Date().toLocaleTimeString());
+                        } else {
+                            console.log('No game info data found');
                         }
+                    }, (error) => {
+                        console.error('Game info listener error:', error);
                     });
 
                     // Listen to current stats
                     statsUnsubscribe = window.firebaseDb.onValue(statsRef, (snapshot) => {
+                        console.log('Stats snapshot:', snapshot.val());
                         const data = snapshot.val();
                         if (data) {
                             setCurrentStats(data);
                             setLastUpdate(new Date().toLocaleTimeString());
+                        } else {
+                            console.log('No stats data found');
                         }
+                    }, (error) => {
+                        console.error('Stats listener error:', error);
                     });
 
                     // Listen to lineup changes
                     changesUnsubscribe = window.firebaseDb.onValue(changesRef, (snapshot) => {
+                        console.log('Lineup changes snapshot:', snapshot.val());
                         const data = snapshot.val();
                         if (data) {
                             const changesArray = Object.values(data)
@@ -139,12 +157,16 @@
                                 });
                             setLineupHistory(changesArray);
                             setLastUpdate(new Date().toLocaleTimeString());
+                        } else {
+                            console.log('No lineup changes data found');
                         }
+                    }, (error) => {
+                        console.error('Lineup changes listener error:', error);
                     });
                 };
 
-                // Small delay to ensure Firebase is ready
-                const timer = setTimeout(setupListeners, 1000);
+                // Increase delay to ensure Firebase is ready
+                const timer = setTimeout(setupListeners, 2000);
 
                 return () => {
                     clearTimeout(timer);
@@ -160,7 +182,6 @@
 
                 const lineupMap = new Map();
                 
-                // Process each lineup change to calculate combined stats
                 lineupHistory.forEach((change, index) => {
                     const lineupKey = change.lineup;
                     
@@ -179,7 +200,6 @@
                     const lineupData = lineupMap.get(lineupKey);
                     lineupData.appearances += 1;
                     
-                    // Calculate duration and plus/minus if there's a next change
                     if (index < lineupHistory.length - 1) {
                         const nextChange = lineupHistory[index + 1];
                         const vtScoreDiff = nextChange.ourScore - change.ourScore;
@@ -189,16 +209,12 @@
                         lineupData.totalPlusMinus += plusMinus;
                         lineupData.totalVTPoints += vtScoreDiff;
                         lineupData.totalOppPoints += oppScoreDiff;
-                        
-                        // Calculate minutes (simplified)
-                        lineupData.totalMinutes += 2; // Rough estimate
+                        lineupData.totalMinutes += 2;
                     } else {
-                        // This is the current lineup
                         lineupData.isActive = true;
                     }
                 });
 
-                // Convert to array and calculate averages
                 const analyticsArray = Array.from(lineupMap.values()).map(data => ({
                     ...data,
                     plusMinus: data.isActive ? 'Active' : data.totalPlusMinus,
@@ -215,7 +231,6 @@
                         Math.round((currentStats.vt.turnovers / currentStats.vt.possessions) * 100) : '--'
                 }));
 
-                // Sort by total plus/minus (active lineup last)
                 analyticsArray.sort((a, b) => {
                     if (a.isActive) return 1;
                     if (b.isActive) return -1;
@@ -413,28 +428,10 @@
                                                             Lineup
                                                         </th>
                                                         <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            Apps
-                                                        </th>
-                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            Min
-                                                        </th>
-                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                                             +/-
                                                         </th>
                                                         <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            Off PPP
-                                                        </th>
-                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            Def PPP
-                                                        </th>
-                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            OReb%
-                                                        </th>
-                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            DReb%
-                                                        </th>
-                                                        <th className={`text-center p-3 font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            TO Rate
+                                                            Min
                                                         </th>
                                                     </tr>
                                                 </thead>
@@ -444,26 +441,12 @@
                                                             stat.isActive ? (darkMode ? 'bg-blue-900/30 border-blue-600' : 'bg-blue-50 border-blue-300') :
                                                             (darkMode ? 'border-gray-700' : 'border-gray-100')
                                                         }`}>
-                                                            <td className={`p-3 max-w-xs ${
+                                                            <td className={`p-3 ${
                                                                 stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
                                                                 (darkMode ? 'text-gray-300' : 'text-gray-700')
                                                             }`}>
-                                                                <div className="truncate" title={stat.lineup}>
-                                                                    {stat.lineup}
-                                                                    {stat.isActive && <span className="ml-2 text-xs font-bold">(ACTIVE)</span>}
-                                                                </div>
-                                                            </td>
-                                                            <td className={`p-3 text-center ${
-                                                                stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                                (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                            }`}>
-                                                                {stat.appearances}
-                                                            </td>
-                                                            <td className={`p-3 text-center font-semibold ${
-                                                                stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
-                                                                (darkMode ? 'text-white' : 'text-gray-900')
-                                                            }`}>
-                                                                {stat.minutes}
+                                                                {stat.lineup}
+                                                                {stat.isActive && <span className="ml-2 text-xs font-bold">(ACTIVE)</span>}
                                                             </td>
                                                             <td className={`p-3 text-center font-bold ${
                                                                 stat.plusMinus === 'Active' ? (darkMode ? 'text-blue-400' : 'text-blue-600') :
@@ -473,35 +456,11 @@
                                                                 {stat.plusMinus === 'Active' ? 'Active' :
                                                                  stat.plusMinus > 0 ? `+${stat.plusMinus}` : stat.plusMinus}
                                                             </td>
-                                                            <td className={`p-3 text-center font-semibold ${
+                                                            <td className={`p-3 text-center ${
                                                                 stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
                                                                 (darkMode ? 'text-white' : 'text-gray-900')
                                                             }`}>
-                                                                {stat.vtPointsPerPoss}
-                                                            </td>
-                                                            <td className={`p-3 text-center font-semibold ${
-                                                                stat.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
-                                                                (darkMode ? 'text-white' : 'text-gray-900')
-                                                            }`}>
-                                                                {stat.oppPointsPerPoss}
-                                                            </td>
-                                                            <td className={`p-3 text-center ${
-                                                                stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                                (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                            }`}>
-                                                                {stat.vtOffRebPct}{stat.vtOffRebPct !== '--' ? '%' : ''}
-                                                            </td>
-                                                            <td className={`p-3 text-center ${
-                                                                stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                                (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                            }`}>
-                                                                {stat.vtDefRebPct}{stat.vtDefRebPct !== '--' ? '%' : ''}
-                                                            </td>
-                                                            <td className={`p-3 text-center ${
-                                                                stat.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                                (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                            }`}>
-                                                                {stat.vtTurnoverRate}{stat.vtTurnoverRate !== '--' ? '%' : ''}
+                                                                {stat.minutes}
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -509,20 +468,7 @@
                                             </table>
                                         </div>
                                     )}
-                                    
-                                    {/* Legend */}
-                                    <div className={`mt-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                            <div><strong>Apps:</strong> Appearances</div>
-                                            <div><strong>Min:</strong> Minutes Played</div>
-                                            <div><strong>Off PPP:</strong> Offensive Points Per Possession</div>
-                                            <div><strong>Def PPP:</strong> Defensive Points Per Possession</div>
-                                            <div><strong>OReb%:</strong> Offensive Rebound Percentage</div>
-                                            <div><strong>DReb%:</strong> Defensive Rebound Percentage</div>
-                                            <div><strong>TO Rate:</strong> Turnover Rate</div>
-                                        </div>
-                                    </div>
-                                )}
+                                </div>
                             </>
                         )}
                     </div>
