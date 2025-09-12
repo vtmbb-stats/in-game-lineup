@@ -27,7 +27,7 @@
         
         window.firebaseDb = {
             ref: (path) => ref(database, path),
-            onValue: (dbRef, callback) => onValue(dbRef, callback),
+            onValue: (dbRef, callback, onError) => onValue(dbRef, callback, onError),
             off: (dbRef) => off(dbRef)
         };
         
@@ -40,6 +40,17 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        const toArray = (v) => {
+            if (Array.isArray(v)) return v;
+            if (v instanceof Set) return Array.from(v);
+            if (v instanceof Map) return Array.from(v.values());
+            if (v && typeof v === 'object') return Object.values(v);
+            if (typeof v === 'string') {
+                try { const j = JSON.parse(v); return Array.isArray(j) ? j : []; } catch { return []; }
+            }
+            return [];
+        };
+
         const GameDisplay = () => {
             const [darkMode, setDarkMode] = useState(false);
             const [gameInfo, setGameInfo] = useState(null);
@@ -49,9 +60,8 @@
             });
             const [lastUpdate, setLastUpdate] = useState(null);
 
-            // Added missing state variables
-            const [currentLineup, setCurrentLineup] = useState([]);
-            const [roster, setRoster] = useState([]);
+            const [currentLineup, setCurrentLineup] = useState([]); // always array
+            const [roster, setRoster] = useState([]);               // always array
 
             const currentGame = '2024-11-03';
             const currentOpponent = 'Charleston Southern';
@@ -68,7 +78,7 @@
                     return;
                 }
 
-                let gameInfoUnsubscribe, statsUnsubscribe;
+                let unsubGameInfo = null, unsubStats = null;
 
                 const setupListeners = () => {
                     console.log('Creating Firebase references for game:', currentGame);
@@ -76,31 +86,44 @@
                     const gameInfoRef = window.firebaseDb.ref(`game-info/${currentGame}`);
                     const statsRef = window.firebaseDb.ref(`current-stats/${currentGame}`);
 
-                    gameInfoUnsubscribe = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
-                        console.log('Game info snapshot:', snapshot.val());
+                    unsubGameInfo = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
                         const data = snapshot.val();
+                        console.log('Game info snapshot:', data);
+
                         if (data) {
                             setGameInfo(data);
-                            // Set lineup and roster data if available
-                            if (data.currentLineup) {
-                                setCurrentLineup(data.currentLineup);
-                            }
-                            if (data.roster) {
-                                setRoster(data.roster);
-                            }
+
+                            // normalize lineup and roster into arrays
+                            const lineupArr = toArray(data.currentLineup);
+                            const rosterArr = toArray(data.roster);
+                            setCurrentLineup(lineupArr);
+                            setRoster(rosterArr);
+
                             setLastUpdate(new Date().toLocaleTimeString());
                         } else {
                             console.log('No game info data found');
+                            setCurrentLineup([]);
+                            setRoster([]);
                         }
                     }, (error) => {
                         console.error('Game info listener error:', error);
                     });
 
-                    statsUnsubscribe = window.firebaseDb.onValue(statsRef, (snapshot) => {
-                        console.log('Stats snapshot:', snapshot.val());
+                    unsubStats = window.firebaseDb.onValue(statsRef, (snapshot) => {
                         const data = snapshot.val();
-                        if (data) {
-                            setCurrentStats(data);
+                        console.log('Stats snapshot:', data);
+
+                        if (data && data.vt && data.opponent) {
+                            setCurrentStats({
+                                vt: { possessions: +data.vt.possessions || 0,
+                                      offensiveRebounds: +data.vt.offensiveRebounds || 0,
+                                      defensiveRebounds: +data.vt.defensiveRebounds || 0,
+                                      turnovers: +data.vt.turnovers || 0 },
+                                opponent: { possessions: +data.opponent.possessions || 0,
+                                            offensiveRebounds: +data.opponent.offensiveRebounds || 0,
+                                            defensiveRebounds: +data.opponent.defensiveRebounds || 0,
+                                            turnovers: +data.opponent.turnovers || 0 }
+                            });
                             setLastUpdate(new Date().toLocaleTimeString());
                         } else {
                             console.log('No stats data found');
@@ -114,10 +137,23 @@
 
                 return () => {
                     clearTimeout(timer);
-                    if (gameInfoUnsubscribe) gameInfoUnsubscribe();
-                    if (statsUnsubscribe) statsUnsubscribe();
+                    if (typeof unsubGameInfo === 'function') unsubGameInfo();
+                    if (typeof unsubStats === 'function') unsubStats();
                 };
             }, [currentGame]);
+
+            // build an id->player map for quick lookup
+            const rosterById = React.useMemo(() => {
+                const map = new Map();
+                for (const p of roster) {
+                    if (p && (p.id != null || p.playerId != null)) {
+                        map.set(String(p.id ?? p.playerId), p);
+                    }
+                }
+                return map;
+            }, [roster]);
+
+            const safeLineup = toArray(currentLineup);
 
             return (
                 <div className={`min-h-screen p-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
@@ -180,16 +216,21 @@
                                             Current Lineup
                                         </h2>
                                         <div className="grid grid-cols-1 gap-3">
-                                            {currentLineup.length > 0 ? (
-                                                currentLineup.map((playerId, index) => {
-                                                    const player = roster.find(p => p.id === playerId);
+                                            {safeLineup.length > 0 ? (
+                                                safeLineup.map((entry, index) => {
+                                                    // entry can be an ID or a player object
+                                                    const id = typeof entry === 'object' && entry !== null
+                                                        ? String(entry.id ?? entry.playerId ?? '')
+                                                        : String(entry ?? '');
+                                                    const player = id ? rosterById.get(id) : (typeof entry === 'object' ? entry : null);
+
                                                     return (
                                                         <div key={index} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                                                             <div className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                                {player?.name || 'Unknown'}
+                                                                {player?.name ?? player?.fullName ?? 'Unknown'}
                                                             </div>
                                                             <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                                {player?.position}
+                                                                {player?.position ?? player?.pos ?? ''}
                                                             </div>
                                                         </div>
                                                     );
