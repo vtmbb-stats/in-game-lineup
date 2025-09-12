@@ -212,4 +212,57 @@
                 </select>
                 <div className="ml-auto flex gap-3">
                   {!gameStarted ? (
-                    <button onClick={startGame} className="px-4 py-2 bg-green-600 text-white rou
+                    <button onClick={startGame} className="px-4 py-2 bg-green-600 text-white rounded">Start Game</button>
+                  ) : (
+                    <button onClick={endGame} className="px-4 py-2 bg-red-600 text-white rounded">End Game</button>
+                  )}
+                </div>
+              </div>
+              <div className={`${dark?'text-gray-300':'text-gray-600'} text-sm mt-2`}>
+                Status: {gameStarted ? `Live vs ${oppName}` : 'Not Started'}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className={`rounded-lg p-4 ${dark ? 'bg-gray-800' : 'bg-white'}`}>
+                <div className={`text-xl font-semibold mb-3 ${dark?'text-white':'text-gray-900'}`}>Select Lineup (5)</div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {baseRoster.map(p=>{
+                    const active = lineup.includes(p.id);
+                    return (
+                      <button key={p.id} onClick={()=>togglePlayer(p.id)}
+                        className={`px-3 py-2 rounded text-sm ${active? 'bg-blue-600 text-white':'bg-gray-200 text-gray-800'}`}>
+                        #{p.id} {p.name} ({p.position})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={commitLineup} disabled={!gameStarted} className={`px-4 py-2 rounded ${gameStarted?'bg-blue-600 text-white':'bg-gray-300 text-gray-600'}`}>Set Active Lineup</button>
+                </div>
+              </div>
+
+              <div className={`rounded-lg p-4 ${dark ? 'bg-gray-800' : 'bg-white'}`}>
+                <div className={`text-xl font-semibold mb-3 ${dark?'text-white':'text-gray-900'}`}>Events</div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <button onClick={onPossession} disabled={!gameStarted} className="px-3 py-2 bg-gray-200 rounded">VT + Possession</button>
+                  <button onClick={onTurnover} disabled={!gameStarted} className="px-3 py-2 bg-gray-200 rounded">VT + Turnover</button>
+                  <button onClick={onOffReb} disabled={!gameStarted} className="px-3 py-2 bg-gray-200 rounded">VT + Off Reb</button>
+                  <button onClick={onDefRebOpp} disabled={!gameStarted} className="px-3 py-2 bg-gray-200 rounded">Opp + Def Reb</button>
+                  <button onClick={()=>onPlus(1)} disabled={!gameStarted} className="px-3 py-2 bg-green-200 rounded">VT +1 +/-</button>
+                  <button onClick={()=>onMinus(1)} disabled={!gameStarted} className="px-3 py-2 bg-red-200 rounded">VT -1 +/-</button>
+                  <button onClick={()=>onPlus(2)} disabled={!gameStarted} className="px-3 py-2 bg-green-200 rounded">VT +2 +/-</button>
+                  <button onClick={()=>onMinus(2)} disabled={!gameStarted} className="px-3 py-2 bg-red-200 rounded">VT -2 +/-</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
