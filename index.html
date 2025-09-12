@@ -1,14 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VT Basketball Lineup Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
+
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getDatabase, ref, set, update, remove, get } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
-        
+
         const firebaseConfig = {
             apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
             authDomain: "vtmbb-gameday.firebaseapp.com",
@@ -18,10 +19,10 @@
             messagingSenderId: "1012073356538",
             appId: "1:1012073356538:web:7a41a93d00920d4d00bd43"
         };
-        
+
         const app = initializeApp(firebaseConfig);
         const database = getDatabase(app);
-        
+
         window.firebaseDb = {
             ref: (path) => ref(database, path),
             set: (dbRef, value) => set(dbRef, value),
@@ -29,7 +30,7 @@
             remove: (dbRef) => remove(dbRef),
             get: (dbRef) => get(dbRef)
         };
-        
+
         console.log('Firebase initialized successfully');
     </script>
 </head>
@@ -43,9 +44,8 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // --- helpers for lineup-stats, no UI impact ---
+        // minimal helpers (no UI impact)
         const sortedKey = (ids) => [...ids].map(Number).sort((a,b)=>a-b).join('-');
-
         const seedLineupStatsIfMissing = async (gameDate, ids) => {
             const key = sortedKey(ids);
             const lsRef = window.firebaseDb.ref(`lineup-stats/${gameDate}/${key}`);
@@ -62,7 +62,6 @@
                 });
             }
         };
-        // ---------------------------------------------
 
         const BasketballLineupTracker = () => {
             const [darkMode, setDarkMode] = useState(false);
@@ -84,18 +83,8 @@
             const [oppScore, setOppScore] = useState('');
             const [lineupHistory, setLineupHistory] = useState([]);
             const [currentStats, setCurrentStats] = useState({
-                vt: {
-                    possessions: 0,
-                    offensiveRebounds: 0,
-                    defensiveRebounds: 0,
-                    turnovers: 0
-                },
-                opponent: {
-                    possessions: 0,
-                    offensiveRebounds: 0,
-                    defensiveRebounds: 0,
-                    turnovers: 0
-                }
+                vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
             });
 
             useEffect(() => {
@@ -128,7 +117,6 @@
             ];
 
             const startGame = async () => {
-                console.log('Starting game...');
                 setGameStarted(true);
                 setGameEnded(false);
                 setCurrentHalf(1);
@@ -141,7 +129,6 @@
                         const initialLineupNames = initialLineupIds
                             .map(id => roster.find(p => p.id === id)?.name).join(', ');
 
-                        // Update gameday Firebase with IDs + legacy string + roster
                         const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
                         await window.firebaseDb.set(gameInfoRef, {
                             started: true,
@@ -149,9 +136,9 @@
                             currentHalf: 1,
                             gameTime: '20:00',
                             opponent: gameSchedule.find(g => g.date === selectedGame)?.opponent || 'Opponent',
-                            currentLineupIds: initialLineupIds,                       // <-- array of IDs
-                            currentLineup: initialLineupNames,                        // <-- keep your original string
-                            roster,                                                   // <-- publish roster once
+                            currentLineupIds: initialLineupIds,  // added
+                            currentLineup: initialLineupNames,   // keep your string
+                            roster,                               // publish roster once
                             startTime: new Date().toISOString()
                         });
                         
@@ -176,16 +163,13 @@
                             half: 1
                         });
 
-                        // Seed lineup-stats for the opening group
+                        // seed lineup-stats entry for this lineup
                         await seedLineupStatsIfMissing(selectedGame, initialLineupIds);
                         
-                        // Update hustle chart Firebase with game live status (kept as you had it)
                         try {
                             const response = await fetch('https://vtmbb-hustle-chart-default-rtdb.firebaseio.com/gameStatus.json', {
                                 method: 'PUT',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
+                                headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     isLive: true,
                                     currentGame: selectedGame,
@@ -194,17 +178,10 @@
                                     lastUpdated: new Date().toISOString()
                                 })
                             });
-                            
-                            if (response.ok) {
-                                console.log('Game live status updated in hustle chart Firebase');
-                            } else {
-                                console.error('Failed to update hustle chart Firebase');
-                            }
+                            if (!response.ok) console.error('Failed to update hustle chart Firebase');
                         } catch (error) {
                             console.error('Error updating hustle chart Firebase:', error);
                         }
-                        
-                        console.log('Game started successfully');
                     } catch (error) {
                         console.error('Error starting game:', error);
                     }
@@ -225,9 +202,7 @@
                     try {
                         const response = await fetch('https://vtmbb-hustle-chart-default-rtdb.firebaseio.com/gameStatus.json', {
                             method: 'PUT',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 isLive: false,
                                 currentGame: null,
@@ -236,12 +211,7 @@
                                 lastUpdated: new Date().toISOString()
                             })
                         });
-                        
-                        if (response.ok) {
-                            console.log('Game live status cleared in hustle chart Firebase');
-                        } else {
-                            console.error('Failed to clear game live status in hustle chart Firebase');
-                        }
+                        if (!response.ok) console.error('Failed to clear game live status in hustle chart Firebase');
                     } catch (error) {
                         console.error('Error clearing game live status:', error);
                     }
