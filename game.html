@@ -49,6 +49,10 @@
             });
             const [lastUpdate, setLastUpdate] = useState(null);
 
+            // Added missing state variables
+            const [currentLineup, setCurrentLineup] = useState([]);
+            const [roster, setRoster] = useState([]);
+
             const currentGame = '2024-11-03';
             const currentOpponent = 'Charleston Southern';
 
@@ -77,6 +81,13 @@
                         const data = snapshot.val();
                         if (data) {
                             setGameInfo(data);
+                            // Set lineup and roster data if available
+                            if (data.currentLineup) {
+                                setCurrentLineup(data.currentLineup);
+                            }
+                            if (data.roster) {
+                                setRoster(data.roster);
+                            }
                             setLastUpdate(new Date().toLocaleTimeString());
                         } else {
                             console.log('No game info data found');
@@ -169,19 +180,25 @@
                                             Current Lineup
                                         </h2>
                                         <div className="grid grid-cols-1 gap-3">
-                                            {currentLineup.map((playerId, index) => {
-                                                const player = roster.find(p => p.id === playerId);
-                                                return (
-                                                    <div key={index} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                                                        <div className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {player?.name || 'Unknown'}
+                                            {currentLineup.length > 0 ? (
+                                                currentLineup.map((playerId, index) => {
+                                                    const player = roster.find(p => p.id === playerId);
+                                                    return (
+                                                        <div key={index} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                                                            <div className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                                {player?.name || 'Unknown'}
+                                                            </div>
+                                                            <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                {player?.position}
+                                                            </div>
                                                         </div>
-                                                        <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                            {player?.position}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
+                                                    );
+                                                })
+                                            ) : (
+                                                <div className={`text-center p-4 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                    No lineup data available
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
