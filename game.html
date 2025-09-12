@@ -162,87 +162,110 @@
                                 </p>
                             </div>
                         ) : (
-                            <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    Live Game Stats
-                                </h2>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="mb-4">
-                                        <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                            Virginia Tech
-                                        </h3>
-                                        <div className="grid grid-cols-4 gap-2 text-center">
-                                            <div>
-                                                <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.vt.possessions}
-                                                </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    Possessions
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.vt.offensiveRebounds}
-                                                </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    Off Reb
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.vt.defensiveRebounds}
-                                                </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    Def Reb
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.vt.turnovers}
-                                                </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    Turnovers
-                                                </div>
-                                            </div>
+                            <div>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                    <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                        <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                            Current Lineup
+                                        </h2>
+                                        <div className="grid grid-cols-1 gap-3">
+                                            {currentLineup.map((playerId, index) => {
+                                                const player = roster.find(p => p.id === playerId);
+                                                return (
+                                                    <div key={index} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                                                        <div className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {player?.name || 'Unknown'}
+                                                        </div>
+                                                        <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                            {player?.position}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
 
-                                    <div>
-                                        <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                            {currentOpponent}
-                                        </h3>
-                                        <div className="grid grid-cols-4 gap-2 text-center">
-                                            <div>
-                                                <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.opponent.possessions}
+                                    <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                        <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                            Live Game Stats
+                                        </h2>
+                                        
+                                        <div className="mb-4">
+                                            <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                Virginia Tech
+                                            </h3>
+                                            <div className="grid grid-cols-4 gap-2 text-center">
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.vt.possessions}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Possessions
+                                                    </div>
                                                 </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    Possessions
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.vt.offensiveRebounds}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Off Reb
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.vt.defensiveRebounds}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Def Reb
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.vt.turnovers}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Turnovers
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div>
-                                                <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.opponent.offensiveRebounds}
+                                        </div>
+
+                                        <div>
+                                            <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                {currentOpponent}
+                                            </h3>
+                                            <div className="grid grid-cols-4 gap-2 text-center">
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.opponent.possessions}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Possessions
+                                                    </div>
                                                 </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    Off Reb
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.opponent.offensiveRebounds}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Off Reb
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div>
-                                                <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.opponent.defensiveRebounds}
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.opponent.defensiveRebounds}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Def Reb
+                                                    </div>
                                                 </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    Def Reb
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.opponent.turnovers}
-                                                </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    Turnovers
+                                                <div>
+                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {currentStats.opponent.turnovers}
+                                                    </div>
+                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        Turnovers
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
