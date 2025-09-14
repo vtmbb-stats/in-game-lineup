@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase, ref, set, update, remove, get } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+        import { getDatabase, ref, set, update, remove } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
         
         const firebaseConfig = {
             apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
@@ -26,8 +26,7 @@
             ref: (path) => ref(database, path),
             set: (dbRef, value) => set(dbRef, value),
             update: (dbRef, value) => update(dbRef, value),
-            remove: (dbRef) => remove(dbRef),
-            get: (dbRef) => get(dbRef)
+            remove: (dbRef) => remove(dbRef)
         };
         
         console.log('Firebase initialized successfully');
@@ -42,25 +41,6 @@
 
     <script type="text/babel">
         const { useState, useEffect } = React;
-
-        // helpers for lineup-stats (no UI change)
-        const sortedKey = (ids) => [...ids].map(Number).sort((a,b)=>a-b).join('-');
-        const seedLineupStatsIfMissing = async (gameDate, ids) => {
-            const key = sortedKey(ids);
-            const lsRef = window.firebaseDb.ref(`lineup-stats/${gameDate}/${key}`);
-            const snap = await window.firebaseDb.get(lsRef);
-            if (!snap.exists()) {
-                await window.firebaseDb.set(lsRef, {
-                    ids,
-                    poss: 0,
-                    plusMinus: 0,
-                    turnovers: 0,
-                    teamReb: 0,
-                    oppReb: 0,
-                    lastUpdated: new Date().toISOString()
-                });
-            }
-        };
 
         const BasketballLineupTracker = () => {
             const [darkMode, setDarkMode] = useState(false);
@@ -135,11 +115,8 @@
                 
                 if (window.firebaseDb) {
                     try {
-                        const initialLineupIds = [...currentLineup];
-                        const initialLineup = initialLineupIds
-                          .map(id => roster.find(p => p.id === id)?.name)
-                          .join(', ');
-
+                        const initialLineup = currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ');
+                        
                         // Update gameday Firebase
                         const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
                         await window.firebaseDb.set(gameInfoRef, {
@@ -148,9 +125,7 @@
                             currentHalf: 1,
                             gameTime: '20:00',
                             opponent: gameSchedule.find(g => g.date === selectedGame)?.opponent || 'Opponent',
-                            currentLineup: initialLineup,          // keep legacy string
-                            currentLineupIds: initialLineupIds,    // add IDs for display computations
-                            roster,                                 // publish roster once
+                            currentLineup: initialLineup,
                             startTime: new Date().toISOString()
                         });
                         
@@ -171,18 +146,16 @@
                             oppScore: 0,
                             change: 'Game Started',
                             lineup: initialLineup,
-                            lineupIds: initialLineupIds,
                             half: 1
                         });
-
-                        // seed lineup-stats for opening group
-                        await seedLineupStatsIfMissing(selectedGame, initialLineupIds);
                         
                         // Update hustle chart Firebase with game live status
                         try {
                             const response = await fetch('https://vtmbb-hustle-chart-default-rtdb.firebaseio.com/gameStatus.json', {
                                 method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
                                 body: JSON.stringify({
                                     isLive: true,
                                     currentGame: selectedGame,
@@ -224,7 +197,9 @@
                     try {
                         const response = await fetch('https://vtmbb-hustle-chart-default-rtdb.firebaseio.com/gameStatus.json', {
                             method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
                             body: JSON.stringify({
                                 isLive: false,
                                 currentGame: null,
