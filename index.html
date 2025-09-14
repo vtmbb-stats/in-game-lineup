@@ -40,40 +40,22 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState } = React;
 
         const GamedayApp = () => {
-            const [darkMode, setDarkMode] = useState(true);
             const [gameStarted, setGameStarted] = useState(false);
-            const [selectedGame, setSelectedGame] = useState('');
             const [currentLineup, setCurrentLineup] = useState([3, 2, 17, 1, 13]);
             const [pendingChanges, setPendingChanges] = useState([]);
-            const [currentHalf, setCurrentHalf] = useState(1);
-            const [gameTime, setGameTime] = useState('20:00');
-            const [lastSubTime, setLastSubTime] = useState('');
-            const [showTimeScoreModal, setShowTimeScoreModal] = useState(false);
-            const [pendingGameTime, setPendingGameTime] = useState('');
-            const [ourScore, setOurScore] = useState('');
+            const [showConfirmModal, setShowConfirmModal] = useState(false);
+            const [gameTime, setGameTime] = useState('');
+            const [vtScore, setVtScore] = useState('');
             const [oppScore, setOppScore] = useState('');
-            const [currentStats, setCurrentStats] = useState({
-                vt: {
-                    points: 0,
-                    assists: 0,
-                    rebounds: 0,
-                    steals: 0,
-                    blocks: 0,
-                    turnovers: 0,
-                    fouls: 0
-                },
-                opponent: {
-                    points: 0,
-                    assists: 0,
-                    rebounds: 0,
-                    steals: 0,
-                    blocks: 0,
-                    turnovers: 0,
-                    fouls: 0
-                }
+            const [lineupChanges, setLineupChanges] = useState([]);
+            const [stats, setStats] = useState({
+                possessions: 0,
+                offensiveRebounds: 0,
+                defensiveRebounds: 0,
+                turnovers: 0
             });
 
             const roster = [
@@ -91,139 +73,41 @@
                 { id: 23, name: "Con Krzewski", position: "PG" }
             ];
 
-            const gameSchedule = [
-                { date: '2024-11-04', opponent: 'Charleston Southern', location: 'Home' },
-                { date: '2024-11-08', opponent: 'Winthrop', location: 'Home' },
-                { date: '2024-11-12', opponent: 'USC Upstate', location: 'Home' },
-                { date: '2024-11-16', opponent: 'Delaware State', location: 'Home' },
-                { date: '2024-11-19', opponent: 'Penn State', location: 'Away' },
-                { date: '2024-11-25', opponent: 'Vanderbilt', location: 'Neutral' },
-                { date: '2024-11-29', opponent: 'Michigan', location: 'Neutral' },
-                { date: '2024-12-04', opponent: 'Old Dominion', location: 'Home' },
-                { date: '2024-12-07', opponent: 'VMI', location: 'Away' },
-                { date: '2024-12-14', opponent: 'Tennessee', location: 'Away' },
-                { date: '2024-12-17', opponent: 'East Tennessee State', location: 'Home' },
-                { date: '2024-12-21', opponent: 'Radford', location: 'Home' },
-                { date: '2024-12-31', opponent: 'Duke', location: 'Away' },
-                { date: '2025-01-04', opponent: 'Florida State', location: 'Home' },
-                { date: '2025-01-07', opponent: 'Syracuse', location: 'Away' },
-                { date: '2025-01-11', opponent: 'SMU', location: 'Home' },
-                { date: '2025-01-14', opponent: 'Pittsburgh', location: 'Away' },
-                { date: '2025-01-18', opponent: 'Boston College', location: 'Home' },
-                { date: '2025-01-21', opponent: 'Miami', location: 'Away' },
-                { date: '2025-01-25', opponent: 'Wake Forest', location: 'Home' },
-                { date: '2025-01-28', opponent: 'Georgia Tech', location: 'Away' },
-                { date: '2025-02-01', opponent: 'North Carolina', location: 'Home' },
-                { date: '2025-02-04', opponent: 'Louisville', location: 'Away' },
-                { date: '2025-02-08', opponent: 'Clemson', location: 'Home' },
-                { date: '2025-02-11', opponent: 'NC State', location: 'Away' },
-                { date: '2025-02-15', opponent: 'Notre Dame', location: 'Home' },
-                { date: '2025-02-18', opponent: 'California', location: 'Away' },
-                { date: '2025-02-22', opponent: 'Stanford', location: 'Home' },
-                { date: '2025-02-25', opponent: 'Georgia Tech', location: 'Home' },
-                { date: '2025-03-01', opponent: 'Virginia', location: 'Away' },
-                { date: '2025-03-05', opponent: 'Duke', location: 'Home' },
-                { date: '2025-03-08', opponent: 'Wake Forest', location: 'Away' }
-            ];
-
             const startGame = async () => {
-                if (!selectedGame) {
-                    alert('Please select a game first');
-                    return;
-                }
-
                 setGameStarted(true);
-                setGameTime('20:00');
-                setCurrentHalf(1);
                 
-                const gameData = {
-                    date: selectedGame,
-                    opponent: gameSchedule.find(g => g.date === selectedGame)?.opponent,
-                    started: true,
-                    startTime: new Date().toISOString(),
-                    currentHalf: 1,
-                    gameTime: '20:00',
-                    lastSubTime: ''
-                };
-
+                // Write to Firebase
                 if (window.firebaseDb) {
                     try {
-                        // Write to gameday Firebase
-                        const gameRef = window.firebaseRef(window.firebaseDb, `game-info/${selectedGame}`);
-                        await window.firebaseSet(gameRef, gameData);
+                        const gameRef = window.firebaseRef(window.firebaseDb, 'game-info/charleston-southern');
+                        await window.firebaseSet(gameRef, {
+                            opponent: 'Charleston Southern',
+                            started: true,
+                            startTime: new Date().toISOString()
+                        });
                         
-                        // Write initial lineup
-                        const lineupRef = window.firebaseRef(window.firebaseDb, `current-lineup/${selectedGame}`);
+                        const lineupRef = window.firebaseRef(window.firebaseDb, 'current-lineup/charleston-southern');
                         await window.firebaseSet(lineupRef, currentLineup);
                         
-                        // Write initial stats
-                        const statsRef = window.firebaseRef(window.firebaseDb, `current-stats/${selectedGame}`);
-                        await window.firebaseSet(statsRef, currentStats);
-
-                        // Also write to hustle chart Firebase for cross-app communication
-                        const hustleConfig = {
-                            apiKey: "AIzaSyB8bPJj7vM8nCkUZQe9V-mPZHHgzlK5D2g",
-                            authDomain: "vt-basketball-hustle-chart.firebaseapp.com",
-                            databaseURL: "https://vt-basketball-hustle-chart-default-rtdb.firebaseio.com",
-                            projectId: "vt-basketball-hustle-chart"
-                        };
-                        
-                        // Initialize hustle chart Firebase if not already done
-                        if (!window.hustleFirebase) {
-                            const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
-                            const { getDatabase } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js');
-                            const hustleApp = initializeApp(hustleConfig, "hustleApp");
-                            window.hustleFirebase = getDatabase(hustleApp);
-                        }
-                        
-                        const hustleRef = window.firebaseRef(window.hustleFirebase, 'gameStatus');
-                        await window.firebaseSet(hustleRef, { isLive: true, gameDate: selectedGame });
-                        
-                        console.log('Game started successfully in both databases');
+                        console.log('Game started successfully');
                     } catch (error) {
                         console.error('Error starting game:', error);
                     }
                 }
             };
 
-            const endGame = async () => {
-                setGameStarted(false);
-                
-                if (window.firebaseDb) {
-                    try {
-                        const gameRef = window.firebaseRef(window.firebaseDb, `game-info/${selectedGame}`);
-                        await window.firebaseSet(gameRef, {
-                            ...gameSchedule.find(g => g.date === selectedGame),
-                            started: false,
-                            endTime: new Date().toISOString()
-                        });
-                        
-                        // Update hustle chart Firebase
-                        if (window.hustleFirebase) {
-                            const hustleRef = window.firebaseRef(window.hustleFirebase, 'gameStatus');
-                            await window.firebaseSet(hustleRef, { isLive: false, gameDate: selectedGame });
-                        }
-                        
-                        console.log('Game ended successfully');
-                    } catch (error) {
-                        console.error('Error ending game:', error);
-                    }
-                }
-            };
-
             const handleLineupChange = (position, playerId) => {
                 const newLineup = [...currentLineup];
-                const oldPlayerId = newLineup[position];
+                const oldPlayer = newLineup[position];
                 newLineup[position] = parseInt(playerId);
                 
-                if (oldPlayerId !== parseInt(playerId)) {
+                if (oldPlayer !== parseInt(playerId)) {
                     const change = {
-                        position: position,
-                        out: oldPlayerId,
+                        position,
+                        out: oldPlayer,
                         in: parseInt(playerId),
-                        time: gameTime,
-                        half: currentHalf,
-                        timestamp: new Date().toISOString()
+                        outName: roster.find(p => p.id === oldPlayer)?.name,
+                        inName: roster.find(p => p.id === parseInt(playerId))?.name
                     };
                     setPendingChanges([...pendingChanges, change]);
                 }
@@ -231,52 +115,39 @@
                 setCurrentLineup(newLineup);
             };
 
-            const recordTimeAndScore = async () => {
+            const confirmChanges = () => {
                 if (pendingChanges.length === 0) {
-                    alert('Make some substitutions first.');
+                    alert('No lineup changes to confirm');
                     return;
                 }
-                setShowTimeScoreModal(true);
+                setShowConfirmModal(true);
             };
 
             const saveChanges = async () => {
-                if (!pendingGameTime) {
-                    alert('Please enter the game time');
+                if (!gameTime || !vtScore || !oppScore) {
+                    alert('Please fill in game time and both scores');
                     return;
                 }
 
-                setGameTime(pendingGameTime);
-                setLastSubTime(`${pendingGameTime} ${currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : 'OT'}`);
+                const timestamp = new Date().toISOString();
+                const changeRecord = {
+                    time: gameTime,
+                    vtScore: parseInt(vtScore),
+                    oppScore: parseInt(oppScore),
+                    changes: pendingChanges,
+                    timestamp
+                };
 
+                setLineupChanges([...lineupChanges, changeRecord]);
+                
+                // Save to Firebase
                 if (window.firebaseDb) {
                     try {
-                        // Save lineup changes
-                        for (const change of pendingChanges) {
-                            const changeRef = window.firebasePush(window.firebaseRef(window.firebaseDb, `lineup-changes/${selectedGame}`));
-                            await window.firebaseSet(changeRef, {
-                                ...change,
-                                time: pendingGameTime,
-                                half: currentHalf
-                            });
-                        }
+                        const changesRef = window.firebasePush(window.firebaseRef(window.firebaseDb, 'lineup-changes/charleston-southern'));
+                        await window.firebaseSet(changesRef, changeRecord);
                         
-                        // Update current lineup
-                        const lineupRef = window.firebaseRef(window.firebaseDb, `current-lineup/${selectedGame}`);
+                        const lineupRef = window.firebaseRef(window.firebaseDb, 'current-lineup/charleston-southern');
                         await window.firebaseSet(lineupRef, currentLineup);
-                        
-                        // Update game info with latest time
-                        const gameRef = window.firebaseRef(window.firebaseDb, `game-info/${selectedGame}`);
-                        await window.firebaseSet(gameRef, {
-                            date: selectedGame,
-                            opponent: gameSchedule.find(g => g.date === selectedGame)?.opponent,
-                            started: true,
-                            startTime: new Date().toISOString(),
-                            currentHalf: currentHalf,
-                            gameTime: pendingGameTime,
-                            lastSubTime: `${pendingGameTime} ${currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : 'OT'}`,
-                            ourScore: ourScore ? parseInt(ourScore) : 0,
-                            oppScore: oppScore ? parseInt(oppScore) : 0
-                        });
                         
                         console.log('Changes saved successfully');
                     } catch (error) {
@@ -285,356 +156,190 @@
                 }
 
                 setPendingChanges([]);
-                setShowTimeScoreModal(false);
-                setPendingGameTime('');
-                setOurScore('');
+                setShowConfirmModal(false);
+                setGameTime('');
+                setVtScore('');
                 setOppScore('');
             };
 
-            const updateStat = async (team, statName, value) => {
+            const updateStat = async (statName, change) => {
                 const newStats = {
-                    ...currentStats,
-                    [team]: {
-                        ...currentStats[team],
-                        [statName]: Math.max(0, currentStats[team][statName] + value)
-                    }
+                    ...stats,
+                    [statName]: Math.max(0, stats[statName] + change)
                 };
-                setCurrentStats(newStats);
+                setStats(newStats);
                 
-                if (window.firebaseDb && gameStarted) {
-                    const statsRef = window.firebaseRef(window.firebaseDb, `current-stats/${selectedGame}`);
+                if (window.firebaseDb) {
+                    const statsRef = window.firebaseRef(window.firebaseDb, 'current-stats/charleston-southern');
                     await window.firebaseSet(statsRef, newStats);
                 }
             };
 
-            const currentOpponent = selectedGame ? 
-                gameSchedule.find(game => game.date === selectedGame)?.opponent || 'Opponent' : 
-                'Select Game';
-
             return (
-                <div className={`min-h-screen p-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                    <div className="max-w-6xl mx-auto">
-                        <div className="flex justify-between items-center mb-6">
-                            <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                VT Basketball Gameday Input
-                            </h1>
-                            <button
-                                onClick={() => setDarkMode(!darkMode)}
-                                className={`px-4 py-2 rounded-md ${
-                                    darkMode 
-                                        ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-600' 
-                                        : 'bg-gray-800 text-white hover:bg-gray-700'
-                                }`}
-                            >
-                                {darkMode ? '☀️ Light' : '🌙 Dark'}
-                            </button>
-                        </div>
+                <div className="min-h-screen bg-gray-900 p-4">
+                    <div className="max-w-4xl mx-auto">
+                        <h1 className="text-3xl font-bold text-white mb-6">VT Basketball Gameday Input</h1>
 
                         {/* Game Selector */}
-                        <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Select Game
-                            </h2>
-                            <select
-                                value={selectedGame}
-                                onChange={(e) => setSelectedGame(e.target.value)}
+                        <div className="bg-gray-800 rounded-lg p-6 mb-6">
+                            <select 
                                 disabled={gameStarted}
-                                className={`w-full p-3 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                    gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                } ${
-                                    darkMode 
-                                        ? 'bg-gray-700 border-gray-600 text-white' 
-                                        : 'bg-white border-gray-300 text-gray-900'
-                                }`}
+                                className="w-full p-3 bg-gray-700 text-white rounded border border-gray-600"
                             >
-                                <option value="">Select a game...</option>
-                                {gameSchedule.map(game => (
-                                    <option key={game.date} value={game.date}>
-                                        {game.date} vs {game.opponent} ({game.location})
-                                    </option>
-                                ))}
+                                <option>Charleston Southern</option>
                             </select>
-                        </div>
-
-                        {/* Game Controls */}
-                        <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <div className="flex gap-4 items-center mb-4">
-                                {!gameStarted ? (
-                                    <button
-                                        onClick={startGame}
-                                        disabled={!selectedGame}
-                                        className={`px-6 py-3 rounded-md font-semibold ${
-                                            !selectedGame 
-                                                ? 'bg-gray-500 cursor-not-allowed' 
-                                                : 'bg-green-600 hover:bg-green-700'
-                                        } text-white`}
-                                    >
-                                        Start Game
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={endGame}
-                                        className="px-6 py-3 rounded-md font-semibold bg-red-600 hover:bg-red-700 text-white"
-                                    >
-                                        End Game
-                                    </button>
-                                )}
-                                
-                                {gameStarted && (
-                                    <div className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Game Time: {gameTime} {currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : 'OT'}
-                                        {lastSubTime && <span className="ml-4 text-sm">Last Sub: {lastSubTime}</span>}
-                                    </div>
-                                )}
-                            </div>
-
-                            {gameStarted && (
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setCurrentHalf(1)}
-                                        className={`px-4 py-2 rounded-md ${
-                                            currentHalf === 1 
-                                                ? 'bg-blue-600 text-white' 
-                                                : darkMode 
-                                                    ? 'bg-gray-600 text-gray-300' 
-                                                    : 'bg-gray-300 text-gray-700'
-                                        }`}
-                                    >
-                                        1st Half
-                                    </button>
-                                    <button
-                                        onClick={() => setCurrentHalf(2)}
-                                        className={`px-4 py-2 rounded-md ${
-                                            currentHalf === 2 
-                                                ? 'bg-blue-600 text-white' 
-                                                : darkMode 
-                                                    ? 'bg-gray-600 text-gray-300' 
-                                                    : 'bg-gray-300 text-gray-700'
-                                        }`}
-                                    >
-                                        2nd Half
-                                    </button>
-                                    <button
-                                        onClick={() => setCurrentHalf(3)}
-                                        className={`px-4 py-2 rounded-md ${
-                                            currentHalf === 3 
-                                                ? 'bg-blue-600 text-white' 
-                                                : darkMode 
-                                                    ? 'bg-gray-600 text-gray-300' 
-                                                    : 'bg-gray-300 text-gray-700'
-                                        }`}
-                                    >
-                                        Overtime
-                                    </button>
-                                </div>
+                            
+                            {!gameStarted ? (
+                                <button
+                                    onClick={startGame}
+                                    className="mt-4 px-6 py-3 bg-green-600 text-white rounded hover:bg-green-700"
+                                >
+                                    Start Game
+                                </button>
+                            ) : (
+                                <div className="mt-4 text-green-400 font-semibold">Game Started vs Charleston Southern</div>
                             )}
                         </div>
 
-                        {/* Stats Section */}
                         {gameStarted && (
-                            <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    Game Stats
-                                </h2>
-                                
-                                <div className="grid grid-cols-2 gap-8">
-                                    {/* VT Stats */}
-                                    <div>
-                                        <h3 className={`text-lg font-semibold mb-4 text-orange-500`}>
-                                            Virginia Tech
-                                        </h3>
-                                        <div className="space-y-3">
-                                            {Object.entries(currentStats.vt).map(([stat, value]) => (
-                                                <div key={stat} className="flex items-center justify-between">
-                                                    <span className={`${darkMode ? 'text-gray-300' : 'text-gray-700'} capitalize`}>
-                                                        {stat.replace(/([A-Z])/g, ' $1').trim()}
-                                                    </span>
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            onClick={() => updateStat('vt', stat, -1)}
-                                                            className="px-3 py-1 rounded bg-red-500 text-white hover:bg-red-600"
-                                                        >
-                                                            -
-                                                        </button>
-                                                        <span className={`min-w-[30px] text-center font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {value}
-                                                        </span>
-                                                        <button
-                                                            onClick={() => updateStat('vt', stat, 1)}
-                                                            className="px-3 py-1 rounded bg-green-500 text-white hover:bg-green-600"
-                                                        >
-                                                            +
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
+                            <>
+                                {/* Current Lineup */}
+                                <div className="bg-gray-800 rounded-lg p-6 mb-6">
+                                    <h2 className="text-xl font-semibold text-white mb-4">Current Lineup</h2>
+                                    
+                                    <div className="grid grid-cols-5 gap-4 mb-6">
+                                        {currentLineup.map((playerId, index) => (
+                                            <div key={index}>
+                                                <label className="block text-gray-300 mb-2">Position {index + 1}</label>
+                                                <select
+                                                    value={playerId}
+                                                    onChange={(e) => handleLineupChange(index, e.target.value)}
+                                                    className="w-full p-2 bg-gray-700 text-white rounded border border-gray-600"
+                                                >
+                                                    {roster.filter(player => 
+                                                        !currentLineup.includes(player.id) || player.id === playerId
+                                                    ).map(player => (
+                                                        <option key={player.id} value={player.id}>
+                                                            {player.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        ))}
                                     </div>
 
-                                    {/* Opponent Stats */}
-                                    <div>
-                                        <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                            {currentOpponent}
-                                        </h3>
-                                        <div className="space-y-3">
-                                            {Object.entries(currentStats.opponent).map(([stat, value]) => (
-                                                <div key={stat} className="flex items-center justify-between">
-                                                    <span className={`${darkMode ? 'text-gray-300' : 'text-gray-700'} capitalize`}>
-                                                        {stat.replace(/([A-Z])/g, ' $1').trim()}
-                                                    </span>
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            onClick={() => updateStat('opponent', stat, -1)}
-                                                            className="px-3 py-1 rounded bg-red-500 text-white hover:bg-red-600"
-                                                        >
-                                                            -
-                                                        </button>
-                                                        <span className={`min-w-[30px] text-center font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {value}
-                                                        </span>
-                                                        <button
-                                                            onClick={() => updateStat('opponent', stat, 1)}
-                                                            className="px-3 py-1 rounded bg-green-500 text-white hover:bg-green-600"
-                                                        >
-                                                            +
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Lineup Section */}
-                        {gameStarted && (
-                            <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    Current Lineup
-                                </h2>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-                                    {currentLineup.map((playerId, index) => (
-                                        <div key={index}>
-                                            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                Player {index + 1}
-                                            </label>
-                                            <select
-                                                value={playerId}
-                                                onChange={(e) => handleLineupChange(index, e.target.value)}
-                                                className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                    darkMode 
-                                                        ? 'bg-gray-700 border-gray-600 text-white' 
-                                                        : 'bg-white border-gray-300 text-gray-900'
-                                                }`}
-                                            >
-                                                {roster.filter(player => 
-                                                    !currentLineup.includes(player.id) || player.id === playerId
-                                                ).map(player => (
-                                                    <option key={player.id} value={player.id}>
-                                                        {player.name} ({player.position})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {pendingChanges.length > 0 && (
-                                    <div className="mb-4">
-                                        <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                            Pending Changes ({pendingChanges.length})
-                                        </h3>
-                                        <div className="space-y-2">
+                                    {pendingChanges.length > 0 && (
+                                        <div className="mb-4">
+                                            <h3 className="text-white mb-2">Pending Changes:</h3>
                                             {pendingChanges.map((change, index) => (
-                                                <div key={index} className={`p-3 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                                                    <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
-                                                        Position {change.position + 1}: {roster.find(p => p.id === change.out)?.name} → {roster.find(p => p.id === change.in)?.name}
+                                                <div key={index} className="text-gray-300 bg-gray-700 p-2 rounded mb-2">
+                                                    Position {change.position + 1}: {change.outName} → {change.inName}
+                                                </div>
+                                            ))}
+                                            
+                                            <button
+                                                onClick={confirmChanges}
+                                                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                            >
+                                                Confirm Changes
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Stats */}
+                                <div className="bg-gray-800 rounded-lg p-6 mb-6">
+                                    <h2 className="text-xl font-semibold text-white mb-4">Game Stats</h2>
+                                    
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                                        {Object.entries(stats).map(([statName, value]) => (
+                                            <div key={statName} className="text-center">
+                                                <div className="text-gray-300 mb-2 capitalize">
+                                                    {statName.replace(/([A-Z])/g, ' $1').trim()}
+                                                </div>
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button
+                                                        onClick={() => updateStat(statName, -1)}
+                                                        className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                                                    >
+                                                        -
+                                                    </button>
+                                                    <span className="text-white font-bold text-xl min-w-[40px]">
+                                                        {value}
                                                     </span>
+                                                    <button
+                                                        onClick={() => updateStat(statName, 1)}
+                                                        className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Lineup Changes History */}
+                                <div className="bg-gray-800 rounded-lg p-6">
+                                    <h2 className="text-xl font-semibold text-white mb-4">Lineup Changes</h2>
+                                    
+                                    {lineupChanges.length === 0 ? (
+                                        <div className="text-gray-400">No lineup changes yet</div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {lineupChanges.map((record, index) => (
+                                                <div key={index} className="bg-gray-700 p-4 rounded">
+                                                    <div className="text-white font-semibold mb-2">
+                                                        {record.time} - VT: {record.vtScore}, CSU: {record.oppScore}
+                                                    </div>
+                                                    {record.changes.map((change, changeIndex) => (
+                                                        <div key={changeIndex} className="text-gray-300">
+                                                            Pos {change.position + 1}: {change.outName} → {change.inName}
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             ))}
                                         </div>
-                                        
-                                        <div className="flex gap-3 mt-4">
-                                            <button
-                                                onClick={recordTimeAndScore}
-                                                className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
-                                            >
-                                                Record Time & Score
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setCurrentLineup([3, 2, 17, 1, 13]);
-                                                    setPendingChanges([]);
-                                                }}
-                                                className="px-4 py-2 rounded-md bg-gray-600 text-white hover:bg-gray-700"
-                                            >
-                                                Cancel Changes
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                                    )}
+                                </div>
+                            </>
                         )}
 
-                        {/* Time & Score Modal */}
-                        {showTimeScoreModal && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                                <div className={`rounded-lg p-6 w-full max-w-md ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Record Time & Score
-                                    </h3>
+                        {/* Confirm Changes Modal */}
+                        {showConfirmModal && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                                <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
+                                    <h3 className="text-white text-lg font-semibold mb-4">Confirm Changes</h3>
                                     
                                     <div className="space-y-4">
                                         <div>
-                                            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                Game Time ({currentHalf === 1 ? '1st Half' : currentHalf === 2 ? '2nd Half' : 'Overtime'})
-                                            </label>
+                                            <label className="block text-gray-300 mb-2">Game Time</label>
                                             <input
                                                 type="text"
-                                                value={pendingGameTime}
-                                                onChange={(e) => setPendingGameTime(e.target.value)}
+                                                value={gameTime}
+                                                onChange={(e) => setGameTime(e.target.value)}
                                                 placeholder="e.g., 15:42"
-                                                className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                    darkMode 
-                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                }`}
+                                                className="w-full p-2 bg-gray-700 text-white rounded border border-gray-600"
                                             />
                                         </div>
                                         
                                         <div>
-                                            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                VT Score
-                                            </label>
+                                            <label className="block text-gray-300 mb-2">VT Score</label>
                                             <input
                                                 type="number"
-                                                value={ourScore}
-                                                onChange={(e) => setOurScore(e.target.value)}
-                                                placeholder="0"
-                                                className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                    darkMode 
-                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                }`}
+                                                value={vtScore}
+                                                onChange={(e) => setVtScore(e.target.value)}
+                                                className="w-full p-2 bg-gray-700 text-white rounded border border-gray-600"
                                             />
                                         </div>
                                         
                                         <div>
-                                            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                {currentOpponent} Score
-                                            </label>
+                                            <label className="block text-gray-300 mb-2">Charleston Southern Score</label>
                                             <input
                                                 type="number"
                                                 value={oppScore}
                                                 onChange={(e) => setOppScore(e.target.value)}
-                                                placeholder="0"
-                                                className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                    darkMode 
-                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                }`}
+                                                className="w-full p-2 bg-gray-700 text-white rounded border border-gray-600"
                                             />
                                         </div>
                                     </div>
@@ -642,13 +347,13 @@
                                     <div className="flex gap-3 mt-6">
                                         <button
                                             onClick={saveChanges}
-                                            className="flex-1 px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700"
+                                            className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
                                         >
-                                            Save Changes
+                                            Save
                                         </button>
                                         <button
-                                            onClick={() => setShowTimeScoreModal(false)}
-                                            className="flex-1 px-4 py-2 rounded-md bg-gray-600 text-white hover:bg-gray-700"
+                                            onClick={() => setShowConfirmModal(false)}
+                                            className="flex-1 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
                                         >
                                             Cancel
                                         </button>
