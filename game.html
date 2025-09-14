@@ -8,31 +8,6 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
-        
-        const firebaseConfig = {
-            apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
-            authDomain: "vtmbb-gameday.firebaseapp.com",
-            databaseURL: "https://vtmbb-gameday-default-rtdb.firebaseio.com",
-            projectId: "vtmbb-gameday",
-            storageBucket: "vtmbb-gameday.firebasestorage.app",
-            messagingSenderId: "1012073356538",
-            appId: "1:1012073356538:web:7a41a93d00920d4d00bd43"
-        };
-        
-        const app = initializeApp(firebaseConfig);
-        const database = getDatabase(app);
-        
-        window.firebaseDb = {
-            ref: (path) => ref(database, path),
-            onValue: (dbRef, callback) => onValue(dbRef, callback),
-            off: (dbRef) => off(dbRef)
-        };
-        
-        console.log('Firebase initialized successfully');
-    </script>
 </head>
 <body>
     <div id="root"></div>
@@ -43,81 +18,36 @@
         const GameDisplay = () => {
             const [darkMode, setDarkMode] = useState(false);
             const [gameInfo, setGameInfo] = useState(null);
-            const [currentStats, setCurrentStats] = useState({
-                vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
-                opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
-            });
-            const [lastUpdate, setLastUpdate] = useState(null);
-
-            // Added missing state variables
-            const [currentLineup, setCurrentLineup] = useState([]);
-            const [roster, setRoster] = useState([]);
-
-            const currentGame = '2024-11-03';
-            const currentOpponent = 'Charleston Southern';
+            const [loading, setLoading] = useState(true);
 
             useEffect(() => {
                 document.body.className = darkMode ? 'bg-gray-900' : 'bg-gray-100';
             }, [darkMode]);
 
+            // Simulate loading
             useEffect(() => {
-                console.log('Setting up Firebase listeners...');
-                
-                if (!window.firebaseDb) {
-                    console.error('Firebase not initialized');
-                    return;
-                }
+                const timer = setTimeout(() => {
+                    setLoading(false);
+                }, 2000);
+                return () => clearTimeout(timer);
+            }, []);
 
-                let gameInfoUnsubscribe, statsUnsubscribe;
-
-                const setupListeners = () => {
-                    console.log('Creating Firebase references for game:', currentGame);
-                    
-                    const gameInfoRef = window.firebaseDb.ref(`game-info/${currentGame}`);
-                    const statsRef = window.firebaseDb.ref(`current-stats/${currentGame}`);
-
-                    gameInfoUnsubscribe = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
-                        console.log('Game info snapshot:', snapshot.val());
-                        const data = snapshot.val();
-                        if (data) {
-                            setGameInfo(data);
-                            // Set lineup and roster data if available
-                            if (data.currentLineup) {
-                                setCurrentLineup(data.currentLineup);
-                            }
-                            if (data.roster) {
-                                setRoster(data.roster);
-                            }
-                            setLastUpdate(new Date().toLocaleTimeString());
-                        } else {
-                            console.log('No game info data found');
-                        }
-                    }, (error) => {
-                        console.error('Game info listener error:', error);
-                    });
-
-                    statsUnsubscribe = window.firebaseDb.onValue(statsRef, (snapshot) => {
-                        console.log('Stats snapshot:', snapshot.val());
-                        const data = snapshot.val();
-                        if (data) {
-                            setCurrentStats(data);
-                            setLastUpdate(new Date().toLocaleTimeString());
-                        } else {
-                            console.log('No stats data found');
-                        }
-                    }, (error) => {
-                        console.error('Stats listener error:', error);
-                    });
-                };
-
-                const timer = setTimeout(setupListeners, 2000);
-
-                return () => {
-                    clearTimeout(timer);
-                    if (gameInfoUnsubscribe) gameInfoUnsubscribe();
-                    if (statsUnsubscribe) statsUnsubscribe();
-                };
-            }, [currentGame]);
+            if (loading) {
+                return (
+                    <div className={`min-h-screen p-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+                        <div className="max-w-7xl mx-auto">
+                            <div className={`rounded-lg shadow-lg p-12 text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                    Loading Game Data...
+                                </h2>
+                                <div className="animate-pulse">
+                                    <div className="w-16 h-16 bg-blue-500 rounded-full mx-auto"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
 
             return (
                 <div className={`min-h-screen p-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
@@ -125,171 +55,37 @@
                         <div className="flex justify-between items-center mb-6">
                             <div>
                                 <h1 className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    VT vs {currentOpponent}
+                                    VT vs Charleston Southern
                                 </h1>
                                 <p className={`text-lg ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    Live Game Display
-                                    {gameInfo && gameInfo.started && (
-                                        <span className="ml-2">
-                                            • {gameInfo.gameTime} {gameInfo.currentHalf === 1 ? '1st' : gameInfo.currentHalf === 2 ? '2nd' : 'OT'}
-                                        </span>
-                                    )}
+                                    Game Display
                                 </p>
                             </div>
-                            <div className="flex items-center gap-4">
-                                {gameInfo && gameInfo.started && (
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                                        <span className={`text-sm font-medium ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                                            LIVE
-                                        </span>
-                                    </div>
-                                )}
-                                {lastUpdate && (
-                                    <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                        Updated: {lastUpdate}
-                                    </div>
-                                )}
-                                <button
-                                    onClick={() => setDarkMode(!darkMode)}
-                                    className={`px-4 py-2 rounded-md ${
-                                        darkMode 
-                                            ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-600' 
-                                            : 'bg-gray-800 text-white hover:bg-gray-700'
-                                    }`}
-                                >
-                                    {darkMode ? 'Light' : 'Dark'}
-                                </button>
-                            </div>
+                            <button
+                                onClick={() => setDarkMode(!darkMode)}
+                                className={`px-4 py-2 rounded-md ${
+                                    darkMode 
+                                        ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-600' 
+                                        : 'bg-gray-800 text-white hover:bg-gray-700'
+                                }`}
+                            >
+                                {darkMode ? 'Light' : 'Dark'}
+                            </button>
                         </div>
 
-                        {!gameInfo || !gameInfo.started ? (
-                            <div className={`rounded-lg shadow-lg p-12 text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    Game Not Started
-                                </h2>
-                                <p className={`text-lg ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    Waiting for game to begin...
+                        <div className={`rounded-lg shadow-lg p-12 text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                Game Not Started
+                            </h2>
+                            <p className={`text-lg ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                Waiting for game to begin...
+                            </p>
+                            <div className="mt-6">
+                                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    This is a minimal version to test for JSX errors.
                                 </p>
                             </div>
-                        ) : (
-                            <div>
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                                    <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                        <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                            Current Lineup
-                                        </h2>
-                                        <div className="grid grid-cols-1 gap-3">
-                                            {currentLineup.length > 0 ? (
-                                                currentLineup.map((playerId, index) => {
-                                                    const player = roster.find(p => p.id === playerId);
-                                                    return (
-                                                        <div key={index} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                                                            <div className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                                {player?.name || 'Unknown'}
-                                                            </div>
-                                                            <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                                {player?.position}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })
-                                            ) : (
-                                                <div className={`text-center p-4 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    No lineup data available
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                        <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                            Live Game Stats
-                                        </h2>
-                                        
-                                        <div className="mb-4">
-                                            <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                Virginia Tech
-                                            </h3>
-                                            <div className="grid grid-cols-4 gap-2 text-center">
-                                                <div>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {currentStats.vt.possessions}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Possessions
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {currentStats.vt.offensiveRebounds}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Off Reb
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {currentStats.vt.defensiveRebounds}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Def Reb
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {currentStats.vt.turnovers}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Turnovers
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {currentOpponent}
-                                            </h3>
-                                            <div className="grid grid-cols-4 gap-2 text-center">
-                                                <div>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {currentStats.opponent.possessions}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Possessions
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {currentStats.opponent.offensiveRebounds}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Off Reb
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {currentStats.opponent.defensiveRebounds}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Def Reb
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {currentStats.opponent.turnovers}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Turnovers
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                        </div>
                     </div>
                 </div>
             );
