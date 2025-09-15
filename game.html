@@ -138,12 +138,13 @@
                 }
                 
                 // Process lineup changes to build segments
-                for (let i = 0; i < lineupHistory.length; i++) {
+                for (let i = 0; i < lineupHistory.length - 1; i++) { // Stop before the last entry
                     const change = lineupHistory[i];
                     const nextChange = lineupHistory[i + 1];
                     
                     console.log(`Processing change ${i}:`, change);
                     
+                    // The CURRENT lineup (change.lineup) gets credit for performance until the NEXT change
                     const lineupKey = change.lineup;
                     
                     if (!lineupMap.has(lineupKey)) {
@@ -169,45 +170,73 @@
                     lineupData.appearances += 1;
                     lineupData.isActive = lineupKey === currentActiveLineup;
                     
-                    if (nextChange) {
-                        // Calculate actual plus/minus from score changes
-                        const vtScoreDiff = nextChange.ourScore - change.ourScore;
-                        const oppScoreDiff = nextChange.oppScore - change.oppScore;
-                        const plusMinus = vtScoreDiff - oppScoreDiff; // VT points - opponent points
-                        
-                        console.log(`Segment: ${change.gameTime} to ${nextChange.gameTime}`);
-                        console.log(`VT: ${change.ourScore} to ${nextChange.ourScore} (${vtScoreDiff})`);
-                        console.log(`Opp: ${change.oppScore} to ${nextChange.oppScore} (${oppScoreDiff})`);
-                        console.log(`Plus/minus: ${plusMinus}`);
-                        
-                        const startTime = parseGameTime(change.gameTime);
-                        const endTime = parseGameTime(nextChange.gameTime);
-                        const minutes = Math.abs(startTime - endTime);
-                        
-                        lineupData.totalPlusMinus += plusMinus;
-                        lineupData.totalVTPoints += vtScoreDiff;
-                        lineupData.totalOppPoints += oppScoreDiff;
-                        lineupData.totalMinutes += minutes;
-                        
-                        // For other stats, we need to use the tracked stats proportionally
-                        const gameTimePercent = minutes / 40; // Rough estimate of time percentage
-                        const segmentPossessions = Math.max(1, Math.round(currentStats.vt.possessions * gameTimePercent));
-                        lineupData.totalPossessions += segmentPossessions;
-                        
-                        const segmentVTOffReb = Math.round(currentStats.vt.offensiveRebounds * gameTimePercent);
-                        const segmentVTDefReb = Math.round(currentStats.vt.defensiveRebounds * gameTimePercent);
-                        const segmentOppOffReb = Math.round(currentStats.opponent.offensiveRebounds * gameTimePercent);
-                        const segmentOppDefReb = Math.round(currentStats.opponent.defensiveRebounds * gameTimePercent);
-                        const segmentVTTurnovers = Math.round(currentStats.vt.turnovers * gameTimePercent);
-                        
-                        lineupData.totalVTOffReb += segmentVTOffReb;
-                        lineupData.totalVTDefReb += segmentVTDefReb;
-                        lineupData.totalOppOffReb += segmentOppOffReb;
-                        lineupData.totalOppDefReb += segmentOppDefReb;
-                        lineupData.totalVTTurnovers += segmentVTTurnovers;
-                        
-                        console.log(`Lineup ${lineupKey} now has total +/-: ${lineupData.totalPlusMinus}`);
+                    // Calculate actual plus/minus from score changes
+                    // This lineup (change) gets credit for the performance until the next change
+                    const vtScoreDiff = nextChange.ourScore - change.ourScore;
+                    const oppScoreDiff = nextChange.oppScore - change.oppScore;
+                    const plusMinus = vtScoreDiff - oppScoreDiff; // VT points - opponent points
+                    
+                    console.log(`Segment: ${change.gameTime} to ${nextChange.gameTime}`);
+                    console.log(`Lineup that was playing: ${lineupKey}`);
+                    console.log(`VT: ${change.ourScore} to ${nextChange.ourScore} (${vtScoreDiff})`);
+                    console.log(`Opp: ${change.oppScore} to ${nextChange.oppScore} (${oppScoreDiff})`);
+                    console.log(`Plus/minus: ${plusMinus}`);
+                    
+                    const startTime = parseGameTime(change.gameTime);
+                    const endTime = parseGameTime(nextChange.gameTime);
+                    const minutes = Math.abs(startTime - endTime);
+                    
+                    lineupData.totalPlusMinus += plusMinus;
+                    lineupData.totalVTPoints += vtScoreDiff;
+                    lineupData.totalOppPoints += oppScoreDiff;
+                    lineupData.totalMinutes += minutes;
+                    
+                    // For other stats, we need to use the tracked stats proportionally
+                    const gameTimePercent = minutes / 40; // Rough estimate of time percentage
+                    const segmentPossessions = Math.max(1, Math.round(currentStats.vt.possessions * gameTimePercent));
+                    lineupData.totalPossessions += segmentPossessions;
+                    
+                    const segmentVTOffReb = Math.round(currentStats.vt.offensiveRebounds * gameTimePercent);
+                    const segmentVTDefReb = Math.round(currentStats.vt.defensiveRebounds * gameTimePercent);
+                    const segmentOppOffReb = Math.round(currentStats.opponent.offensiveRebounds * gameTimePercent);
+                    const segmentOppDefReb = Math.round(currentStats.opponent.defensiveRebounds * gameTimePercent);
+                    const segmentVTTurnovers = Math.round(currentStats.vt.turnovers * gameTimePercent);
+                    
+                    lineupData.totalVTOffReb += segmentVTOffReb;
+                    lineupData.totalVTDefReb += segmentVTDefReb;
+                    lineupData.totalOppOffReb += segmentOppOffReb;
+                    lineupData.totalOppDefReb += segmentOppDefReb;
+                    lineupData.totalVTTurnovers += segmentVTTurnovers;
+                    
+                    console.log(`Lineup ${lineupKey} now has total +/-: ${lineupData.totalPlusMinus}`);
+                }
+                
+                // Handle the current lineup (last entry in lineupHistory)
+                if (lineupHistory.length > 0) {
+                    const currentChange = lineupHistory[lineupHistory.length - 1];
+                    const lineupKey = currentChange.lineup;
+                    
+                    if (!lineupMap.has(lineupKey)) {
+                        lineupMap.set(lineupKey, {
+                            players: lineupKey,
+                            appearances: 1,
+                            totalPlusMinus: 0,
+                            totalVTPoints: 0,
+                            totalOppPoints: 0,
+                            totalMinutes: 0,
+                            totalPossessions: 0,
+                            totalVTOffReb: 0,
+                            totalVTDefReb: 0,
+                            totalOppOffReb: 0,
+                            totalOppDefReb: 0,
+                            totalVTTurnovers: 0,
+                            isActive: lineupKey === currentActiveLineup,
+                            segments: []
+                        });
                     }
+                    
+                    const lineupData = lineupMap.get(lineupKey);
+                    lineupData.isActive = lineupKey === currentActiveLineup;
                 }
 
                 console.log('Final lineup map:', lineupMap);
