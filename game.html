@@ -384,8 +384,20 @@
                                     <div className="space-y-2">
                                         {currentLineup.map((playerId, index) => {
                                             const player = roster.find(p => p.id === playerId);
-                                            // Calculate individual plus-minus (simplified - would need more detailed tracking)
-                                            const individualPlusMinus = Math.floor(Math.random() * 21) - 10; // Placeholder
+                                            const calculateIndividualPlusMinus = (playerId) => {
+                                                let totalPlusMinus = 0;
+                                                const playerName = roster.find(p => p.id === playerId)?.name;
+                                                
+                                                lineupAnalytics.forEach(lineup => {
+                                                    if (lineup.players.includes(playerName) && !lineup.isActive) {
+                                                        totalPlusMinus += lineup.totalPlusMinus;
+                                                    }
+                                                });
+                                                
+                                                return totalPlusMinus;
+                                            };
+                                            
+                                            const individualPlusMinus = calculateIndividualPlusMinus(playerId);
                                             return (
                                                 <div key={index} className={`flex items-center justify-between p-2 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
                                                     <div className="flex items-center gap-3">
