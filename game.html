@@ -118,7 +118,41 @@
                 return Math.max(0, totalMinutes);
             };
 
-            // Calculate lineup analytics using segmentStats from each lineup change
+            // Calculate cumulative game stats for top display
+            const calculateCumulativeStats = () => {
+                const cumulative = {
+                    vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                    opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+                };
+                
+                lineupHistory.forEach(change => {
+                    if (change.segmentStats) {
+                        const stats = change.segmentStats;
+                        cumulative.vt.possessions += stats.vt.possessions;
+                        cumulative.vt.offensiveRebounds += stats.vt.offensiveRebounds;
+                        cumulative.vt.defensiveRebounds += stats.vt.defensiveRebounds;
+                        cumulative.vt.turnovers += stats.vt.turnovers;
+                        cumulative.opponent.possessions += stats.opponent.possessions;
+                        cumulative.opponent.offensiveRebounds += stats.opponent.offensiveRebounds;
+                        cumulative.opponent.defensiveRebounds += stats.opponent.defensiveRebounds;
+                        cumulative.opponent.turnovers += stats.opponent.turnovers;
+                    }
+                });
+                
+                // Add current stats (for active lineup)
+                cumulative.vt.possessions += currentStats.vt.possessions;
+                cumulative.vt.offensiveRebounds += currentStats.vt.offensiveRebounds;
+                cumulative.vt.defensiveRebounds += currentStats.vt.defensiveRebounds;
+                cumulative.vt.turnovers += currentStats.vt.turnovers;
+                cumulative.opponent.possessions += currentStats.opponent.possessions;
+                cumulative.opponent.offensiveRebounds += currentStats.opponent.offensiveRebounds;
+                cumulative.opponent.defensiveRebounds += currentStats.opponent.defensiveRebounds;
+                cumulative.opponent.turnovers += currentStats.opponent.turnovers;
+                
+                return cumulative;
+            };
+
+            // Calculate lineup analytics using segmentStats
             useEffect(() => {
                 console.log('Lineup history:', lineupHistory);
                 console.log('Current lineup:', currentLineup);
@@ -161,7 +195,7 @@
                     }
                     
                     const lineupData = lineupMap.get(lineupKey);
-                    lineupData.appearances += 1; // Track how many different times this lineup played
+                    lineupData.appearances += 1;
                     lineupData.isActive = isActiveLineup;
                     
                     // Use segmentStats for this lineup's performance
@@ -192,13 +226,13 @@
                         lineupData.totalOppDefReb += stats.opponent.defensiveRebounds;
                         lineupData.totalVTTurnovers += stats.vt.turnovers;
                         
-                        // Estimate minutes (you could also store this in segmentStats)
+                        // Estimate minutes
                         const currentGameTime = parseGameTime(change.gameTime);
                         const prevGameTime = index > 0 ? parseGameTime(lineupHistory[index - 1].gameTime) : 20;
                         const minutes = Math.abs(prevGameTime - currentGameTime);
                         lineupData.totalMinutes += minutes;
                         
-                        console.log(`Lineup ${lineupKey} segment: +${plusMinus}, ${stats.vt.possessions} poss, ${stats.vt.offensiveRebounds} oreb`);
+                        console.log(`Lineup ${lineupKey} segment: +${plusMinus}, ${stats.vt.possessions} poss`);
                         console.log(`This lineup now has combined totals: +${lineupData.totalPlusMinus}, ${lineupData.totalPossessions} total poss`);
                     }
                 });
@@ -225,7 +259,6 @@
                 // Convert to analytics array using COMBINED lineup stats
                 const analyticsArray = Array.from(lineupMap.values()).map(data => {
                     console.log(`Calculating combined analytics for: ${data.players}`);
-                    console.log(`Appearances: ${data.appearances}, Total +/-: ${data.totalPlusMinus}, Total Poss: ${data.totalPossessions}`);
                     
                     // Use COMBINED stats from all times this lineup played together
                     const offPPP = data.totalPossessions > 0 ? (data.totalVTPoints / data.totalPossessions).toFixed(2) : '0.00';
@@ -240,8 +273,6 @@
                     
                     // Turnover rates using combined stats
                     const offTurnoverRate = data.totalPossessions > 0 ? Math.round((data.totalVTTurnovers / data.totalPossessions) * 100) : 0;
-                    
-                    // Defensive turnover rate would need opponent turnovers tracked
                     const defTurnoverRate = '--';
                     
                     return {
@@ -266,128 +297,6 @@
 
                 setLineupAnalytics(analyticsArray);
             }, [lineupHistory, currentLineup]);
-
-            // Calculate cumulative game stats for top display (sum all segmentStats)
-            const calculateCumulativeStats = () => {
-                const cumulative = {
-                    vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
-                    opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
-                };
-                
-                lineupHistory.forEach(change => {
-                    if (change.segmentStats) {
-                        const stats = change.segmentStats;
-                        cumulative.vt.possessions += stats.vt.possessions;
-                        cumulative.vt.offensiveRebounds += stats.vt.offensiveRebounds;
-                        cumulative.vt.defensiveRebounds += stats.vt.defensiveRebounds;
-                        cumulative.vt.turnovers += stats.vt.turnovers;
-                        cumulative.opponent.possessions += stats.opponent.possessions;
-                        cumulative.opponent.offensiveRebounds += stats.opponent.offensiveRebounds;
-                        cumulative.opponent.defensiveRebounds += stats.opponent.defensiveRebounds;
-                        cumulative.opponent.turnovers += stats.opponent.turnovers;
-                    }
-                });
-                
-                // Add current stats (for active lineup)
-                cumulative.vt.possessions += currentStats.vt.possessions;
-                cumulative.vt.offensiveRebounds += currentStats.vt.offensiveRebounds;
-                cumulative.vt.defensiveRebounds += currentStats.vt.defensiveRebounds;
-                cumulative.vt.turnovers += currentStats.vt.turnovers;
-                cumulative.opponent.possessions += currentStats.opponent.possessions;
-                cumulative.opponent.offensiveRebounds += currentStats.opponent.offensiveRebounds;
-                cumulative.opponent.defensiveRebounds += currentStats.opponent.defensiveRebounds;
-                cumulative.opponent.turnovers += currentStats.opponent.turnovers;
-                
-                return cumulative;
-            };Key, {
-                            players: lineupKey,
-                            appearances: 1,
-                            totalPlusMinus: 0,
-                            totalVTPoints: 0,
-                            totalOppPoints: 0,
-                            totalMinutes: 0,
-                            totalPossessions: 0,
-                            totalVTOffReb: 0,
-                            totalVTDefReb: 0,
-                            totalOppOffReb: 0,
-                            totalOppDefReb: 0,
-                            totalVTTurnovers: 0,
-                            isActive: lineupKey === currentActiveLineup,
-                            segments: []
-                        });
-                    }
-                    
-                    const lineupData = lineupMap.get(lineupKey);
-                    lineupData.isActive = lineupKey === currentActiveLineup;
-                }
-
-                console.log('Final lineup map:', lineupMap);
-
-                // Convert to analytics array with FIXED calculations using actual accumulated stats
-                const analyticsArray = Array.from(lineupMap.values()).map(data => {
-                    console.log(`Processing lineup analytics for: ${data.players}`);
-                    console.log(`Accumulated stats:`, {
-                        totalVTPoints: data.totalVTPoints,
-                        totalOppPoints: data.totalOppPoints,
-                        totalPossessions: data.totalPossessions,
-                        totalVTOffReb: data.totalVTOffReb,
-                        totalVTDefReb: data.totalVTDefReb,
-                        totalOppOffReb: data.totalOppOffReb,
-                        totalOppDefReb: data.totalOppDefReb,
-                        totalVTTurnovers: data.totalVTTurnovers
-                    });
-                    
-                    // Use ACTUAL accumulated stats for calculations
-                    const offPPP = data.totalPossessions > 0 ? (data.totalVTPoints / data.totalPossessions).toFixed(2) : '0.00';
-                    const defPPP = data.totalPossessions > 0 ? (data.totalOppPoints / data.totalPossessions).toFixed(2) : '0.00';
-                    
-                    // FIXED: Correct rebound percentage calculations using accumulated stats
-                    const totalOffRebOpps = data.totalVTOffReb + data.totalOppDefReb;
-                    const offRebPct = totalOffRebOpps > 0 ? Math.round((data.totalVTOffReb / totalOffRebOpps) * 100) : 0;
-                    
-                    const totalDefRebOpps = data.totalVTDefReb + data.totalOppOffReb;
-                    const defRebPct = totalDefRebOpps > 0 ? Math.round((data.totalVTDefReb / totalDefRebOpps) * 100) : 0;
-                    
-                    // FIXED: VT Turnover rate = VT Turnovers / VT Possessions 
-                    const offTurnoverRate = data.totalPossessions > 0 ? Math.round((data.totalVTTurnovers / data.totalPossessions) * 100) : 0;
-                    
-                    // TODO: We need to track opponent turnovers to calculate defensive turnover rate
-                    // For now, we'll show '--' since we don't have this data tracked yet
-                    const defTurnoverRate = data.totalPossessions > 0 ? Math.round((currentStats.opponent.turnovers / data.totalPossessions) * 100) : 0;
-                    
-                    console.log(`Calculated metrics:`, {
-                        offPPP: offPPP,
-                        defPPP: defPPP,
-                        offRebPct: offRebPct,
-                        defRebPct: defRebPct,
-                        offTurnoverRate: offTurnoverRate,
-                        defTurnoverRate: defTurnoverRate
-                    });
-                    
-                    return {
-                        ...data,
-                        plusMinus: data.isActive ? 'Current' : data.totalPlusMinus,
-                        offPPP: data.isActive ? 'Active' : offPPP,
-                        defPPP: data.isActive ? 'Active' : defPPP,
-                        offRebPct: data.isActive ? '--' : offRebPct,
-                        defRebPct: data.isActive ? '--' : defRebPct,
-                        offTurnoverRate: data.isActive ? '--' : offTurnoverRate,
-                        defTurnoverRate: data.isActive ? '--' : defTurnoverRate, // Now calculated properly
-                        minutesPlayed: data.isActive ? 'Active' : data.totalMinutes.toFixed(1)
-                    };
-                });
-
-                console.log('Analytics array:', analyticsArray);
-
-                // Sort by total plus/minus (active lineup last)
-                analyticsArray.sort((a, b) => {
-                    if (a.isActive) return 1;
-                    if (b.isActive) return -1;
-                    return b.totalPlusMinus - a.totalPlusMinus;
-                });
-
-                setLineupAnalytics(analyticsArray);
-            }, [lineupHistory, currentStats, currentLineup, gameInfo]);
 
             // Listen to live game data when a game is active
             useEffect(() => {
@@ -438,21 +347,17 @@
                 };
             }, [currentGame, gameStatus]);
 
-            // FIX: Individual plus/minus calculation - properly track player performance across all segments
+            // Individual plus/minus calculation
             const calculateIndividualPlusMinus = (playerId) => {
                 let totalPlusMinus = 0;
                 const playerName = roster.find(p => p.id === playerId)?.name;
                 if (!playerName) return 0;
 
-                // Go through ALL lineup segments (including current) and sum plus/minus where this player participated
                 lineupAnalytics.forEach(lineup => {
                     if (lineup.players.includes(playerName)) {
-                        // For completed segments, use the actual plus/minus
                         if (!lineup.isActive && typeof lineup.totalPlusMinus === 'number') {
                             totalPlusMinus += lineup.totalPlusMinus;
                         }
-                        // For current active lineup, we can't calculate plus/minus yet since the segment isn't complete
-                        // So active players will show their accumulated total from previous segments
                     }
                 });
                 
@@ -579,6 +484,7 @@
                                     </div>
                                 </div>
                                 
+                                {/* Game Stats Grid - 8 Calculated Stats using cumulative */}
                                 <div>
                                     <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                         Advanced Stats
@@ -592,7 +498,6 @@
                                                     <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                                         <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
                                                             {(() => {
-                                                                // Get current score from most recent lineup change
                                                                 if (lineupHistory.length === 0) return '0.00';
                                                                 const latestChange = lineupHistory[lineupHistory.length - 1];
                                                                 const vtScore = latestChange.ourScore || 0;
@@ -606,7 +511,6 @@
                                                     <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                                         <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
                                                             {(() => {
-                                                                // Get current score from most recent lineup change
                                                                 if (lineupHistory.length === 0) return '0.00';
                                                                 const latestChange = lineupHistory[lineupHistory.length - 1];
                                                                 const oppScore = latestChange.oppScore || 0;
@@ -680,76 +584,6 @@
                                                 </>
                                             );
                                         })()}
-                                    </div>
-                                </div>Change = lineupHistory[lineupHistory.length - 1];
-                                                    const oppScore = latestChange.oppScore || 0;
-                                                    return currentStats.opponent.possessions > 0 ? (oppScore / currentStats.opponent.possessions).toFixed(2) : '0.00';
-                                                })()}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Opp Points/Poss
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Row 2 - Turnover Rates */}
-                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.vt.possessions > 0 ? Math.round((currentStats.vt.turnovers / currentStats.vt.possessions) * 100) + '%' : '0%'}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                VT TO Rate
-                                            </div>
-                                        </div>
-                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.opponent.possessions > 0 ? Math.round((currentStats.opponent.turnovers / currentStats.opponent.possessions) * 100) + '%' : '0%'}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Opp TO Rate
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Row 3 - Rebound Percentages */}
-                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {(() => {
-                                                    const totalORebOpps = currentStats.vt.offensiveRebounds + currentStats.opponent.defensiveRebounds;
-                                                    return totalORebOpps > 0 ? Math.round((currentStats.vt.offensiveRebounds / totalORebOpps) * 100) + '%' : '0%';
-                                                })()}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                VT OReb%
-                                            </div>
-                                        </div>
-                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {(() => {
-                                                    const totalDRebOpps = currentStats.vt.defensiveRebounds + currentStats.opponent.offensiveRebounds;
-                                                    return totalDRebOpps > 0 ? Math.round((currentStats.vt.defensiveRebounds / totalDRebOpps) * 100) + '%' : '0%';
-                                                })()}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                VT DReb%
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Row 4 - Possessions */}
-                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.vt.possessions}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                VT Possessions
-                                            </div>
-                                        </div>
-                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.opponent.possessions}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Opp Possessions
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
