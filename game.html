@@ -118,9 +118,15 @@
                 return Math.max(0, totalMinutes);
             };
 
-            // Calculate lineup analytics with FIXED math
+            // Calculate lineup analytics with FIXED math and debugging
             useEffect(() => {
-                if (lineupHistory.length === 0) return;
+                console.log('Lineup history:', lineupHistory);
+                console.log('Current lineup:', currentLineup);
+                
+                if (lineupHistory.length === 0) {
+                    console.log('No lineup history yet');
+                    return;
+                }
 
                 const lineupMap = new Map();
                 let currentActiveLineup = null;
@@ -128,12 +134,15 @@
                 // Get current lineup string for comparison
                 if (currentLineup.length >= 5) {
                     currentActiveLineup = currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ');
+                    console.log('Current active lineup:', currentActiveLineup);
                 }
                 
                 // Process lineup changes to build segments
                 for (let i = 0; i < lineupHistory.length; i++) {
                     const change = lineupHistory[i];
                     const nextChange = lineupHistory[i + 1];
+                    
+                    console.log(`Processing change ${i}:`, change);
                     
                     const lineupKey = change.lineup;
                     
@@ -166,6 +175,11 @@
                         const oppScoreDiff = nextChange.oppScore - change.oppScore;
                         const plusMinus = vtScoreDiff - oppScoreDiff; // VT points - opponent points
                         
+                        console.log(`Segment: ${change.gameTime} to ${nextChange.gameTime}`);
+                        console.log(`VT: ${change.ourScore} to ${nextChange.ourScore} (${vtScoreDiff})`);
+                        console.log(`Opp: ${change.oppScore} to ${nextChange.oppScore} (${oppScoreDiff})`);
+                        console.log(`Plus/minus: ${plusMinus}`);
+                        
                         const startTime = parseGameTime(change.gameTime);
                         const endTime = parseGameTime(nextChange.gameTime);
                         const minutes = Math.abs(startTime - endTime);
@@ -176,9 +190,8 @@
                         lineupData.totalMinutes += minutes;
                         
                         // For other stats, we need to use the tracked stats proportionally
-                        // Since we don't track per-lineup stats, estimate based on time
                         const gameTimePercent = minutes / 40; // Rough estimate of time percentage
-                        const segmentPossessions = Math.round(currentStats.vt.possessions * gameTimePercent);
+                        const segmentPossessions = Math.max(1, Math.round(currentStats.vt.possessions * gameTimePercent));
                         lineupData.totalPossessions += segmentPossessions;
                         
                         const segmentVTOffReb = Math.round(currentStats.vt.offensiveRebounds * gameTimePercent);
@@ -192,8 +205,12 @@
                         lineupData.totalOppOffReb += segmentOppOffReb;
                         lineupData.totalOppDefReb += segmentOppDefReb;
                         lineupData.totalVTTurnovers += segmentVTTurnovers;
+                        
+                        console.log(`Lineup ${lineupKey} now has total +/-: ${lineupData.totalPlusMinus}`);
                     }
                 }
+
+                console.log('Final lineup map:', lineupMap);
 
                 // Convert to analytics array with FIXED calculations
                 const analyticsArray = Array.from(lineupMap.values()).map(data => {
@@ -221,6 +238,8 @@
                         minutesPlayed: data.isActive ? 'Active' : data.totalMinutes.toFixed(1)
                     };
                 });
+
+                console.log('Analytics array:', analyticsArray);
 
                 // Sort by total plus/minus (active lineup last)
                 analyticsArray.sort((a, b) => {
