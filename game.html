@@ -222,16 +222,49 @@
                 }
 
                 // Convert to analytics array
-                const analyticsArray = Array.from(lineupMap.values()).map(data => ({
-                    ...data,
-                    plusMinus: data.isActive ? 'Current' : data.totalPlusMinus,
-                    offPPP: data.isActive ? 'Active' : '1.20', // Placeholder
-                    defPPP: data.isActive ? 'Active' : '0.95', // Placeholder  
-                    offRebPct: data.isActive ? '--' : '35',
-                    defRebPct: data.isActive ? '--' : '75',
-                    offTurnoverRate: data.isActive ? '--' : '18',
-                    minutesPlayed: data.isActive ? 'Active' : data.totalMinutes.toFixed(1)
-                }));
+                const analyticsArray = Array.from(lineupMap.values()).map(data => {
+                    if (data.isActive) {
+                        // For active lineup, show current/active status
+                        return {
+                            ...data,
+                            plusMinus: 'Current',
+                            offPPP: 'Active',
+                            defPPP: 'Active',
+                            offRebPct: '--',
+                            defRebPct: '--',
+                            offTurnoverRate: '--',
+                            minutesPlayed: 'Active'
+                        };
+                    } else {
+                        // For completed lineups, calculate real stats
+                        const stats = data.segmentStats || {};
+                        const possessions = stats.totalPossessions || 1;
+                        
+                        const offPPP = (stats.totalVTPoints || 0) / possessions;
+                        const defPPP = (stats.totalOppPoints || 0) / possessions;
+                        
+                        // Rebound percentages
+                        const totalOffRebOpps = (stats.totalVTOffReb || 0) + (stats.totalOppDefReb || 0);
+                        const offRebPct = totalOffRebOpps > 0 ? Math.round(((stats.totalVTOffReb || 0) / totalOffRebOpps) * 100) : 0;
+                        
+                        const totalDefRebOpps = (stats.totalVTDefReb || 0) + (stats.totalOppOffReb || 0);
+                        const defRebPct = totalDefRebOpps > 0 ? Math.round(((stats.totalVTDefReb || 0) / totalDefRebOpps) * 100) : 0;
+                        
+                        // Turnover rate
+                        const turnoverRate = Math.round(((stats.totalVTTurnovers || 0) / possessions) * 100);
+                        
+                        return {
+                            ...data,
+                            plusMinus: data.totalPlusMinus,
+                            offPPP: offPPP.toFixed(2),
+                            defPPP: defPPP.toFixed(2),
+                            offRebPct: offRebPct,
+                            defRebPct: defRebPct,
+                            offTurnoverRate: turnoverRate,
+                            minutesPlayed: data.totalMinutes.toFixed(1)
+                        };
+                    }
+                });
 
                 // Sort by performance (active lineup last)
                 analyticsArray.sort((a, b) => {
