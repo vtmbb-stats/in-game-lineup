@@ -428,64 +428,161 @@
                                     </div>
                                 </div>
                                 
-                                {/* Cumulative Game Stats from Firebase */}
+                                {/* Game Stats Grid - All 15 Stats */}
                                 <div>
                                     <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Game Totals (Live Stats)
+                                        Full Game Stats
                                     </h3>
-                                    <div className="grid grid-cols-2 gap-6">
-                                        {/* VT Stats Column */}
-                                        <div>
-                                            <h4 className={`text-center font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                Virginia Tech
-                                            </h4>
-                                            <div className="space-y-2">
-                                                <div className={`p-3 rounded-lg text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                        {currentStats.vt.possessions}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Possessions
-                                                    </div>
-                                                </div>
-                                                <div className={`p-3 rounded-lg text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                        {currentStats.vt.offensiveRebounds}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Off Rebounds
-                                                    </div>
-                                                </div>
-                                                <div className={`p-3 rounded-lg text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                        {currentStats.vt.defensiveRebounds}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Def Rebounds
-                                                    </div>
-                                                </div>
-                                                <div className={`p-3 rounded-lg text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                        {currentStats.vt.turnovers}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        Turnovers
-                                                    </div>
-                                                </div>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {/* Row 1 */}
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {currentStats.vt.possessions}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                VT Poss
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {currentStats.opponent.possessions}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                Opp Poss
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {currentStats.vt.offensiveRebounds}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                VT OReb
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {currentStats.opponent.offensiveRebounds}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                Opp OReb
                                             </div>
                                         </div>
                                         
-                                        {/* Opponent Stats Column */}
-                                        <div>
-                                            <h4 className={`text-center font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {currentOpponent}
-                                            </h4>
-                                            <div className="space-y-2">
-                                                <div className={`p-3 rounded-lg text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                    <div className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                        {currentStats.opponent.possessions}
-                                                    </div>
-                                                    <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                        {/* Row 2 */}
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {currentStats.vt.defensiveRebounds}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                VT DReb
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {currentStats.opponent.defensiveRebounds}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                Opp DReb
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {currentStats.vt.turnovers}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                VT TO
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {currentStats.opponent.turnovers}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                Opp TO
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Row 3 - Calculated Percentages */}
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {(() => {
+                                                    const totalORebOpps = currentStats.vt.offensiveRebounds + currentStats.opponent.defensiveRebounds;
+                                                    return totalORebOpps > 0 ? Math.round((currentStats.vt.offensiveRebounds / totalORebOpps) * 100) + '%' : '0%';
+                                                })()}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                VT OReb%
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {(() => {
+                                                    const totalDRebOpps = currentStats.vt.defensiveRebounds + currentStats.opponent.offensiveRebounds;
+                                                    return totalDRebOpps > 0 ? Math.round((currentStats.vt.defensiveRebounds / totalDRebOpps) * 100) + '%' : '0%';
+                                                })()}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                VT DReb%
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {currentStats.vt.possessions > 0 ? Math.round((currentStats.vt.turnovers / currentStats.vt.possessions) * 100) + '%' : '0%'}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                Off TO Rate
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {currentStats.opponent.possessions > 0 ? Math.round((currentStats.opponent.turnovers / currentStats.opponent.possessions) * 100) + '%' : '0%'}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                Def TO Rate
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Row 4 - Additional Stats */}
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {(() => {
+                                                    const totalORebOpps = currentStats.opponent.offensiveRebounds + currentStats.vt.defensiveRebounds;
+                                                    return totalORebOpps > 0 ? Math.round((currentStats.opponent.offensiveRebounds / totalORebOpps) * 100) + '%' : '0%';
+                                                })()}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                Opp OReb%
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {(() => {
+                                                    const totalDRebOpps = currentStats.opponent.defensiveRebounds + currentStats.vt.offensiveRebounds;
+                                                    return totalDRebOpps > 0 ? Math.round((currentStats.opponent.defensiveRebounds / totalDRebOpps) * 100) + '%' : '0%';
+                                                })()}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                Opp DReb%
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {lineupAnalytics.length}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                Lineups
+                                            </div>
+                                        </div>
+                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                {lineupHistory.filter(change => change.change !== 'Game Started').length}
+                                            </div>
+                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                Subs Made
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div><div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                         Possessions
                                                     </div>
                                                 </div>
