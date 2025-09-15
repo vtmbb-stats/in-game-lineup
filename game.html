@@ -498,8 +498,12 @@
                                                     <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                                         <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
                                                             {(() => {
+                                                                console.log('PPP Debug - lineupHistory.length:', lineupHistory.length);
                                                                 if (lineupHistory.length === 0) return '0.00';
                                                                 const latestChange = lineupHistory[lineupHistory.length - 1];
+                                                                console.log('Latest change:', latestChange);
+                                                                console.log('ourScore:', latestChange.ourScore);
+                                                                console.log('Cumulative VT possessions:', cumulativeStats.vt.possessions);
                                                                 const vtScore = latestChange.ourScore || 0;
                                                                 return cumulativeStats.vt.possessions > 0 ? (vtScore / cumulativeStats.vt.possessions).toFixed(2) : '0.00';
                                                             })()}
