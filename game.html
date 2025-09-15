@@ -390,127 +390,41 @@
                             </h2>
                             
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                {/* Basketball Court Layout with Players */}
+                                {/* Players with Individual Stats */}
                                 <div>
                                     <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        On Court (1-2-2 Formation)
+                                        On Court
                                     </h3>
-                                    <div className="relative w-full max-w-sm mx-auto">
-                                        {/* Court outline */}
-                                        <div className={`border-2 rounded-lg p-4 ${darkMode ? 'border-gray-600' : 'border-gray-400'}`} style={{aspectRatio: '0.6'}}>
-                                            {/* Position players in 1-2-2 formation */}
-                                            {currentLineup.length >= 5 && (
-                                                <>
-                                                    {/* Point Guard (top center) */}
-                                                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2">
-                                                        {(() => {
-                                                            const player = roster.find(p => p.id === currentLineup[0]);
-                                                            const individualPlusMinus = calculateIndividualPlusMinus(currentLineup[0]);
-                                                            return (
-                                                                <div className={`text-center p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                                                                    <div className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                                        {player?.name?.split(' ').map(n => n[0]).join('.')}
-                                                                    </div>
-                                                                    <div className={`text-xs ${
-                                                                        individualPlusMinus > 0 ? 'text-green-600' : 
-                                                                        individualPlusMinus < 0 ? 'text-red-600' : 
-                                                                        (darkMode ? 'text-gray-300' : 'text-gray-600')
-                                                                    }`}>
-                                                                        {individualPlusMinus > 0 ? `+${individualPlusMinus}` : individualPlusMinus}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })()}
+                                    <div className="space-y-2">
+                                        {currentLineup.map((playerId, index) => {
+                                            const player = roster.find(p => p.id === playerId);
+                                            const individualPlusMinus = calculateIndividualPlusMinus(playerId);
+                                            
+                                            return (
+                                                <div key={index} className={`flex items-center justify-between p-2 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${darkMode ? 'bg-gray-600' : 'bg-gray-300'}`}>
+                                                            {/* Player image will go here - placeholder for now */}
+                                                            <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                                                                #{player?.id}
+                                                            </span>
+                                                        </div>
+                                                        <div>
+                                                            <div className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                                {player?.name || 'Unknown'} ({player?.position})
+                                                            </div>
+                                                        </div>
                                                     </div>
-
-                                                    {/* Wings (middle left and right) */}
-                                                    <div className="absolute top-1/3 left-4">
-                                                        {(() => {
-                                                            const player = roster.find(p => p.id === currentLineup[1]);
-                                                            const individualPlusMinus = calculateIndividualPlusMinus(currentLineup[1]);
-                                                            return (
-                                                                <div className={`text-center p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                                                                    <div className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                                        {player?.name?.split(' ').map(n => n[0]).join('.')}
-                                                                    </div>
-                                                                    <div className={`text-xs ${
-                                                                        individualPlusMinus > 0 ? 'text-green-600' : 
-                                                                        individualPlusMinus < 0 ? 'text-red-600' : 
-                                                                        (darkMode ? 'text-gray-300' : 'text-gray-600')
-                                                                    }`}>
-                                                                        {individualPlusMinus > 0 ? `+${individualPlusMinus}` : individualPlusMinus}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })()}
+                                                    <div className={`text-base font-bold ${
+                                                        individualPlusMinus > 0 ? 'text-green-600' : 
+                                                        individualPlusMinus < 0 ? 'text-red-600' : 
+                                                        (darkMode ? 'text-white' : 'text-gray-900')
+                                                    }`}>
+                                                        {individualPlusMinus > 0 ? `+${individualPlusMinus}` : individualPlusMinus}
                                                     </div>
-
-                                                    <div className="absolute top-1/3 right-4">
-                                                        {(() => {
-                                                            const player = roster.find(p => p.id === currentLineup[2]);
-                                                            const individualPlusMinus = calculateIndividualPlusMinus(currentLineup[2]);
-                                                            return (
-                                                                <div className={`text-center p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                                                                    <div className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                                        {player?.name?.split(' ').map(n => n[0]).join('.')}
-                                                                    </div>
-                                                                    <div className={`text-xs ${
-                                                                        individualPlusMinus > 0 ? 'text-green-600' : 
-                                                                        individualPlusMinus < 0 ? 'text-red-600' : 
-                                                                        (darkMode ? 'text-gray-300' : 'text-gray-600')
-                                                                    }`}>
-                                                                        {individualPlusMinus > 0 ? `+${individualPlusMinus}` : individualPlusMinus}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })()}
-                                                    </div>
-
-                                                    {/* Forwards/Centers (bottom left and right) */}
-                                                    <div className="absolute bottom-4 left-6">
-                                                        {(() => {
-                                                            const player = roster.find(p => p.id === currentLineup[3]);
-                                                            const individualPlusMinus = calculateIndividualPlusMinus(currentLineup[3]);
-                                                            return (
-                                                                <div className={`text-center p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                                                                    <div className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                                        {player?.name?.split(' ').map(n => n[0]).join('.')}
-                                                                    </div>
-                                                                    <div className={`text-xs ${
-                                                                        individualPlusMinus > 0 ? 'text-green-600' : 
-                                                                        individualPlusMinus < 0 ? 'text-red-600' : 
-                                                                        (darkMode ? 'text-gray-300' : 'text-gray-600')
-                                                                    }`}>
-                                                                        {individualPlusMinus > 0 ? `+${individualPlusMinus}` : individualPlusMinus}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })()}
-                                                    </div>
-
-                                                    <div className="absolute bottom-4 right-6">
-                                                        {(() => {
-                                                            const player = roster.find(p => p.id === currentLineup[4]);
-                                                            const individualPlusMinus = calculateIndividualPlusMinus(currentLineup[4]);
-                                                            return (
-                                                                <div className={`text-center p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                                                                    <div className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                                        {player?.name?.split(' ').map(n => n[0]).join('.')}
-                                                                    </div>
-                                                                    <div className={`text-xs ${
-                                                                        individualPlusMinus > 0 ? 'text-green-600' : 
-                                                                        individualPlusMinus < 0 ? 'text-red-600' : 
-                                                                        (darkMode ? 'text-gray-300' : 'text-gray-600')
-                                                                    }`}>
-                                                                        {individualPlusMinus > 0 ? `+${individualPlusMinus}` : individualPlusMinus}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })()}
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                                 
