@@ -128,6 +128,7 @@
                             gameTime: '20:00',
                             opponent: gameSchedule.find(g => g.date === selectedGame)?.opponent || 'Opponent',
                             currentLineup: initialLineup,
+                            startingLineup: initialLineup,
                             startTime: new Date().toISOString()
                         });
                         
