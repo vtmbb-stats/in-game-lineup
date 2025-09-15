@@ -150,14 +150,6 @@
                             lineup: initialLineup,
                             half: 1
                         });
-
-                        const currentGameRef = window.firebaseDb.ref('current-game');
-                        await window.firebaseDb.set(currentGameRef, {
-                            gameDate: selectedGame,
-                            opponent: gameSchedule.find(g => g.date === selectedGame)?.opponent || 'Opponent',
-                            started: true,
-                            startTime: new Date().toISOString()
-                        });
                         
                         console.log('Game started successfully');
                     } catch (error) {
@@ -200,13 +192,6 @@
                     const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
                     await window.firebaseDb.update(gameInfoRef, {
                         ended: true,
-                        endTime: new Date().toISOString()
-                    });
-                    
-                    const currentGameRef = window.firebaseDb.ref('current-game');
-                    await window.firebaseDb.set(currentGameRef, {
-                        gameDate: null,
-                        started: false,
                         endTime: new Date().toISOString()
                     });
                 }
@@ -252,6 +237,25 @@
                     return;
                 }
 
+                // Save the current lineup segment with its stats before making substitutions
+                if (lastSubTime || gameStarted) {
+                    const lineupSegment = {
+                        lineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                        startTime: lastSubTime || '20:00 1st',
+                        endTime: `${pendingGameTime} ${currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : 'OT'}`,
+                        stats: currentLineupStats,
+                        startScore: lastSubTime ? 
+                            { vt: parseInt(ourScore) - currentLineupStats.possessions, opp: parseInt(oppScore) } : // Simplified - you'd track actual start scores
+                            { vt: 0, opp: 0 },
+                        endScore: { vt: parseInt(ourScore), opp: parseInt(oppScore) },
+                        half: currentHalf
+                    };
+
+                    const timestamp = Date.now();
+                    const segmentRef = window.firebaseDb.ref(`lineup-segments/${selectedGame}/${timestamp}`);
+                    await window.firebaseDb.set(segmentRef, lineupSegment);
+                }
+
                 const newStatus = { ...playerStatus };
                 pendingChanges.forEach(change => {
                     newStatus[change.oldPlayerId] = false;
@@ -277,6 +281,14 @@
                 
                 setLastSubTime(fullGameTime);
                 setGameTime(pendingGameTime);
+                
+                // Reset current lineup stats for the new lineup
+                setCurrentLineupStats({
+                    possessions: 0,
+                    offensiveRebounds: 0,
+                    defensiveRebounds: 0,
+                    turnovers: 0
+                });
                 
                 if (window.firebaseDb) {
                     const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
