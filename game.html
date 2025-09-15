@@ -230,6 +230,12 @@
                         const currentGameTime = parseGameTime(change.gameTime);
                         const prevGameTime = index > 0 ? parseGameTime(lineupHistory[index - 1].gameTime) : 20;
                         const minutes = Math.abs(prevGameTime - currentGameTime);
+                        
+                        console.log(`Minutes calc for ${lineupKey}:`);
+                        console.log(`  Current time: ${change.gameTime} = ${currentGameTime} mins elapsed`);
+                        console.log(`  Previous time: ${index > 0 ? lineupHistory[index - 1].gameTime : 'Game start (20:00)'} = ${prevGameTime} mins elapsed`);
+                        console.log(`  Minutes played: ${minutes}`);
+                        
                         lineupData.totalMinutes += minutes;
                         
                         console.log(`Lineup ${lineupKey} segment: +${plusMinus}, ${stats.vt.possessions} poss`);
