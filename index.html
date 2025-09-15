@@ -150,14 +150,6 @@
                             lineup: initialLineup,
                             half: 1
                         });
-
-                        const currentGameRef = window.firebaseDb.ref('current-game');
-                        await window.firebaseDb.set(currentGameRef, {
-                            gameDate: selectedGame,
-                            opponent: gameSchedule.find(g => g.date === selectedGame)?.opponent || 'Opponent',
-                            started: true,
-                            startTime: new Date().toISOString()
-                        });
                         
                         console.log('Game started successfully');
                     } catch (error) {
@@ -202,7 +194,8 @@
                         ended: true,
                         endTime: new Date().toISOString()
                     });
-
+                    
+                    // Clear current game status for display app
                     const currentGameRef = window.firebaseDb.ref('current-game');
                     await window.firebaseDb.set(currentGameRef, {
                         gameDate: null,
