@@ -808,7 +808,7 @@
                                                         lineup.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
                                                         (darkMode ? 'text-gray-300' : 'text-gray-700')
                                                     }`}>
-                                                        --
+                                                        {lineup.defTurnoverRate === '--' ? '--' : `${lineup.defTurnoverRate}%`}
                                                     </td>
                                                     <td className={`p-3 text-center font-semibold ${
                                                         lineup.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
