@@ -306,16 +306,17 @@
                     lineupData.totalOppPoints += oppScoreDiff;
                     lineupData.totalMinutes += minutes;
                     
-                    // For other stats, we need to use the tracked stats proportionally
-                    const gameTimePercent = minutes / 40; // Rough estimate of time percentage
+                    // For other stats, use proportional allocation but avoid rounding to zero
+                    const gameTimePercent = minutes / 40;
                     const segmentPossessions = Math.max(1, Math.round(currentStats.vt.possessions * gameTimePercent));
                     lineupData.totalPossessions += segmentPossessions;
                     
-                    const segmentVTOffReb = Math.round(currentStats.vt.offensiveRebounds * gameTimePercent);
-                    const segmentVTDefReb = Math.round(currentStats.vt.defensiveRebounds * gameTimePercent);
-                    const segmentOppOffReb = Math.round(currentStats.opponent.offensiveRebounds * gameTimePercent);
-                    const segmentOppDefReb = Math.round(currentStats.opponent.defensiveRebounds * gameTimePercent);
-                    const segmentVTTurnovers = Math.round(currentStats.vt.turnovers * gameTimePercent);
+                    // Use raw proportional allocation for rebound stats - no rounding to avoid zeros  
+                    const segmentVTOffReb = Math.max(0.1, currentStats.vt.offensiveRebounds * gameTimePercent);
+                    const segmentVTDefReb = Math.max(0.1, currentStats.vt.defensiveRebounds * gameTimePercent);
+                    const segmentOppOffReb = Math.max(0.1, currentStats.opponent.offensiveRebounds * gameTimePercent);
+                    const segmentOppDefReb = Math.max(0.1, currentStats.opponent.defensiveRebounds * gameTimePercent);
+                    const segmentVTTurnovers = Math.max(0.1, currentStats.vt.turnovers * gameTimePercent);
                     
                     lineupData.totalVTOffReb += segmentVTOffReb;
                     lineupData.totalVTDefReb += segmentVTDefReb;
@@ -618,10 +619,10 @@
                                         Advanced Stats
                                     </h3>
                                     <div className="grid grid-cols-2 gap-3">
-                                        {/* Row 1 - Points Per Possession */}
+                                        {/* Row 1 - Points Per Possession - NEED ACTUAL POINTS DATA */}
                                         <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                             <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.vt.possessions > 0 ? ((currentStats.vt.possessions * 1.2) / currentStats.vt.possessions).toFixed(2) : '0.00'}
+                                                --
                                             </div>
                                             <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                 VT Points/Poss
@@ -629,7 +630,7 @@
                                         </div>
                                         <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                             <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.opponent.possessions > 0 ? ((currentStats.opponent.possessions * 0.9) / currentStats.opponent.possessions).toFixed(2) : '0.00'}
+                                                --
                                             </div>
                                             <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                 Opp Points/Poss
