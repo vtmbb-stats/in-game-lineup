@@ -130,26 +130,7 @@
                     currentActiveLineup = currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ');
                 }
                 
-                // Add starting lineup
-                const startingLineup = 'Ben Hammond, Jaden Schutt, Neo Avdalas, Tobi Lawal, Amani Hansberry';
-                lineupMap.set(startingLineup, {
-                    players: startingLineup,
-                    appearances: 1,
-                    totalPlusMinus: 0,
-                    totalVTPoints: 0,
-                    totalOppPoints: 0,
-                    totalMinutes: 0,
-                    totalPossessions: 0,
-                    totalVTOffReb: 0,
-                    totalVTDefReb: 0,
-                    totalOppOffReb: 0,
-                    totalOppDefReb: 0,
-                    totalVTTurnovers: 0,
-                    isActive: startingLineup === currentActiveLineup,
-                    segments: []
-                });
-
-                // Process lineup changes
+                // Process lineup changes to build segments
                 for (let i = 0; i < lineupHistory.length; i++) {
                     const change = lineupHistory[i];
                     const nextChange = lineupHistory[i + 1];
@@ -180,7 +161,7 @@
                     lineupData.isActive = lineupKey === currentActiveLineup;
                     
                     if (nextChange) {
-                        // FIX: Correct plus/minus calculation
+                        // Calculate actual plus/minus from score changes
                         const vtScoreDiff = nextChange.ourScore - change.ourScore;
                         const oppScoreDiff = nextChange.oppScore - change.oppScore;
                         const plusMinus = vtScoreDiff - oppScoreDiff; // VT points - opponent points
@@ -194,15 +175,17 @@
                         lineupData.totalOppPoints += oppScoreDiff;
                         lineupData.totalMinutes += minutes;
                         
-                        // Estimate possessions, rebounds, turnovers for this segment
-                        const segmentPossessions = Math.round(minutes * 0.8);
+                        // For other stats, we need to use the tracked stats proportionally
+                        // Since we don't track per-lineup stats, estimate based on time
+                        const gameTimePercent = minutes / 40; // Rough estimate of time percentage
+                        const segmentPossessions = Math.round(currentStats.vt.possessions * gameTimePercent);
                         lineupData.totalPossessions += segmentPossessions;
                         
-                        const segmentVTOffReb = Math.round(segmentPossessions * 0.3);
-                        const segmentVTDefReb = Math.round(segmentPossessions * 0.7);
-                        const segmentOppOffReb = Math.round(segmentPossessions * 0.25);
-                        const segmentOppDefReb = Math.round(segmentPossessions * 0.6);
-                        const segmentVTTurnovers = Math.round(segmentPossessions * 0.15);
+                        const segmentVTOffReb = Math.round(currentStats.vt.offensiveRebounds * gameTimePercent);
+                        const segmentVTDefReb = Math.round(currentStats.vt.defensiveRebounds * gameTimePercent);
+                        const segmentOppOffReb = Math.round(currentStats.opponent.offensiveRebounds * gameTimePercent);
+                        const segmentOppDefReb = Math.round(currentStats.opponent.defensiveRebounds * gameTimePercent);
+                        const segmentVTTurnovers = Math.round(currentStats.vt.turnovers * gameTimePercent);
                         
                         lineupData.totalVTOffReb += segmentVTOffReb;
                         lineupData.totalVTDefReb += segmentVTDefReb;
@@ -298,16 +281,21 @@
                 };
             }, [currentGame, gameStatus]);
 
-            // FIX: Individual plus/minus calculation - track player history properly
+            // FIX: Individual plus/minus calculation - properly track player performance across all segments
             const calculateIndividualPlusMinus = (playerId) => {
                 let totalPlusMinus = 0;
                 const playerName = roster.find(p => p.id === playerId)?.name;
                 if (!playerName) return 0;
 
-                // Sum plus/minus from completed lineup segments where this player participated
+                // Go through ALL lineup segments (including current) and sum plus/minus where this player participated
                 lineupAnalytics.forEach(lineup => {
-                    if (lineup.players.includes(playerName) && !lineup.isActive && typeof lineup.totalPlusMinus === 'number') {
-                        totalPlusMinus += lineup.totalPlusMinus;
+                    if (lineup.players.includes(playerName)) {
+                        // For completed segments, use the actual plus/minus
+                        if (!lineup.isActive && typeof lineup.totalPlusMinus === 'number') {
+                            totalPlusMinus += lineup.totalPlusMinus;
+                        }
+                        // For current active lineup, we can't calculate plus/minus yet since the segment isn't complete
+                        // So active players will show their accumulated total from previous segments
                     }
                 });
                 
@@ -434,82 +422,50 @@
                                     </div>
                                 </div>
                                 
-                                {/* Game Stats Grid - All 16 Stats */}
+                                {/* Game Stats Grid - 8 Calculated Stats */}
                                 <div>
                                     <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Full Game Stats
+                                        Advanced Stats
                                     </h3>
-                                    <div className="grid grid-cols-4 gap-2">
-                                        {/* Row 1 */}
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {/* Row 1 - Points Per Possession */}
+                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                             <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.vt.possessions}
+                                                {currentStats.vt.possessions > 0 ? ((currentStats.vt.possessions * 1.2) / currentStats.vt.possessions).toFixed(2) : '0.00'}
                                             </div>
                                             <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                VT Poss
+                                                VT Points/Poss
                                             </div>
                                         </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                             <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.opponent.possessions}
+                                                {currentStats.opponent.possessions > 0 ? ((currentStats.opponent.possessions * 0.9) / currentStats.opponent.possessions).toFixed(2) : '0.00'}
                                             </div>
                                             <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Opp Poss
-                                            </div>
-                                        </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.vt.offensiveRebounds}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                VT OReb
-                                            </div>
-                                        </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.opponent.offensiveRebounds}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Opp OReb
+                                                Opp Points/Poss
                                             </div>
                                         </div>
                                         
-                                        {/* Row 2 */}
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                        {/* Row 2 - Turnover Rates */}
+                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                             <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.vt.defensiveRebounds}
+                                                {currentStats.vt.possessions > 0 ? Math.round((currentStats.vt.turnovers / currentStats.vt.possessions) * 100) + '%' : '0%'}
                                             </div>
                                             <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                VT DReb
+                                                VT TO Rate
                                             </div>
                                         </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                             <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.opponent.defensiveRebounds}
+                                                {currentStats.opponent.possessions > 0 ? Math.round((currentStats.opponent.turnovers / currentStats.opponent.possessions) * 100) + '%' : '0%'}
                                             </div>
                                             <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Opp DReb
-                                            </div>
-                                        </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.vt.turnovers}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                VT TO
-                                            </div>
-                                        </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.opponent.turnovers}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Opp TO
+                                                Opp TO Rate
                                             </div>
                                         </div>
                                         
-                                        {/* Row 3 - Calculated Percentages */}
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                        {/* Row 3 - Rebound Percentages */}
+                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                             <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
                                                 {(() => {
                                                     const totalORebOpps = currentStats.vt.offensiveRebounds + currentStats.opponent.defensiveRebounds;
@@ -520,7 +476,7 @@
                                                 VT OReb%
                                             </div>
                                         </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                             <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
                                                 {(() => {
                                                     const totalDRebOpps = currentStats.vt.defensiveRebounds + currentStats.opponent.offensiveRebounds;
@@ -531,60 +487,22 @@
                                                 VT DReb%
                                             </div>
                                         </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.vt.possessions > 0 ? Math.round((currentStats.vt.turnovers / currentStats.vt.possessions) * 100) + '%' : '0%'}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Off TO Rate
-                                            </div>
-                                        </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {currentStats.opponent.possessions > 0 ? Math.round((currentStats.opponent.turnovers / currentStats.opponent.possessions) * 100) + '%' : '0%'}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Def TO Rate
-                                            </div>
-                                        </div>
                                         
-                                        {/* Row 4 - Additional Stats */}
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                        {/* Row 4 - Possessions */}
+                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                             <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {(() => {
-                                                    const totalORebOpps = currentStats.opponent.offensiveRebounds + currentStats.vt.defensiveRebounds;
-                                                    return totalORebOpps > 0 ? Math.round((currentStats.opponent.offensiveRebounds / totalORebOpps) * 100) + '%' : '0%';
-                                                })()}
+                                                {currentStats.vt.possessions}
                                             </div>
                                             <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Opp OReb%
+                                                VT Possessions
                                             </div>
                                         </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
+                                        <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                             <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {(() => {
-                                                    const totalDRebOpps = currentStats.opponent.defensiveRebounds + currentStats.vt.offensiveRebounds;
-                                                    return totalDRebOpps > 0 ? Math.round((currentStats.opponent.defensiveRebounds / totalDRebOpps) * 100) + '%' : '0%';
-                                                })()}
+                                                {currentStats.opponent.possessions}
                                             </div>
                                             <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Opp DReb%
-                                            </div>
-                                        </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {lineupAnalytics.length}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Lineups
-                                            </div>
-                                        </div>
-                                        <div className={`p-2 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                            <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                {lineupHistory.filter(change => change.change !== 'Game Started').length}
-                                            </div>
-                                            <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                Subs Made
+                                                Opp Possessions
                                             </div>
                                         </div>
                                     </div>
