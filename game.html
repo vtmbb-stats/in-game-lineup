@@ -118,16 +118,11 @@
                 return Math.max(0, totalMinutes);
             };
 
-            // Calculate lineup analytics with FIXED math and debugging
+            // Calculate lineup analytics with PROPER segment building
             useEffect(() => {
                 console.log('Lineup history:', lineupHistory);
                 console.log('Current lineup:', currentLineup);
                 
-                if (lineupHistory.length === 0) {
-                    console.log('No lineup history yet');
-                    return;
-                }
-
                 const lineupMap = new Map();
                 let currentActiveLineup = null;
                 
@@ -137,8 +132,128 @@
                     console.log('Current active lineup:', currentActiveLineup);
                 }
                 
-                // Process lineup changes to build segments
-                for (let i = 0; i < lineupHistory.length - 1; i++) { // Stop before the last entry
+                // If we have no lineup changes yet, we can't calculate segments
+                if (lineupHistory.length === 0) {
+                    console.log('No lineup changes yet - just the starting lineup');
+                    
+                    // Show just the current/starting lineup as active
+                    if (currentActiveLineup) {
+                        setLineupAnalytics([{
+                            players: currentActiveLineup,
+                            appearances: 1,
+                            totalPlusMinus: 0,
+                            totalVTPoints: 0,
+                            totalOppPoints: 0,
+                            totalMinutes: 0,
+                            totalPossessions: 0,
+                            isActive: true,
+                            plusMinus: 'Current',
+                            offPPP: 'Active',
+                            defPPP: 'Active',
+                            offRebPct: '--',
+                            defRebPct: '--',
+                            offTurnoverRate: '--',
+                            defTurnoverRate: '--',
+                            minutesPlayed: 'Active'
+                        }]);
+                    }
+                    return;
+                }
+                
+                // Build segments in chronological order
+                console.log('Building segments from lineup changes...');
+                
+                // SOLUTION: We need to get the starting lineup from game-info
+                // The starting lineup should be stored when "Start Game" is pushed
+                // Let's check if gameInfo has a startingLineup field
+                let startingLineup = null;
+                if (gameInfo && gameInfo.startingLineup) {
+                    startingLineup = gameInfo.startingLineup;
+                    console.log('Found starting lineup in gameInfo:', startingLineup);
+                } else {
+                    // Fallback: Try to infer starting lineup from the data we have
+                    // This is not ideal but works as a temporary solution
+                    console.warn('No starting lineup found in gameInfo. You need to modify the input app to store the starting lineup when "Start Game" is pushed.');
+                    
+                    // For now, let's assume the current lineup was the starting lineup if we have no changes yet
+                    if (currentActiveLineup) {
+                        startingLineup = currentActiveLineup;
+                        console.log('Using current lineup as starting lineup:', startingLineup);
+                    }
+                }
+                
+                // Process the first segment: Starting lineup (0-0 to first substitution)
+                if (startingLineup && lineupHistory.length > 0) {
+                    const firstSubstitution = lineupHistory[0];
+                    
+                    console.log('Processing starting lineup segment');
+                    console.log('Starting lineup:', startingLineup);
+                    console.log('First substitution at:', firstSubstitution.gameTime, 'Score:', firstSubstitution.ourScore, '-', firstSubstitution.oppScore);
+                    
+                    // Initialize starting lineup data
+                    if (!lineupMap.has(startingLineup)) {
+                        lineupMap.set(startingLineup, {
+                            players: startingLineup,
+                            appearances: 0,
+                            totalPlusMinus: 0,
+                            totalVTPoints: 0,
+                            totalOppPoints: 0,
+                            totalMinutes: 0,
+                            totalPossessions: 0,
+                            totalVTOffReb: 0,
+                            totalVTDefReb: 0,
+                            totalOppOffReb: 0,
+                            totalOppDefReb: 0,
+                            totalVTTurnovers: 0,
+                            isActive: startingLineup === currentActiveLineup,
+                            segments: []
+                        });
+                    }
+                    
+                    const startingLineupData = lineupMap.get(startingLineup);
+                    startingLineupData.appearances += 1;
+                    
+                    // Starting lineup gets credit for performance from 0-0 to first substitution
+                    const vtScoreDiff = firstSubstitution.ourScore - 0;
+                    const oppScoreDiff = firstSubstitution.oppScore - 0;
+                    const plusMinus = vtScoreDiff - oppScoreDiff;
+                    
+                    console.log(`Starting lineup segment: 0-0 to ${firstSubstitution.gameTime}`);
+                    console.log(`VT: 0 to ${firstSubstitution.ourScore} (${vtScoreDiff})`);
+                    console.log(`Opp: 0 to ${firstSubstitution.oppScore} (${oppScoreDiff})`);
+                    console.log(`Plus/minus: ${plusMinus}`);
+                    
+                    // Calculate time elapsed from start of game to first substitution
+                    const subTime = parseGameTime(firstSubstitution.gameTime);
+                    const startingMinutes = 20 - subTime; // Time from start to first sub
+                    
+                    startingLineupData.totalPlusMinus += plusMinus;
+                    startingLineupData.totalVTPoints += vtScoreDiff;
+                    startingLineupData.totalOppPoints += oppScoreDiff;
+                    startingLineupData.totalMinutes += startingMinutes;
+                    
+                    // Estimate stats proportionally for starting lineup
+                    const gameTimePercent = startingMinutes / 40;
+                    const segmentPossessions = Math.max(1, Math.round(currentStats.vt.possessions * gameTimePercent));
+                    startingLineupData.totalPossessions += segmentPossessions;
+                    
+                    const segmentVTOffReb = Math.round(currentStats.vt.offensiveRebounds * gameTimePercent);
+                    const segmentVTDefReb = Math.round(currentStats.vt.defensiveRebounds * gameTimePercent);
+                    const segmentOppOffReb = Math.round(currentStats.opponent.offensiveRebounds * gameTimePercent);
+                    const segmentOppDefReb = Math.round(currentStats.opponent.defensiveRebounds * gameTimePercent);
+                    const segmentVTTurnovers = Math.round(currentStats.vt.turnovers * gameTimePercent);
+                    
+                    startingLineupData.totalVTOffReb += segmentVTOffReb;
+                    startingLineupData.totalVTDefReb += segmentVTDefReb;
+                    startingLineupData.totalOppOffReb += segmentOppOffReb;
+                    startingLineupData.totalOppDefReb += segmentOppDefReb;
+                    startingLineupData.totalVTTurnovers += segmentVTTurnovers;
+                    
+                    console.log(`Starting lineup credited with +/-: ${plusMinus}`);
+                }
+                
+                // Process substitution-to-substitution segments  
+                for (let i = 0; i < lineupHistory.length - 1; i++) {
                     const change = lineupHistory[i];
                     const nextChange = lineupHistory[i + 1];
                     
@@ -241,20 +356,46 @@
 
                 console.log('Final lineup map:', lineupMap);
 
-                // Convert to analytics array with FIXED calculations
+                // Convert to analytics array with FIXED calculations using actual accumulated stats
                 const analyticsArray = Array.from(lineupMap.values()).map(data => {
+                    console.log(`Processing lineup analytics for: ${data.players}`);
+                    console.log(`Accumulated stats:`, {
+                        totalVTPoints: data.totalVTPoints,
+                        totalOppPoints: data.totalOppPoints,
+                        totalPossessions: data.totalPossessions,
+                        totalVTOffReb: data.totalVTOffReb,
+                        totalVTDefReb: data.totalVTDefReb,
+                        totalOppOffReb: data.totalOppOffReb,
+                        totalOppDefReb: data.totalOppDefReb,
+                        totalVTTurnovers: data.totalVTTurnovers
+                    });
+                    
+                    // Use ACTUAL accumulated stats for calculations
                     const offPPP = data.totalPossessions > 0 ? (data.totalVTPoints / data.totalPossessions).toFixed(2) : '0.00';
                     const defPPP = data.totalPossessions > 0 ? (data.totalOppPoints / data.totalPossessions).toFixed(2) : '0.00';
                     
-                    // FIX: Correct rebound percentage calculations
+                    // FIXED: Correct rebound percentage calculations using accumulated stats
                     const totalOffRebOpps = data.totalVTOffReb + data.totalOppDefReb;
                     const offRebPct = totalOffRebOpps > 0 ? Math.round((data.totalVTOffReb / totalOffRebOpps) * 100) : 0;
                     
                     const totalDefRebOpps = data.totalVTDefReb + data.totalOppOffReb;
                     const defRebPct = totalDefRebOpps > 0 ? Math.round((data.totalVTDefReb / totalDefRebOpps) * 100) : 0;
                     
-                    // FIX: Turnover rate = Turnovers / Possessions
+                    // FIXED: VT Turnover rate = VT Turnovers / VT Possessions 
                     const offTurnoverRate = data.totalPossessions > 0 ? Math.round((data.totalVTTurnovers / data.totalPossessions) * 100) : 0;
+                    
+                    // TODO: We need to track opponent turnovers to calculate defensive turnover rate
+                    // For now, we'll show '--' since we don't have this data tracked yet
+                    const defTurnoverRate = '--'; // Would need: (oppTurnovers / oppPossessions) * 100
+                    
+                    console.log(`Calculated metrics:`, {
+                        offPPP: offPPP,
+                        defPPP: defPPP,
+                        offRebPct: offRebPct,
+                        defRebPct: defRebPct,
+                        offTurnoverRate: offTurnoverRate,
+                        defTurnoverRate: defTurnoverRate
+                    });
                     
                     return {
                         ...data,
@@ -264,6 +405,7 @@
                         offRebPct: data.isActive ? '--' : offRebPct,
                         defRebPct: data.isActive ? '--' : defRebPct,
                         offTurnoverRate: data.isActive ? '--' : offTurnoverRate,
+                        defTurnoverRate: defTurnoverRate, // Always '--' for now
                         minutesPlayed: data.isActive ? 'Active' : data.totalMinutes.toFixed(1)
                     };
                 });
@@ -278,7 +420,7 @@
                 });
 
                 setLineupAnalytics(analyticsArray);
-            }, [lineupHistory, currentStats, currentLineup]);
+            }, [lineupHistory, currentStats, currentLineup, gameInfo]);
 
             // Listen to live game data when a game is active
             useEffect(() => {
