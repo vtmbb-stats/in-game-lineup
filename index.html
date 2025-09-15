@@ -150,6 +150,14 @@
                             lineup: initialLineup,
                             half: 1
                         });
+
+                        const currentGameRef = window.firebaseDb.ref('current-game');
+                        await window.firebaseDb.set(currentGameRef, {
+                            gameDate: selectedGame,
+                            opponent: gameSchedule.find(g => g.date === selectedGame)?.opponent || 'Opponent',
+                            started: true,
+                            startTime: new Date().toISOString()
+                        });
                         
                         console.log('Game started successfully');
                     } catch (error) {
@@ -192,6 +200,13 @@
                     const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
                     await window.firebaseDb.update(gameInfoRef, {
                         ended: true,
+                        endTime: new Date().toISOString()
+                    });
+                    
+                    const currentGameRef = window.firebaseDb.ref('current-game');
+                    await window.firebaseDb.set(currentGameRef, {
+                        gameDate: null,
+                        started: false,
                         endTime: new Date().toISOString()
                     });
                 }
