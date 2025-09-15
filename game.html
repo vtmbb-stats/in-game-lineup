@@ -494,17 +494,14 @@
                                             const cumulativeStats = calculateCumulativeStats();
                                             return (
                                                 <>
-                                                    {/* Row 1 - Points Per Possession - Use current score from latest substitution */}
+                                                    {/* Row 1 - Points Per Possession - Simple: Latest sub score ÷ total possessions */}
                                                     <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                                         <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
                                                             {(() => {
-                                                                console.log('PPP Debug - lineupHistory.length:', lineupHistory.length);
-                                                                if (lineupHistory.length === 0) return '0.00';
-                                                                const latestChange = lineupHistory[lineupHistory.length - 1];
-                                                                console.log('Latest change:', latestChange);
-                                                                console.log('ourScore:', latestChange.ourScore);
-                                                                console.log('Cumulative VT possessions:', cumulativeStats.vt.possessions);
-                                                                const vtScore = latestChange.ourScore || 0;
+                                                                const substitutions = lineupHistory.filter(change => change.change !== 'Game Started');
+                                                                if (substitutions.length === 0) return '0.00';
+                                                                const latestSub = substitutions[substitutions.length - 1];
+                                                                const vtScore = latestSub.ourScore || 0;
                                                                 return cumulativeStats.vt.possessions > 0 ? (vtScore / cumulativeStats.vt.possessions).toFixed(2) : '0.00';
                                                             })()}
                                                         </div>
@@ -515,9 +512,10 @@
                                                     <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
                                                         <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
                                                             {(() => {
-                                                                if (lineupHistory.length === 0) return '0.00';
-                                                                const latestChange = lineupHistory[lineupHistory.length - 1];
-                                                                const oppScore = latestChange.oppScore || 0;
+                                                                const substitutions = lineupHistory.filter(change => change.change !== 'Game Started');
+                                                                if (substitutions.length === 0) return '0.00';
+                                                                const latestSub = substitutions[substitutions.length - 1];
+                                                                const oppScore = latestSub.oppScore || 0;
                                                                 return cumulativeStats.opponent.possessions > 0 ? (oppScore / cumulativeStats.opponent.possessions).toFixed(2) : '0.00';
                                                             })()}
                                                         </div>
