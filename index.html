@@ -120,6 +120,7 @@
                     try {
                         const initialLineup = currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ');
                         
+                        // Store game info with starting lineup
                         const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
                         await window.firebaseDb.set(gameInfoRef, {
                             started: true,
@@ -132,15 +133,20 @@
                             startTime: new Date().toISOString()
                         });
                         
+                        // Clear previous data
                         const changesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
                         await window.firebaseDb.remove(changesRef);
                         
-                        const statsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
-                        await window.firebaseDb.set(statsRef, {
+                        // Reset stats to 0
+                        const initialStats = {
                             vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
                             opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
-                        });
+                        };
                         
+                        const statsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
+                        await window.firebaseDb.set(statsRef, initialStats);
+                        
+                        // Store starting lineup entry with empty stats (will accumulate from 0)
                         const startRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}/game-start`);
                         await window.firebaseDb.set(startRef, {
                             timestamp: '20:00 1st',
@@ -149,10 +155,11 @@
                             oppScore: 0,
                             change: 'Game Started',
                             lineup: initialLineup,
-                            half: 1
+                            half: 1,
+                            segmentStats: initialStats // Starting lineup starts with 0 stats
                         });
-
-                        // Set current game status for display app
+            
+                        // Set current game status
                         const currentGameRef = window.firebaseDb.ref('current-game');
                         await window.firebaseDb.set(currentGameRef, {
                             gameDate: selectedGame,
@@ -167,7 +174,6 @@
                     }
                 }
             };
-
             const endHalf = async () => {
                 if (currentHalf === 1) {
                     setCurrentHalf(2);
@@ -249,12 +255,12 @@
                     alert('Please fill in game time and scores before making changes.');
                     return;
                 }
-
+            
                 if (pendingChanges.length === 0) {
                     alert('No changes to confirm.');
                     return;
                 }
-
+            
                 const newStatus = { ...playerStatus };
                 pendingChanges.forEach(change => {
                     newStatus[change.oldPlayerId] = false;
@@ -272,8 +278,47 @@
                     oppScore: parseInt(oppScore),
                     change: `${roster.find(p => p.id === change.oldPlayerId)?.name} OUT, ${roster.find(p => p.id === change.newPlayerId)?.name} IN`,
                     lineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
-                    half: currentHalf
+                    half: currentHalf,
+                    // Store the stats that accumulated during the PREVIOUS lineup's time
+                    segmentStats: {
+                        vt: { ...currentStats.vt },
+                        opponent: { ...currentStats.opponent }
+                    }
                 }));
+                
+                setLineupHistory([...lineupHistory, ...changeRecords]);
+                await saveToFirebase(changeRecords);
+                
+                // RESET STATS TO ZERO for the new lineup
+                const resetStats = {
+                    vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                    opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+                };
+                setCurrentStats(resetStats);
+                
+                // Update Firebase with reset stats
+                if (window.firebaseDb) {
+                    const statsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
+                    await window.firebaseDb.set(statsRef, resetStats);
+                }
+                
+                setLastSubTime(fullGameTime);
+                setGameTime(pendingGameTime);
+                
+                if (window.firebaseDb) {
+                    const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                    await window.firebaseDb.update(gameInfoRef, {
+                        gameTime: pendingGameTime,
+                        currentLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ')
+                    });
+                }
+                
+                setPendingChanges([]);
+                setShowTimeScoreModal(false);
+                setPendingGameTime('');
+                setOurScore('');
+                setOppScore('');
+            };
                 
                 setLineupHistory([...lineupHistory, ...changeRecords]);
                 await saveToFirebase(changeRecords);
