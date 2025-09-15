@@ -465,37 +465,30 @@
                                 Current Lineup (5 Active Players)
                                 {!gameStarted && <span className="text-sm font-normal text-orange-500 ml-2">Start game to enable</span>}
                             </h2>
-                            <div className="grid grid-cols-5 gap-4">
-                                {currentLineup.map((playerId, index) => (
-                                    <div key={index} className="text-center">
-                                        <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                            Player {index + 1}
-                                        </label>
-                                        <select
-                                            value={playerId}
-                                            onChange={(e) => handleLineupChange(index, e.target.value)}
-                                            disabled={!gameStarted}
-                                            className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                !gameStarted ? 'cursor-not-allowed' : ''
-                                            } ${
-                                                darkMode 
-                                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                                    : 'bg-white border-gray-300 text-gray-900'
-                                            }`}
-                                        >
-                                            <option value={playerId}>
-                                                {roster.find(p => p.id === playerId)?.name}
-                                            </option>
-                                            {roster.filter(player => !playerStatus[player.id] || player.id === playerId).map(player => (
-                                                <option key={player.id} value={player.id}>
-                                                    {player.name} ({player.position})
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                ))}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        VT Score
+                                    </label>
+                                    <input ... />
+                                </div>
+                                <div>
+                                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        {currentOpponent} Score
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={oppScore}
+                                        onChange={(e) => setOppScore(e.target.value)}
+                                        placeholder="0"
+                                        className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                            darkMode 
+                                                ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                                                : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                                        }`}
+                                    />
+                                </div>
                             </div>
-                        </div>
 
                         {/* Time/Score Modal */}
                         {showTimeScoreModal && (
@@ -705,23 +698,8 @@
             );
         };
 
-        ReactDOM.render(<BasketballLineupTracker />, document.getElementById('root'));
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<BasketballLineupTracker />);
     </script>
 </body>
-</html> rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                        darkMode 
-                                                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                    }`}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                    {currentOpponent} Score
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={oppScore}
-                                                    onChange={(e) => setOppScore(e.target.value)}
-                                                    placeholder="0"
-                                                    className={`w-full p-2 border
+</html>
