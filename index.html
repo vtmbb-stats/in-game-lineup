@@ -40,10 +40,12 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
         const BasketballLineupTracker = () => {
             const [darkMode, setDarkMode] = useState(false);
+            const [autoSync, setAutoSync] = useState(false);
+            const autoSyncInterval = useRef(null);
 
             useEffect(() => {
                 document.body.className = darkMode ? 'bg-gray-900' : 'bg-gray-100';
@@ -89,8 +91,8 @@
             const [pendingChanges, setPendingChanges] = useState([]);
             const [showTimeScoreModal, setShowTimeScoreModal] = useState(false);
             const [pendingGameTime, setPendingGameTime] = useState('');
-            const [ourScore, setOurScore] = useState('');
-            const [oppScore, setOppScore] = useState('');
+            const [vtScore, setVtScore] = useState(0);
+            const [oppScore, setOppScore] = useState(0);
             const [lineupHistory, setLineupHistory] = useState([]);
             
             const [currentStats, setCurrentStats] = useState({
@@ -108,6 +110,78 @@
                 }
             });
 
+            // Auto-sync function
+            const syncToFirebase = async () => {
+                if (!gameStarted || !window.firebaseDb) return;
+                
+                try {
+                    // Update live game data
+                    const liveDataRef = window.firebaseDb.ref(`live-game/${selectedGame}`);
+                    await window.firebaseDb.set(liveDataRef, {
+                        vtScore,
+                        oppScore,
+                        gameTime,
+                        currentHalf,
+                        currentLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                        currentStats,
+                        lastUpdated: new Date().toISOString()
+                    });
+
+                    // Update current-stats
+                    const statsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
+                    await window.firebaseDb.set(statsRef, currentStats);
+
+                    // Update game-info
+                    const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                    await window.firebaseDb.update(gameInfoRef, {
+                        vtScore,
+                        oppScore,
+                        gameTime,
+                        currentHalf,
+                        currentLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ')
+                    });
+
+                    console.log('Auto-synced to Firebase');
+                } catch (error) {
+                    console.error('Error syncing to Firebase:', error);
+                }
+            };
+
+            // Start/stop auto-sync
+            useEffect(() => {
+                if (autoSync && gameStarted) {
+                    autoSyncInterval.current = setInterval(syncToFirebase, 2000); // Sync every 2 seconds
+                } else {
+                    if (autoSyncInterval.current) {
+                        clearInterval(autoSyncInterval.current);
+                        autoSyncInterval.current = null;
+                    }
+                }
+
+                return () => {
+                    if (autoSyncInterval.current) {
+                        clearInterval(autoSyncInterval.current);
+                    }
+                };
+            }, [autoSync, gameStarted, vtScore, oppScore, gameTime, currentHalf, currentLineup, currentStats]);
+
+            const updateScore = async (team, points) => {
+                if (!gameStarted) return;
+                
+                if (team === 'vt') {
+                    const newScore = vtScore + points;
+                    setVtScore(newScore);
+                } else {
+                    const newScore = oppScore + points;
+                    setOppScore(newScore);
+                }
+
+                // If auto-sync is off, sync immediately on score changes
+                if (!autoSync) {
+                    setTimeout(syncToFirebase, 100);
+                }
+            };
+
             const startGame = async () => {
                 console.log('Starting game...');
                 setGameStarted(true);
@@ -115,6 +189,8 @@
                 setCurrentHalf(1);
                 setGameTime('20:00');
                 setLastSubTime(null);
+                setVtScore(0);
+                setOppScore(0);
                 
                 if (window.firebaseDb) {
                     try {
@@ -126,6 +202,8 @@
                             ended: false,
                             currentHalf: 1,
                             gameTime: '20:00',
+                            vtScore: 0,
+                            oppScore: 0,
                             opponent: gameSchedule.find(g => g.date === selectedGame)?.opponent || 'Opponent',
                             currentLineup: initialLineup,
                             startingLineup: initialLineup,
@@ -140,12 +218,27 @@
                             vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
                             opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
                         });
+
+                        // Initialize live game data
+                        const liveDataRef = window.firebaseDb.ref(`live-game/${selectedGame}`);
+                        await window.firebaseDb.set(liveDataRef, {
+                            vtScore: 0,
+                            oppScore: 0,
+                            gameTime: '20:00',
+                            currentHalf: 1,
+                            currentLineup: initialLineup,
+                            currentStats: {
+                                vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                                opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+                            },
+                            lastUpdated: new Date().toISOString()
+                        });
                         
                         const startRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}/game-start`);
                         await window.firebaseDb.set(startRef, {
                             timestamp: '20:00 1st',
                             gameTime: '20:00 1st',
-                            ourScore: 0,
+                            vtScore: 0,
                             oppScore: 0,
                             change: 'Game Started',
                             lineup: initialLineup,
@@ -200,11 +293,14 @@
             const endGame = async () => {
                 setGameStarted(false);
                 setGameEnded(true);
+                setAutoSync(false);
                 
                 if (window.firebaseDb) {
                     const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
                     await window.firebaseDb.update(gameInfoRef, {
                         ended: true,
+                        finalVtScore: vtScore,
+                        finalOppScore: oppScore,
                         endTime: new Date().toISOString()
                     });
 
@@ -248,8 +344,8 @@
             };
 
             const confirmAllChanges = async () => {
-                if (!pendingGameTime || ourScore === '' || oppScore === '') {
-                    alert('Please fill in game time and scores before making changes.');
+                if (!pendingGameTime) {
+                    alert('Please fill in game time before making changes.');
                     return;
                 }
             
@@ -271,8 +367,8 @@
                 const changeRecords = pendingChanges.map(change => ({
                     timestamp: fullGameTime,
                     gameTime: fullGameTime,
-                    ourScore: parseInt(ourScore),
-                    oppScore: parseInt(oppScore),
+                    vtScore: vtScore,
+                    oppScore: oppScore,
                     change: `${roster.find(p => p.id === change.oldPlayerId)?.name} OUT, ${roster.find(p => p.id === change.newPlayerId)?.name} IN`,
                     lineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
                     half: currentHalf,
@@ -312,8 +408,6 @@
                 setPendingChanges([]);
                 setShowTimeScoreModal(false);
                 setPendingGameTime('');
-                setOurScore('');
-                setOppScore('');
             };
 
             const showConfirmModal = () => {
@@ -357,9 +451,9 @@
                 };
                 setCurrentStats(newStats);
                 
-                if (window.firebaseDb) {
-                    const statsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
-                    await window.firebaseDb.set(statsRef, newStats);
+                // If auto-sync is off, sync immediately on stat changes
+                if (!autoSync && window.firebaseDb) {
+                    setTimeout(syncToFirebase, 100);
                 }
             };
 
@@ -372,16 +466,43 @@
                             <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                 VT Basketball Lineup Tracker
                             </h1>
-                            <button
-                                onClick={() => setDarkMode(!darkMode)}
-                                className={`px-4 py-2 rounded-md ${
-                                    darkMode 
-                                        ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-600' 
-                                        : 'bg-gray-800 text-white hover:bg-gray-700'
-                                }`}
-                            >
-                                {darkMode ? '☀️ Light' : '🌙 Dark'}
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {gameStarted && (
+                                    <div className="flex items-center gap-2">
+                                        <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            Auto-Sync:
+                                        </label>
+                                        <button
+                                            onClick={() => setAutoSync(!autoSync)}
+                                            className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                                                autoSync 
+                                                    ? 'bg-green-600 text-white hover:bg-green-700' 
+                                                    : 'bg-gray-500 text-white hover:bg-gray-600'
+                                            }`}
+                                        >
+                                            {autoSync ? 'ON' : 'OFF'}
+                                        </button>
+                                        {!autoSync && (
+                                            <button
+                                                onClick={syncToFirebase}
+                                                className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+                                            >
+                                                Sync Now
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                                <button
+                                    onClick={() => setDarkMode(!darkMode)}
+                                    className={`px-4 py-2 rounded-md ${
+                                        darkMode 
+                                            ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-600' 
+                                            : 'bg-gray-800 text-white hover:bg-gray-700'
+                                    }`}
+                                >
+                                    {darkMode ? '☀️ Light' : '🌙 Dark'}
+                                </button>
+                            </div>
                         </div>
 
                         <div className={`rounded-lg shadow-lg p-4 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
@@ -451,161 +572,154 @@
                                 </div>
                             </div>
                         </div>
-                        
-                        {pendingChanges.length > 0 && (
-                            <div className={`rounded-lg p-4 mb-6 border ${darkMode ? 'bg-yellow-800 border-yellow-600' : 'bg-yellow-100 border-yellow-400'}`}>
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <h3 className={`font-semibold ${darkMode ? 'text-yellow-100' : 'text-yellow-800'}`}>
-                                            Pending Substitutions ({pendingChanges.length})
-                                        </h3>
-                                        <div className={`text-sm ${darkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>
-                                            {pendingChanges.map((change, index) => (
-                                                <div key={index}>
-                                                    {roster.find(p => p.id === change.oldPlayerId)?.name} → {roster.find(p => p.id === change.newPlayerId)?.name}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={cancelChanges}
-                                            className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={showConfirmModal}
-                                            className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
-                                        >
-                                            Confirm All
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        
+
+                        {/* Live Scoreboard */}
                         <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'} ${
                             !gameStarted ? 'opacity-50' : ''
                         }`}>
-                            <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Current Lineup (5 Active Players)
+                            <h2 className={`text-xl font-semibold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                Live Score
                                 {!gameStarted && <span className="text-sm font-normal text-orange-500 ml-2">Start game to enable</span>}
                             </h2>
-                            <div className="grid grid-cols-5 gap-4">
-                                {currentLineup.map((playerId, index) => (
-                                    <div key={index} className="text-center">
-                                        <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                            Player {index + 1}
-                                        </label>
-                                        <select
-                                            value={playerId}
-                                            onChange={(e) => handleLineupChange(index, e.target.value)}
-                                            disabled={!gameStarted}
-                                            className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                !gameStarted ? 'cursor-not-allowed' : ''
+                            
+                            <div className="grid grid-cols-2 gap-8">
+                                {/* Virginia Tech Score */}
+                                <div className="text-center">
+                                    <h3 className={`text-lg font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        Virginia Tech
+                                    </h3>
+                                    <div className="relative group">
+                                        <div className={`text-4xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                            {vtScore}
+                                        </div>
+                                        <button
+                                            onClick={() => updateScore('vt', -1)}
+                                            disabled={!gameStarted || vtScore === 0}
+                                            className={`absolute top-0 right-0 w-6 h-6 text-xs rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${
+                                                !gameStarted || vtScore === 0 ? 'cursor-not-allowed' : ''
                                             } ${
                                                 darkMode 
-                                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                                    : 'bg-white border-gray-300 text-gray-900'
+                                                    ? 'bg-red-600 text-white hover:bg-red-700' 
+                                                    : 'bg-red-500 text-white hover:bg-red-600'
                                             }`}
+                                            title="Correct score (-1)"
                                         >
-                                            <option value={playerId}>
-                                                {roster.find(p => p.id === playerId)?.name}
-                                            </option>
-                                            {roster.filter(player => 
-                                                (!currentLineup.includes(player.id) || player.id === playerId)
-                                            ).map(player => (
-                                                <option key={player.id} value={player.id}>
-                                                    {player.name} ({player.position})
-                                                </option>
-                                            ))}
-                                        </select>
+                                            -1
+                                        </button>
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {showTimeScoreModal && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                                <div className={`p-6 rounded-lg shadow-xl max-w-md w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Record Time & Score
-                                    </h3>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                Game Time ({currentHalf === 1 ? '1st Half' : currentHalf === 2 ? '2nd Half' : 'Overtime'})
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={pendingGameTime}
-                                                onChange={(e) => setPendingGameTime(e.target.value)}
-                                                placeholder="e.g., 15:42"
-                                                className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                    darkMode 
-                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                }`}
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                    VT Score
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={ourScore}
-                                                    onChange={(e) => setOurScore(e.target.value)}
-                                                    placeholder="0"
-                                                    className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                        darkMode 
-                                                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                    }`}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                    {currentOpponent} Score
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={oppScore}
-                                                    onChange={(e) => setOppScore(e.target.value)}
-                                                    placeholder="0"
-                                                    className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                        darkMode 
-                                                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                            : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                    }`}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-3 mt-6">
+                                    <div className="flex justify-center gap-2">
                                         <button
-                                            onClick={() => setShowTimeScoreModal(false)}
-                                            className={`flex-1 px-4 py-2 border rounded-md ${
+                                            onClick={() => updateScore('vt', 1)}
+                                            disabled={!gameStarted}
+                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                            } ${
                                                 darkMode 
-                                                    ? 'text-gray-300 border-gray-600 hover:bg-gray-700' 
-                                                    : 'text-gray-600 border-gray-300 hover:bg-gray-50'
+                                                    ? 'bg-orange-600 text-white hover:bg-orange-700' 
+                                                    : 'bg-orange-500 text-white hover:bg-orange-600'
                                             }`}
                                         >
-                                            Cancel
+                                            +1
                                         </button>
                                         <button
-                                            onClick={confirmAllChanges}
-                                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                            onClick={() => updateScore('vt', 2)}
+                                            disabled={!gameStarted}
+                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                            } ${
+                                                darkMode 
+                                                    ? 'bg-orange-600 text-white hover:bg-orange-700' 
+                                                    : 'bg-orange-500 text-white hover:bg-orange-600'
+                                            }`}
                                         >
-                                            Confirm Changes
+                                            +2
+                                        </button>
+                                        <button
+                                            onClick={() => updateScore('vt', 3)}
+                                            disabled={!gameStarted}
+                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                            } ${
+                                                darkMode 
+                                                    ? 'bg-orange-600 text-white hover:bg-orange-700' 
+                                                    : 'bg-orange-500 text-white hover:bg-orange-600'
+                                            }`}
+                                        >
+                                            +3
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Opponent Score */}
+                                <div className="text-center">
+                                    <h3 className={`text-lg font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        {currentOpponent}
+                                    </h3>
+                                    <div className="relative group">
+                                        <div className={`text-4xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                            {oppScore}
+                                        </div>
+                                        <button
+                                            onClick={() => updateScore('opponent', -1)}
+                                            disabled={!gameStarted || oppScore === 0}
+                                            className={`absolute top-0 right-0 w-6 h-6 text-xs rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${
+                                                !gameStarted || oppScore === 0 ? 'cursor-not-allowed' : ''
+                                            } ${
+                                                darkMode 
+                                                    ? 'bg-red-600 text-white hover:bg-red-700' 
+                                                    : 'bg-red-500 text-white hover:bg-red-600'
+                                            }`}
+                                            title="Correct score (-1)"
+                                        >
+                                            -1
+                                        </button>
+                                    </div>
+                                    <div className="flex justify-center gap-2">
+                                        <button
+                                            onClick={() => updateScore('opponent', 1)}
+                                            disabled={!gameStarted}
+                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                            } ${
+                                                darkMode 
+                                                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                                            }`}
+                                        >
+                                            +1
+                                        </button>
+                                        <button
+                                            onClick={() => updateScore('opponent', 2)}
+                                            disabled={!gameStarted}
+                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                            } ${
+                                                darkMode 
+                                                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                                            }`}
+                                        >
+                                            +2
+                                        </button>
+                                        <button
+                                            onClick={() => updateScore('opponent', 3)}
+                                            disabled={!gameStarted}
+                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                            } ${
+                                                darkMode 
+                                                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                                            }`}
+                                        >
+                                            +3
                                         </button>
                                     </div>
                                 </div>
                             </div>
-                        )}
+                        </div>
 
+                        {/* Game Stats */}
                         <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'} ${
                             !gameStarted ? 'opacity-50' : ''
                         }`}>
@@ -618,8 +732,8 @@
                                 <h3 className={`text-lg font-medium mb-3 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                     Virginia Tech
                                 </h3>
-                                <div className="grid grid-cols-4 gap-4">
-                                    {Object.entries(currentStats.vt).map(([stat, value]) => (
+                                <div className="grid grid-cols-6 gap-4">
+                                    {['possessions', 'offensiveRebounds', 'defensiveRebounds', 'turnovers'].map((stat) => (
                                         <div key={stat} className="text-center">
                                             <div className="flex justify-center items-center gap-2 mb-2">
                                                 <button
@@ -636,7 +750,7 @@
                                                     -
                                                 </button>
                                                 <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {value}
+                                                    {currentStats.vt[stat]}
                                                 </div>
                                                 <button
                                                     onClick={() => updateStat('vt', stat, 1)}
@@ -653,10 +767,55 @@
                                                 </button>
                                             </div>
                                             <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat.replace(/([A-Z])/g, ' $1').trim()}
+                                                {stat === 'offensiveRebounds' ? 'Off Reb' : 
+                                                 stat === 'defensiveRebounds' ? 'Def Reb' : 
+                                                 stat.replace(/([A-Z])/g, ' $1').trim()}
                                             </div>
                                         </div>
                                     ))}
+                                    
+                                    {/* Score buttons for VT in stats section */}
+                                    <div className="text-center">
+                                        <div className="flex justify-center items-center gap-2 mb-2">
+                                            <button
+                                                onClick={() => updateScore('vt', 1)}
+                                                disabled={!gameStarted}
+                                                className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                    !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                                } ${
+                                                    darkMode 
+                                                        ? 'bg-orange-600 text-white hover:bg-orange-700' 
+                                                        : 'bg-orange-500 text-white hover:bg-orange-600'
+                                                }`}
+                                            >
+                                                +1
+                                            </button>
+                                        </div>
+                                        <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                            +1 Pt
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="text-center">
+                                        <div className="flex justify-center items-center gap-2 mb-2">
+                                            <button
+                                                onClick={() => updateScore('vt', 2)}
+                                                disabled={!gameStarted}
+                                                className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                    !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                                } ${
+                                                    darkMode 
+                                                        ? 'bg-orange-600 text-white hover:bg-orange-700' 
+                                                        : 'bg-orange-500 text-white hover:bg-orange-600'
+                                                }`}
+                                            >
+                                                +2
+                                            </button>
+                                        </div>
+                                        <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                            +2 Pts
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -664,8 +823,8 @@
                                 <h3 className={`text-lg font-medium mb-3 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                     {currentOpponent}
                                 </h3>
-                                <div className="grid grid-cols-4 gap-4">
-                                    {Object.entries(currentStats.opponent).map(([stat, value]) => (
+                                <div className="grid grid-cols-6 gap-4">
+                                    {['possessions', 'offensiveRebounds', 'defensiveRebounds', 'turnovers'].map((stat) => (
                                         <div key={stat} className="text-center">
                                             <div className="flex justify-center items-center gap-2 mb-2">
                                                 <button
@@ -682,7 +841,7 @@
                                                     -
                                                 </button>
                                                 <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {value}
+                                                    {currentStats.opponent[stat]}
                                                 </div>
                                                 <button
                                                     onClick={() => updateStat('opponent', stat, 1)}
@@ -699,54 +858,52 @@
                                                 </button>
                                             </div>
                                             <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat.replace(/([A-Z])/g, ' $1').trim()}
+                                                {stat === 'offensiveRebounds' ? 'Off Reb' : 
+                                                 stat === 'defensiveRebounds' ? 'Def Reb' : 
+                                                 stat.replace(/([A-Z])/g, ' $1').trim()}
                                             </div>
                                         </div>
                                     ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Lineup Changes History
-                            </h2>
-                            {lineupHistory.length === 0 ? (
-                                <p className={`text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                    No lineup changes yet
-                                </p>
-                            ) : (
-                                <div className="space-y-3">
-                                    {lineupHistory.map((record, index) => (
-                                        <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {record.change}
-                                                    </div>
-                                                    <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        {record.gameTime} | Score: {record.ourScore}-{record.oppScore}
-                                                    </div>
-                                                    <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                        Lineup: {record.lineup}
-                                                    </div>
-                                                </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                    {record.timestamp}
-                                                </div>
-                                            </div>
+                                    
+                                    {/* Score buttons for Opponent in stats section */}
+                                    <div className="text-center">
+                                        <div className="flex justify-center items-center gap-2 mb-2">
+                                            <button
+                                                onClick={() => updateScore('opponent', 1)}
+                                                disabled={!gameStarted}
+                                                className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                    !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                                } ${
+                                                    darkMode 
+                                                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                                                }`}
+                                            >
+                                                +1
+                                            </button>
                                         </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<BasketballLineupTracker />);
-    </script>
-</body>
-</html>
+                                        <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                            +1 Pt
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="text-center">
+                                        <div className="flex justify-center items-center gap-2 mb-2">
+                                            <button
+                                                onClick={() => updateScore('opponent', 2)}
+                                                disabled={!gameStarted}
+                                                className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+                                                    !gameStarted ? 'cursor-not-allowed opacity-50' : ''
+                                                } ${
+                                                    darkMode 
+                                                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                                                }`}
+                                            >
+                                                +2
+                                            </button>
+                                        </div>
+                                        <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                            +2 Pts
+                                        </div>
+                                    </div>
