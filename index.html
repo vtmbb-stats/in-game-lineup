@@ -45,7 +45,6 @@
         const BasketballLineupTracker = () => {
             const [darkMode, setDarkMode] = useState(false);
             const [autoSync, setAutoSync] = useState(false);
-            const autoSyncInterval = useRef(null);
             const [selectedGame, setSelectedGame] = useState('2024-11-03');
             const [gameStarted, setGameStarted] = useState(false);
             const [currentHalf, setCurrentHalf] = useState(1);
@@ -127,23 +126,6 @@
                     console.error('Error syncing:', error);
                 }
             };
-
-            useEffect(() => {
-                if (autoSync && gameStarted) {
-                    autoSyncInterval.current = setInterval(syncToFirebase, 2000);
-                } else {
-                    if (autoSyncInterval.current) {
-                        clearInterval(autoSyncInterval.current);
-                        autoSyncInterval.current = null;
-                    }
-                }
-
-                return () => {
-                    if (autoSyncInterval.current) {
-                        clearInterval(autoSyncInterval.current);
-                    }
-                };
-            }, [autoSync, gameStarted, vtScore, oppScore, gameTime, currentHalf, currentLineup, currentStats]);
 
             const updateScore = (team, points) => {
                 if (!gameStarted) return;
@@ -466,7 +448,6 @@
                             </div>
                         </div>
 
-                        {/* Live Scoreboard */}
                         <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'} ${
                             !gameStarted ? 'opacity-50' : ''
                         }`}>
@@ -650,7 +631,6 @@
                             </div>
                         )}
 
-                        {/* Game Stats */}
                         <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'} ${
                             !gameStarted ? 'opacity-50' : ''
                         }`}>
@@ -752,245 +732,6 @@
                                             </div>
                                         </div>
                                     ))}
-                                </div>
-                            </div>
-                                                    }`}
-                                                >
-                                                    -
-                                                </button>
-                                                <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.vt[stat]}
-                                                </div>
-                                                <button
-                                                    onClick={() => updateStat('vt', stat, 1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-green-600 text-white hover:bg-green-700' 
-                                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                                    }`}
-                                                >
-                                                    +
-                                                </button>
-                                            </div>
-                                            <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat === 'offensiveRebounds' ? 'Off Reb' : 
-                                                 stat === 'defensiveRebounds' ? 'Def Reb' : 
-                                                 stat.replace(/([A-Z])/g, ' $1').trim()}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div>
-                                <h3 className={`text-lg font-medium mb-3 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    {currentOpponent}
-                                </h3>
-                                <div className="grid grid-cols-4 gap-4">
-                                    {['possessions', 'offensiveRebounds', 'defensiveRebounds', 'turnovers'].map((stat) => (
-                                        <div key={stat} className="text-center">
-                                            <div className="flex justify-center items-center gap-2 mb-2">
-                                                <button
-                                                    onClick={() => updateStat('opponent', stat, -1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-red-600 text-white hover:bg-red-700' 
-                                                            : 'bg-red-500 text-white hover:bg-red-600'
-                                                    }`}
-                                                >
-                                                    -
-                                                </button>
-                                                <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.opponent[stat]}
-                                                </div>
-                                                <button
-                                                    onClick={() => updateStat('opponent', stat, 1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-green-600 text-white hover:bg-green-700' 
-                                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                                    }`}
-                                                >
-                                                    +
-                                                </button>
-                                            </div>
-                                            <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat === 'offensiveRebounds' ? 'Off Reb' : 
-                                                 stat === 'defensiveRebounds' ? 'Def Reb' : 
-                                                 stat.replace(/([A-Z])/g, ' $1').trim()}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>                    }`}
-                                                >
-                                                    -
-                                                </button>
-                                                <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.vt[stat]}
-                                                </div>
-                                                <button
-                                                    onClick={() => updateStat('vt', stat, 1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-green-600 text-white hover:bg-green-700' 
-                                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                                    }`}
-                                                >
-                                                    +
-                                                </button>
-                                            </div>
-                                            <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat === 'offensiveRebounds' ? 'Off Reb' : 
-                                                 stat === 'defensiveRebounds' ? 'Def Reb' : 
-                                                 stat.replace(/([A-Z])/g, ' $1').trim()}
-                                            </div>
-                                        </div>
-                                    ))}
-                                    
-                                    <div className="text-center">
-                                        <div className="flex justify-center items-center gap-2 mb-2">
-                                            <button
-                                                onClick={() => updateScore('vt', 1)}
-                                                disabled={!gameStarted}
-                                                className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                    !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                } ${
-                                                    darkMode 
-                                                        ? 'bg-orange-600 text-white hover:bg-orange-700' 
-                                                        : 'bg-orange-500 text-white hover:bg-orange-600'
-                                                }`}
-                                            >
-                                                +1
-                                            </button>
-                                        </div>
-                                        <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                            +1 Pt
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="text-center">
-                                        <div className="flex justify-center items-center gap-2 mb-2">
-                                            <button
-                                                onClick={() => updateScore('vt', 2)}
-                                                disabled={!gameStarted}
-                                                className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                    !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                } ${
-                                                    darkMode 
-                                                        ? 'bg-orange-600 text-white hover:bg-orange-700' 
-                                                        : 'bg-orange-500 text-white hover:bg-orange-600'
-                                                }`}
-                                            >
-                                                +2
-                                            </button>
-                                        </div>
-                                        <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                            +2 Pts
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div>
-                                <h3 className={`text-lg font-medium mb-3 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    {currentOpponent}
-                                </h3>
-                                <div className="grid grid-cols-6 gap-4">
-                                    {['possessions', 'offensiveRebounds', 'defensiveRebounds', 'turnovers'].map((stat) => (
-                                        <div key={stat} className="text-center">
-                                            <div className="flex justify-center items-center gap-2 mb-2">
-                                                <button
-                                                    onClick={() => updateStat('opponent', stat, -1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-red-600 text-white hover:bg-red-700' 
-                                                            : 'bg-red-500 text-white hover:bg-red-600'
-                                                    }`}
-                                                >
-                                                    -
-                                                </button>
-                                                <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.opponent[stat]}
-                                                </div>
-                                                <button
-                                                    onClick={() => updateStat('opponent', stat, 1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-green-600 text-white hover:bg-green-700' 
-                                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                                    }`}
-                                                >
-                                                    +
-                                                </button>
-                                            </div>
-                                            <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat === 'offensiveRebounds' ? 'Off Reb' : 
-                                                 stat === 'defensiveRebounds' ? 'Def Reb' : 
-                                                 stat.replace(/([A-Z])/g, ' $1').trim()}
-                                            </div>
-                                        </div>
-                                    ))}
-                                    
-                                    <div className="text-center">
-                                        <div className="flex justify-center items-center gap-2 mb-2">
-                                            <button
-                                                onClick={() => updateScore('opponent', 1)}
-                                                disabled={!gameStarted}
-                                                className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                    !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                } ${
-                                                    darkMode 
-                                                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                                                        : 'bg-blue-500 text-white hover:bg-blue-600'
-                                                }`}
-                                            >
-                                                +1
-                                            </button>
-                                        </div>
-                                        <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                            +1 Pt
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="text-center">
-                                        <div className="flex justify-center items-center gap-2 mb-2">
-                                            <button
-                                                onClick={() => updateScore('opponent', 2)}
-                                                disabled={!gameStarted}
-                                                className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                    !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                } ${
-                                                    darkMode 
-                                                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                                                        : 'bg-blue-500 text-white hover:bg-blue-600'
-                                                }`}
-                                            >
-                                                +2
-                                            </button>
-                                        </div>
-                                        <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                            +2 Pts
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
