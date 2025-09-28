@@ -46,10 +46,32 @@
             const [darkMode, setDarkMode] = useState(false);
             const [autoSync, setAutoSync] = useState(false);
             const autoSyncInterval = useRef(null);
-
-            useEffect(() => {
-                document.body.className = darkMode ? 'bg-gray-900' : 'bg-gray-100';
-            }, [darkMode]);
+            const [selectedGame, setSelectedGame] = useState('2024-11-03');
+            const [gameStarted, setGameStarted] = useState(false);
+            const [currentHalf, setCurrentHalf] = useState(1);
+            const [gameTime, setGameTime] = useState('20:00');
+            const [currentLineup, setCurrentLineup] = useState([3, 2, 17, 1, 13]);
+            const [pendingChanges, setPendingChanges] = useState([]);
+            const [showTimeModal, setShowTimeModal] = useState(false);
+            const [pendingGameTime, setPendingGameTime] = useState('');
+            const [vtScore, setVtScore] = useState(0);
+            const [oppScore, setOppScore] = useState(0);
+            const [lineupHistory, setLineupHistory] = useState([]);
+            
+            const [currentStats, setCurrentStats] = useState({
+                vt: {
+                    possessions: 0,
+                    offensiveRebounds: 0,
+                    defensiveRebounds: 0,
+                    turnovers: 0
+                },
+                opponent: {
+                    possessions: 0,
+                    offensiveRebounds: 0,
+                    defensiveRebounds: 0,
+                    turnovers: 0
+                }
+            });
 
             const gameSchedule = [
                 { 
@@ -76,36 +98,12 @@
                 { id: 77, name: 'Antonio Dorn', position: 'C' }
             ];
 
-            const [selectedGame, setSelectedGame] = useState('2024-11-03');
-            const [gameStarted, setGameStarted] = useState(false);
-            const [currentHalf, setCurrentHalf] = useState(1);
-            const [gameTime, setGameTime] = useState('20:00');
-            const [currentLineup, setCurrentLineup] = useState([3, 2, 17, 1, 13]);
-            const [vtScore, setVtScore] = useState(0);
-            const [oppScore, setOppScore] = useState(0);
-            const [pendingChanges, setPendingChanges] = useState([]);
-            const [showTimeModal, setShowTimeModal] = useState(false);
-            const [pendingGameTime, setPendingGameTime] = useState('');
-            const [lineupHistory, setLineupHistory] = useState([]);
-            
-            const [currentStats, setCurrentStats] = useState({
-                vt: {
-                    possessions: 0,
-                    offensiveRebounds: 0,
-                    defensiveRebounds: 0,
-                    turnovers: 0
-                },
-                opponent: {
-                    possessions: 0,
-                    offensiveRebounds: 0,
-                    defensiveRebounds: 0,
-                    turnovers: 0
-                }
-            });
-
             const currentOpponent = gameSchedule.find(game => game.date === selectedGame)?.opponent || 'Opponent';
 
-            // Auto-sync function
+            useEffect(() => {
+                document.body.className = darkMode ? 'bg-gray-900' : 'bg-gray-100';
+            }, [darkMode]);
+
             const syncToFirebase = async () => {
                 if (!gameStarted || !window.firebaseDb) return;
                 
@@ -124,22 +122,12 @@
                     const statsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
                     await window.firebaseDb.set(statsRef, currentStats);
 
-                    const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
-                    await window.firebaseDb.update(gameInfoRef, {
-                        vtScore,
-                        oppScore,
-                        gameTime,
-                        currentHalf,
-                        currentLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ')
-                    });
-
-                    console.log('Auto-synced to Firebase');
+                    console.log('Synced to Firebase');
                 } catch (error) {
-                    console.error('Error syncing to Firebase:', error);
+                    console.error('Error syncing:', error);
                 }
             };
 
-            // Start/stop auto-sync
             useEffect(() => {
                 if (autoSync && gameStarted) {
                     autoSyncInterval.current = setInterval(syncToFirebase, 2000);
@@ -157,15 +145,13 @@
                 };
             }, [autoSync, gameStarted, vtScore, oppScore, gameTime, currentHalf, currentLineup, currentStats]);
 
-            const updateScore = async (team, points) => {
+            const updateScore = (team, points) => {
                 if (!gameStarted) return;
                 
                 if (team === 'vt') {
-                    const newScore = vtScore + points;
-                    setVtScore(newScore);
+                    setVtScore(prev => Math.max(0, prev + points));
                 } else {
-                    const newScore = oppScore + points;
-                    setOppScore(newScore);
+                    setOppScore(prev => Math.max(0, prev + points));
                 }
 
                 if (!autoSync) {
@@ -173,7 +159,7 @@
                 }
             };
 
-            const updateStat = async (team, statName, value) => {
+            const updateStat = (team, statName, value) => {
                 const newStats = {
                     ...currentStats,
                     [team]: {
@@ -183,8 +169,53 @@
                 };
                 setCurrentStats(newStats);
                 
-                if (!autoSync && window.firebaseDb) {
+                if (!autoSync) {
                     setTimeout(syncToFirebase, 100);
+                }
+            };
+
+            const startGame = async () => {
+                setGameStarted(true);
+                setCurrentHalf(1);
+                setGameTime('20:00');
+                setVtScore(0);
+                setOppScore(0);
+                setCurrentStats({
+                    vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                    opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+                });
+                
+                if (window.firebaseDb) {
+                    try {
+                        const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                        await window.firebaseDb.set(gameInfoRef, {
+                            started: true,
+                            ended: false,
+                            currentHalf: 1,
+                            gameTime: '20:00',
+                            vtScore: 0,
+                            oppScore: 0,
+                            opponent: currentOpponent,
+                            startTime: new Date().toISOString()
+                        });
+                        
+                        console.log('Game started');
+                    } catch (error) {
+                        console.error('Error starting game:', error);
+                    }
+                }
+            };
+
+            const endGame = async () => {
+                setGameStarted(false);
+                setAutoSync(false);
+                
+                if (window.firebaseDb) {
+                    const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                    await window.firebaseDb.update(gameInfoRef, {
+                        ended: true,
+                        endTime: new Date().toISOString()
+                    });
                 }
             };
 
@@ -198,17 +229,9 @@
                 let newPendingChanges;
                 if (existingChangeIndex !== -1) {
                     newPendingChanges = [...pendingChanges];
-                    newPendingChanges[existingChangeIndex] = {
-                        positionIndex,
-                        oldPlayerId,
-                        newPlayerId
-                    };
+                    newPendingChanges[existingChangeIndex] = { positionIndex, oldPlayerId, newPlayerId };
                 } else {
-                    newPendingChanges = [...pendingChanges, {
-                        positionIndex,
-                        oldPlayerId,
-                        newPlayerId
-                    }];
+                    newPendingChanges = [...pendingChanges, { positionIndex, oldPlayerId, newPlayerId }];
                 }
                 setPendingChanges(newPendingChanges);
                 
@@ -238,26 +261,11 @@
                     oppScore: oppScore,
                     change: `${roster.find(p => p.id === change.oldPlayerId)?.name} OUT, ${roster.find(p => p.id === change.newPlayerId)?.name} IN`,
                     lineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
-                    half: currentHalf,
-                    segmentStats: {
-                        vt: { ...currentStats.vt },
-                        opponent: { ...currentStats.opponent }
-                    }
+                    half: currentHalf
                 }));
                 
                 setLineupHistory([...lineupHistory, ...changeRecords]);
                 
-                // Save to Firebase
-                if (window.firebaseDb) {
-                    const timestamp = Date.now();
-                    for (let i = 0; i < changeRecords.length; i++) {
-                        const record = changeRecords[i];
-                        const recordRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}/${timestamp}-${i}`);
-                        await window.firebaseDb.set(recordRef, record);
-                    }
-                }
-                
-                // Reset stats for new lineup
                 const resetStats = {
                     vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
                     opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
@@ -265,15 +273,6 @@
                 setCurrentStats(resetStats);
                 
                 setGameTime(pendingGameTime);
-                
-                if (window.firebaseDb) {
-                    const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
-                    await window.firebaseDb.update(gameInfoRef, {
-                        gameTime: pendingGameTime,
-                        currentLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ')
-                    });
-                }
-                
                 setPendingChanges([]);
                 setShowTimeModal(false);
                 setPendingGameTime('');
@@ -290,71 +289,6 @@
             const cancelChanges = () => {
                 setCurrentLineup([3, 2, 17, 1, 13]);
                 setPendingChanges([]);
-            };
-
-            const startGame = async () => {
-                setGameStarted(true);
-                setCurrentHalf(1);
-                setGameTime('20:00');
-                setVtScore(0);
-                setOppScore(0);
-                setCurrentStats({
-                    vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
-                    opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
-                });
-                
-                if (window.firebaseDb) {
-                    try {
-                        const initialLineup = currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ');
-                        
-                        const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
-                        await window.firebaseDb.set(gameInfoRef, {
-                            started: true,
-                            ended: false,
-                            currentHalf: 1,
-                            gameTime: '20:00',
-                            vtScore: 0,
-                            oppScore: 0,
-                            opponent: currentOpponent,
-                            currentLineup: initialLineup,
-                            startTime: new Date().toISOString()
-                        });
-
-                        const currentGameRef = window.firebaseDb.ref('current-game');
-                        await window.firebaseDb.set(currentGameRef, {
-                            gameDate: selectedGame,
-                            opponent: currentOpponent,
-                            started: true,
-                            startTime: new Date().toISOString()
-                        });
-                        
-                        console.log('Game started successfully');
-                    } catch (error) {
-                        console.error('Error starting game:', error);
-                    }
-                }
-            };
-
-            const endGame = async () => {
-                setGameStarted(false);
-                setAutoSync(false);
-                
-                if (window.firebaseDb) {
-                    const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
-                    await window.firebaseDb.update(gameInfoRef, {
-                        ended: true,
-                        finalVtScore: vtScore,
-                        finalOppScore: oppScore,
-                        endTime: new Date().toISOString()
-                    });
-
-                    const currentGameRef = window.firebaseDb.ref('current-game');
-                    await window.firebaseDb.set(currentGameRef, {
-                        gameDate: null,
-                        started: false,
-                        endTime: new Date().toISOString()
-                    });
-                }
             };
 
             return (
@@ -389,163 +323,6 @@
                                             </button>
                                         )}
                                     </div>
-                        
-                        {pendingChanges.length > 0 && (
-                            <div className={`rounded-lg p-4 mb-6 border ${darkMode ? 'bg-yellow-800 border-yellow-600' : 'bg-yellow-100 border-yellow-400'}`}>
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <h3 className={`font-semibold ${darkMode ? 'text-yellow-100' : 'text-yellow-800'}`}>
-                                            Pending Substitutions ({pendingChanges.length})
-                                        </h3>
-                                        <div className={`text-sm ${darkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>
-                                            {pendingChanges.map((change, index) => (
-                                                <div key={index}>
-                                                    {roster.find(p => p.id === change.oldPlayerId)?.name} → {roster.find(p => p.id === change.newPlayerId)?.name}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={cancelChanges}
-                                            className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={showConfirmModal}
-                                            className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
-                                        >
-                                            Confirm All
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Current Lineup Section */}
-                        <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'} ${
-                            !gameStarted ? 'opacity-50' : ''
-                        }`}>
-                            <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Current Lineup (5 Active Players)
-                                {!gameStarted && <span className="text-sm font-normal text-orange-500 ml-2">Start game to enable</span>}
-                            </h2>
-                            <div className="grid grid-cols-5 gap-4">
-                                {currentLineup.map((playerId, index) => (
-                                    <div key={index} className="text-center">
-                                        <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                            Player {index + 1}
-                                        </label>
-                                        <select
-                                            value={playerId}
-                                            onChange={(e) => handleLineupChange(index, e.target.value)}
-                                            disabled={!gameStarted}
-                                            className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                !gameStarted ? 'cursor-not-allowed' : ''
-                                            } ${
-                                                darkMode 
-                                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                                    : 'bg-white border-gray-300 text-gray-900'
-                                            }`}
-                                        >
-                                            <option value={playerId}>
-                                                {roster.find(p => p.id === playerId)?.name}
-                                            </option>
-                                            {roster.filter(player => 
-                                                (!currentLineup.includes(player.id) || player.id === playerId)
-                                            ).map(player => (
-                                                <option key={player.id} value={player.id}>
-                                                    {player.name} ({player.position})
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Time Modal */}
-                        {showTimeModal && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                                <div className={`p-6 rounded-lg shadow-xl max-w-md w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Record Time for Substitution
-                                    </h3>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                Game Time ({currentHalf === 1 ? '1st Half' : currentHalf === 2 ? '2nd Half' : 'Overtime'})
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={pendingGameTime}
-                                                onChange={(e) => setPendingGameTime(e.target.value)}
-                                                placeholder="e.g., 15:42"
-                                                className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                    darkMode 
-                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                }`}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-3 mt-6">
-                                        <button
-                                            onClick={() => setShowTimeModal(false)}
-                                            className={`flex-1 px-4 py-2 border rounded-md ${
-                                                darkMode 
-                                                    ? 'text-gray-300 border-gray-600 hover:bg-gray-700' 
-                                                    : 'text-gray-600 border-gray-300 hover:bg-gray-50'
-                                            }`}
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={confirmAllChanges}
-                                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                                        >
-                                            Confirm Changes
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Lineup History */}
-                        <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Lineup Changes History
-                            </h2>
-                            {lineupHistory.length === 0 ? (
-                                <p className={`text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                    No lineup changes yet
-                                </p>
-                            ) : (
-                                <div className="space-y-3">
-                                    {lineupHistory.map((record, index) => (
-                                        <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {record.change}
-                                                    </div>
-                                                    <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                        {record.gameTime} | Score: {record.vtScore}-{record.oppScore}
-                                                    </div>
-                                                    <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                        Lineup: {record.lineup}
-                                                    </div>
-                                                </div>
-                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                    {record.timestamp}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
                                 )}
                                 <button
                                     onClick={() => setDarkMode(!darkMode)}
@@ -758,6 +535,126 @@
                                 </div>
                             </div>
                         </div>
+                        
+                        {pendingChanges.length > 0 && (
+                            <div className={`rounded-lg p-4 mb-6 border ${darkMode ? 'bg-yellow-800 border-yellow-600' : 'bg-yellow-100 border-yellow-400'}`}>
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h3 className={`font-semibold ${darkMode ? 'text-yellow-100' : 'text-yellow-800'}`}>
+                                            Pending Substitutions ({pendingChanges.length})
+                                        </h3>
+                                        <div className={`text-sm ${darkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>
+                                            {pendingChanges.map((change, index) => (
+                                                <div key={index}>
+                                                    {roster.find(p => p.id === change.oldPlayerId)?.name} → {roster.find(p => p.id === change.newPlayerId)?.name}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={cancelChanges}
+                                            className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={showConfirmModal}
+                                            className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                                        >
+                                            Confirm All
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
+                        <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'} ${
+                            !gameStarted ? 'opacity-50' : ''
+                        }`}>
+                            <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                Current Lineup (5 Active Players)
+                                {!gameStarted && <span className="text-sm font-normal text-orange-500 ml-2">Start game to enable</span>}
+                            </h2>
+                            <div className="grid grid-cols-5 gap-4">
+                                {currentLineup.map((playerId, index) => (
+                                    <div key={index} className="text-center">
+                                        <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            Player {index + 1}
+                                        </label>
+                                        <select
+                                            value={playerId}
+                                            onChange={(e) => handleLineupChange(index, e.target.value)}
+                                            disabled={!gameStarted}
+                                            className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                                !gameStarted ? 'cursor-not-allowed' : ''
+                                            } ${
+                                                darkMode 
+                                                    ? 'bg-gray-700 border-gray-600 text-white' 
+                                                    : 'bg-white border-gray-300 text-gray-900'
+                                            }`}
+                                        >
+                                            <option value={playerId}>
+                                                {roster.find(p => p.id === playerId)?.name}
+                                            </option>
+                                            {roster.filter(player => 
+                                                (!currentLineup.includes(player.id) || player.id === playerId)
+                                            ).map(player => (
+                                                <option key={player.id} value={player.id}>
+                                                    {player.name} ({player.position})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {showTimeModal && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                <div className={`p-6 rounded-lg shadow-xl max-w-md w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        Record Time for Substitution
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                Game Time ({currentHalf === 1 ? '1st Half' : currentHalf === 2 ? '2nd Half' : 'Overtime'})
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={pendingGameTime}
+                                                onChange={(e) => setPendingGameTime(e.target.value)}
+                                                placeholder="e.g., 15:42"
+                                                className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                                    darkMode 
+                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                                                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                                                }`}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3 mt-6">
+                                        <button
+                                            onClick={() => setShowTimeModal(false)}
+                                            className={`flex-1 px-4 py-2 border rounded-md ${
+                                                darkMode 
+                                                    ? 'text-gray-300 border-gray-600 hover:bg-gray-700' 
+                                                    : 'text-gray-600 border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={confirmAllChanges}
+                                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                        >
+                                            Confirm Changes
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Game Stats */}
                         <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'} ${
@@ -947,6 +844,40 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <h2 className={`text-xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                Lineup Changes History
+                            </h2>
+                            {lineupHistory.length === 0 ? (
+                                <p className={`text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    No lineup changes yet
+                                </p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {lineupHistory.map((record, index) => (
+                                        <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {record.change}
+                                                    </div>
+                                                    <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        {record.gameTime} | Score: {record.vtScore}-{record.oppScore}
+                                                    </div>
+                                                    <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                        Lineup: {record.lineup}
+                                                    </div>
+                                                </div>
+                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                    {record.timestamp}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
