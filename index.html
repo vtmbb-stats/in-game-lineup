@@ -224,9 +224,28 @@
                             startTime: new Date().toISOString()
                         });
 
+                        // Initialize live game data
+                        const liveDataRef = window.firebaseDb.ref(`live-game/${selectedGame}`);
+                        await window.firebaseDb.set(liveDataRef, {
+                            vtScore: 0,
+                            oppScore: 0,
+                            gameTime: '20:00',
+                            currentHalf: 1,
+                            currentLineup: initialLineup,
+                            currentStats: {
+                                vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                                opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+                            },
+                            lastUpdated: new Date().toISOString()
+                        });
+
                         // Initialize player stats in Firebase
                         const playerStatsRef = window.firebaseDb.ref(`player-stats/${selectedGame}`);
                         await window.firebaseDb.set(playerStatsRef, initialPlayerStats);
+                        
+                        // Clear any old lineup changes
+                        const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
+                        await window.firebaseDb.set(lineupChangesRef, {});
                         
                         console.log('Game started');
                     } catch (error) {
@@ -298,10 +317,34 @@
                     oppScore: oppScore,
                     change: `${roster.find(p => p.id === change.oldPlayerId)?.name} OUT, ${roster.find(p => p.id === change.newPlayerId)?.name} IN`,
                     lineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
-                    half: currentHalf
+                    half: currentHalf,
+                    segmentStats: currentStats
                 }));
                 
-                setLineupHistory([...lineupHistory, ...changeRecords]);
+                const newLineupHistory = [...lineupHistory, ...changeRecords];
+                setLineupHistory(newLineupHistory);
+                
+                // Write lineup changes to Firebase
+                if (window.firebaseDb) {
+                    try {
+                        const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
+                        const updates = {};
+                        newLineupHistory.forEach((record, index) => {
+                            updates[`${index}`] = record;
+                        });
+                        await window.firebaseDb.set(lineupChangesRef, updates);
+                        
+                        // Update game info with current lineup
+                        const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                        await window.firebaseDb.update(gameInfoRef, {
+                            currentLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                            currentHalf: currentHalf,
+                            gameTime: pendingGameTime
+                        });
+                    } catch (error) {
+                        console.error('Error writing lineup changes to Firebase:', error);
+                    }
+                }
                 
                 const resetStats = {
                     vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
