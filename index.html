@@ -112,40 +112,65 @@
             useEffect(() => {
                 if (!window.firebaseDb) return;
 
-                const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
-                
-                // Get current game state from Firebase
-                const unsubscribe = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
-                    if (snapshot.exists()) {
-                        const data = snapshot.val();
-                        
-                        // Only sync if game is started and not ended
-                        if (data.started && !data.ended && !gameStarted) {
-                            // Sync game state from Firebase
-                            setGameStarted(true);
-                            setCurrentHalf(data.currentHalf || 1);
-                            setGameTime(data.gameTime || '20:00');
-                            setVtScore(data.vtScore || 0);
-                            setOppScore(data.oppScore || 0);
+                const loadLiveGame = async () => {
+                    const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
+                    const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
+                    const playerStatsRef = window.firebaseDb.ref(`player-stats/${selectedGame}`);
+                    
+                    // Get current game state from Firebase
+                    window.firebaseDb.onValue(gameInfoRef, async (snapshot) => {
+                        if (snapshot.exists()) {
+                            const data = snapshot.val();
                             
-                            // Parse and set current lineup
-                            if (data.currentLineup) {
-                                const lineupIds = data.currentLineup.split(', ').map(name => 
-                                    roster.find(p => p.name === name)?.id
-                                ).filter(id => id !== undefined);
-                                if (lineupIds.length === 5) {
-                                    setCurrentLineup(lineupIds);
+                            // Only sync if game is started and not ended
+                            if (data.started && !data.ended && !gameStarted) {
+                                // Sync game state from Firebase
+                                setGameStarted(true);
+                                setCurrentHalf(data.currentHalf || 1);
+                                setGameTime(data.gameTime || '20:00');
+                                setVtScore(data.vtScore || 0);
+                                setOppScore(data.oppScore || 0);
+                                
+                                // Parse and set current lineup
+                                if (data.currentLineup) {
+                                    const lineupIds = data.currentLineup.split(', ').map(name => 
+                                        roster.find(p => p.name === name)?.id
+                                    ).filter(id => id !== undefined);
+                                    if (lineupIds.length === 5) {
+                                        setCurrentLineup(lineupIds);
+                                    }
                                 }
+                                
+                                // Load lineup change history
+                                window.firebaseDb.onValue(lineupChangesRef, (histSnapshot) => {
+                                    if (histSnapshot.exists()) {
+                                        const changes = Object.values(histSnapshot.val());
+                                        setLineupHistory(changes);
+                                    }
+                                }, { onlyOnce: true });
+                                
+                                // Load current stats
+                                window.firebaseDb.onValue(currentStatsRef, (statsSnapshot) => {
+                                    if (statsSnapshot.exists()) {
+                                        setCurrentStats(statsSnapshot.val());
+                                    }
+                                }, { onlyOnce: true });
+                                
+                                // Load player game stats
+                                window.firebaseDb.onValue(playerStatsRef, (playerSnapshot) => {
+                                    if (playerSnapshot.exists()) {
+                                        setPlayerGameStats(playerSnapshot.val());
+                                    }
+                                }, { onlyOnce: true });
+                                
+                                console.log('Synced with live game from Firebase');
                             }
-                            
-                            console.log('Synced with live game from Firebase');
                         }
-                    }
-                }, { onlyOnce: true }); // Only check once on mount
-
-                return () => {
-                    window.firebaseDb.off(gameInfoRef, unsubscribe);
+                    }, { onlyOnce: true }); // Only check once on mount
                 };
+                
+                loadLiveGame();
             }, [selectedGame]);
 
             const syncToFirebase = async () => {
