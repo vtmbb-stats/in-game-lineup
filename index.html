@@ -106,6 +106,46 @@
                 document.body.className = darkMode ? 'bg-gray-900' : 'bg-gray-100';
             }, [darkMode]);
 
+            // Check for live game on mount
+            useEffect(() => {
+                if (!window.firebaseDb) return;
+
+                const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                
+                // Get current game state from Firebase
+                const unsubscribe = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        const data = snapshot.val();
+                        
+                        // Only sync if game is started and not ended
+                        if (data.started && !data.ended && !gameStarted) {
+                            // Sync game state from Firebase
+                            setGameStarted(true);
+                            setCurrentHalf(data.currentHalf || 1);
+                            setGameTime(data.gameTime || '20:00');
+                            setVtScore(data.vtScore || 0);
+                            setOppScore(data.oppScore || 0);
+                            
+                            // Parse and set current lineup
+                            if (data.currentLineup) {
+                                const lineupIds = data.currentLineup.split(', ').map(name => 
+                                    roster.find(p => p.name === name)?.id
+                                ).filter(id => id !== undefined);
+                                if (lineupIds.length === 5) {
+                                    setCurrentLineup(lineupIds);
+                                }
+                            }
+                            
+                            console.log('Synced with live game from Firebase');
+                        }
+                    }
+                }, { onlyOnce: true }); // Only check once on mount
+
+                return () => {
+                    window.firebaseDb.off(gameInfoRef, unsubscribe);
+                };
+            }, [selectedGame]);
+
             const syncToFirebase = async () => {
                 if (!gameStarted || !window.firebaseDb) return;
                 
