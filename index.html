@@ -422,6 +422,14 @@
                             currentHalf: currentHalf,
                             gameTime: pendingGameTime
                         });
+                        
+                        // IMPORTANT: Reset current-stats in Firebase to zeros for new segment
+                        const resetStats = {
+                            vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                            opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+                        };
+                        const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
+                        await window.firebaseDb.set(currentStatsRef, resetStats);
                     } catch (error) {
                         console.error('Error writing lineup changes to Firebase:', error);
                     }
