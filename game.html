@@ -234,6 +234,7 @@
                     });
                 } else {
                     // Starting lineup played until first sub
+                    // The segmentStats in the first change belong to the starting lineup's segment
                     const firstChange = lineupHistory[0];
                     segments.push({
                         lineup: startingLineupIds,
@@ -244,15 +245,19 @@
                         stats: firstChange.segmentStats || { vt: {}, opponent: {} }
                     });
                     
-                    // Subsequent segments - each lineup change creates a NEW segment
+                    // Subsequent segments
+                    // Each lineup change's segmentStats belong to the PREVIOUS lineup (the one that just finished)
                     for (let i = 0; i < lineupHistory.length; i++) {
                         const current = lineupHistory[i];
                         const next = lineupHistory[i + 1];
                         
+                        // This is the NEW lineup that came in at this substitution
                         const lineupIds = current.lineup.split(', ').map(name => 
                             roster.find(p => p.name === name)?.id
                         ).filter(id => id !== undefined);
 
+                        // This lineup plays from current substitution until next substitution (or current time)
+                        // The stats for THIS segment are in the NEXT change record
                         segments.push({
                             lineup: lineupIds,
                             startScore: { vt: current.vtScore, opp: current.oppScore },
