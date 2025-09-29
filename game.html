@@ -3,14 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VT Basketball - Live Analytics</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <title>VT Basketball Gameday Analytics</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+        import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
         
         const firebaseConfig = {
             apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
@@ -27,32 +24,37 @@
         
         window.firebaseDb = {
             ref: (path) => ref(database, path),
-            onValue: (dbRef, callback) => onValue(dbRef, callback)
+            onValue: (dbRef, callback) => onValue(dbRef, callback),
+            off: (dbRef, callback) => off(dbRef, callback)
         };
         
-        console.log('Firebase initialized');
+        console.log('Firebase initialized successfully');
     </script>
 </head>
-<body class="bg-gray-100">
+<body>
     <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-        const GameDisplay = () => {
-            const [darkMode, setDarkMode] = useState(false);
-            const [currentGame, setCurrentGame] = useState(null);
-            const [currentOpponent, setCurrentOpponent] = useState('');
-            const [gameStatus, setGameStatus] = useState('waiting');
-            const [gameInfo, setGameInfo] = useState(null);
-            const [currentStats, setCurrentStats] = useState({
-                vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
-                opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
-            });
-            const [currentLineup, setCurrentLineup] = useState([]);
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const GamedayAnalyticsDisplay = () => {
+            const [darkMode, setDarkMode] = useState(true);
+            const [selectedGame, setSelectedGame] = useState('2024-11-03');
+            const [timeframe, setTimeframe] = useState('this-game');
+            const [sortColumn, setSortColumn] = useState('plusMinus');
+            const [sortDirection, setSortDirection] = useState('desc');
+            
+            // Game data state
+            const [gameData, setGameData] = useState(null);
             const [lineupHistory, setLineupHistory] = useState([]);
+            const [currentLineup, setCurrentLineup] = useState([]);
+            const [playerAvailability, setPlayerAvailability] = useState({});
+            const [playerStats, setPlayerStats] = useState({});
             const [lineupAnalytics, setLineupAnalytics] = useState([]);
-            const [lastUpdate, setLastUpdate] = useState(null);
 
             const roster = [
                 { id: 0, name: 'Jailen Bedford', position: 'G' },
@@ -71,665 +73,455 @@
                 { id: 77, name: 'Antonio Dorn', position: 'C' }
             ];
 
-            useEffect(() => {
-                document.body.className = darkMode ? 'bg-gray-900' : 'bg-gray-100';
-            }, [darkMode]);
+            const gameSchedule = [
+                { 
+                    date: '2024-11-03', 
+                    opponent: 'Charleston Southern',
+                    displayName: 'Nov 3 vs Charleston Southern'
+                }
+            ];
 
-            // Auto-detect which game is currently live
+            const timeframes = [
+                { value: 'this-game', label: 'This Game' },
+                { value: 'last-5', label: 'Last 5 Games' },
+                { value: 'last-10', label: 'Last 10 Games' },
+                { value: 'acc-games', label: 'ACC Games' },
+                { value: 'season', label: 'Season' }
+            ];
+
+            // Initialize player availability - all available by default
+            useEffect(() => {
+                const availability = {};
+                roster.forEach(player => {
+                    availability[player.id] = true;
+                });
+                setPlayerAvailability(availability);
+            }, []);
+
+            // Firebase data listeners
             useEffect(() => {
                 if (!window.firebaseDb) return;
 
-                const currentGameRef = window.firebaseDb.ref('current-game');
-                
-                const unsubscribe = window.firebaseDb.onValue(currentGameRef, (snapshot) => {
-                    const data = snapshot.val();
-                    
-                    if (data && data.started && data.gameDate) {
-                        setCurrentGame(data.gameDate);
-                        setCurrentOpponent(data.opponent || 'Opponent');
-                        setGameStatus('live');
-                        setLastUpdate(new Date().toLocaleTimeString());
-                    } else {
-                        setGameStatus('waiting');
-                        setCurrentGame(null);
-                        setCurrentOpponent('');
-                        setGameInfo(null);
+                const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                const liveGameRef = window.firebaseDb.ref(`live-game/${selectedGame}`);
+                const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
+
+                const unsubscribeGameInfo = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        setGameData(snapshot.val());
                     }
                 });
 
-                return () => unsubscribe();
-            }, []);
-
-            // Parse game time to minutes for calculations
-            const parseGameTime = (timeStr) => {
-                const parts = timeStr.split(' ');
-                const [minutes, seconds] = parts[0].split(':').map(Number);
-                const period = parts[1];
-                
-                let totalMinutes = 0;
-                if (period === '1st') {
-                    totalMinutes = 20 - minutes - (seconds / 60);
-                } else if (period === '2nd') {
-                    totalMinutes = 40 - minutes - (seconds / 60);
-                } else if (period === 'OT') {
-                    totalMinutes = 45 - minutes - (seconds / 60);
-                }
-                
-                return Math.max(0, totalMinutes);
-            };
-
-            // Calculate cumulative game stats for top display
-            const calculateCumulativeStats = () => {
-                const cumulative = {
-                    vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
-                    opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
-                };
-                
-                lineupHistory.forEach(change => {
-                    if (change.segmentStats) {
-                        const stats = change.segmentStats;
-                        cumulative.vt.possessions += stats.vt.possessions;
-                        cumulative.vt.offensiveRebounds += stats.vt.offensiveRebounds;
-                        cumulative.vt.defensiveRebounds += stats.vt.defensiveRebounds;
-                        cumulative.vt.turnovers += stats.vt.turnovers;
-                        cumulative.opponent.possessions += stats.opponent.possessions;
-                        cumulative.opponent.offensiveRebounds += stats.opponent.offensiveRebounds;
-                        cumulative.opponent.defensiveRebounds += stats.opponent.defensiveRebounds;
-                        cumulative.opponent.turnovers += stats.opponent.turnovers;
-                    }
-                });
-                
-                // Add current stats (for active lineup)
-                cumulative.vt.possessions += currentStats.vt.possessions;
-                cumulative.vt.offensiveRebounds += currentStats.vt.offensiveRebounds;
-                cumulative.vt.defensiveRebounds += currentStats.vt.defensiveRebounds;
-                cumulative.vt.turnovers += currentStats.vt.turnovers;
-                cumulative.opponent.possessions += currentStats.opponent.possessions;
-                cumulative.opponent.offensiveRebounds += currentStats.opponent.offensiveRebounds;
-                cumulative.opponent.defensiveRebounds += currentStats.opponent.defensiveRebounds;
-                cumulative.opponent.turnovers += currentStats.opponent.turnovers;
-                
-                return cumulative;
-            };
-
-            // Calculate lineup analytics using segmentStats
-            useEffect(() => {
-                console.log('Lineup history:', lineupHistory);
-                console.log('Current lineup:', currentLineup);
-                
-                const lineupMap = new Map();
-                let currentActiveLineup = null;
-                
-                // Get current lineup string for comparison
-                if (currentLineup.length >= 5) {
-                    currentActiveLineup = currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ');
-                    console.log('Current active lineup:', currentActiveLineup);
-                }
-                
-                // Build analytics from segmentStats in lineup changes
-                lineupHistory.forEach((change, index) => {
-                    const lineupKey = change.lineup;
-                    const isActiveLineup = lineupKey === currentActiveLineup;
-                    
-                    console.log(`Processing lineup: ${lineupKey}`);
-                    console.log(`Segment stats:`, change.segmentStats);
-                    
-                    // If this lineup combination has played before, add to existing stats
-                    if (!lineupMap.has(lineupKey)) {
-                        lineupMap.set(lineupKey, {
-                            players: lineupKey,
-                            appearances: 0,
-                            totalPlusMinus: 0,
-                            totalVTPoints: 0,
-                            totalOppPoints: 0,
-                            totalMinutes: 0,
-                            totalPossessions: 0,
-                            totalVTOffReb: 0,
-                            totalVTDefReb: 0,
-                            totalOppOffReb: 0,
-                            totalOppDefReb: 0,
-                            totalVTTurnovers: 0,
-                            isActive: isActiveLineup,
-                            segments: []
-                        });
-                    }
-                    
-                    const lineupData = lineupMap.get(lineupKey);
-                    lineupData.appearances += 1;
-                    lineupData.isActive = isActiveLineup;
-                    
-                    // Use segmentStats for this lineup's performance
-                    if (change.segmentStats) {
-                        const stats = change.segmentStats;
+                const unsubscribeLineupChanges = window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        const changes = Object.values(snapshot.val()).sort((a, b) => 
+                            new Date(a.timestamp) - new Date(b.timestamp)
+                        );
+                        setLineupHistory(changes);
                         
-                        // Calculate plus/minus from score difference
-                        let vtScoreDiff = 0, oppScoreDiff = 0;
-                        if (index > 0) {
-                            const prevChange = lineupHistory[index - 1];
-                            vtScoreDiff = change.ourScore - prevChange.ourScore;
-                            oppScoreDiff = change.oppScore - prevChange.oppScore;
-                        } else {
-                            // First entry - from 0-0
-                            vtScoreDiff = change.ourScore - 0;
-                            oppScoreDiff = change.oppScore - 0;
-                        }
-                        const plusMinus = vtScoreDiff - oppScoreDiff;
-                        
-                        // COMBINE stats if this lineup has played multiple times
-                        lineupData.totalPlusMinus += plusMinus;
-                        lineupData.totalVTPoints += vtScoreDiff;
-                        lineupData.totalOppPoints += oppScoreDiff;
-                        lineupData.totalPossessions += stats.vt.possessions;
-                        lineupData.totalVTOffReb += stats.vt.offensiveRebounds;
-                        lineupData.totalVTDefReb += stats.vt.defensiveRebounds;
-                        lineupData.totalOppOffReb += stats.opponent.offensiveRebounds;
-                        lineupData.totalOppDefReb += stats.opponent.defensiveRebounds;
-                        lineupData.totalVTTurnovers += stats.vt.turnovers;
-                        
-                        // Estimate minutes
-                        const currentGameTime = parseGameTime(change.gameTime);
-                        const prevGameTime = index > 0 ? parseGameTime(lineupHistory[index - 1].gameTime) : 20;
-                        const minutes = Math.abs(prevGameTime - currentGameTime);
-                        
-                        console.log(`Minutes calc for ${lineupKey}:`);
-                        console.log(`  Current time: ${change.gameTime} = ${currentGameTime} mins elapsed`);
-                        console.log(`  Previous time: ${index > 0 ? lineupHistory[index - 1].gameTime : 'Game start (20:00)'} = ${prevGameTime} mins elapsed`);
-                        console.log(`  Minutes played: ${minutes}`);
-                        
-                        lineupData.totalMinutes += minutes;
-                        
-                        console.log(`Lineup ${lineupKey} segment: +${plusMinus}, ${stats.vt.possessions} poss`);
-                        console.log(`This lineup now has combined totals: +${lineupData.totalPlusMinus}, ${lineupData.totalPossessions} total poss`);
-                    }
-                });
-                
-                // Handle current active lineup if no changes yet
-                if (lineupHistory.length === 0 && currentActiveLineup) {
-                    setLineupAnalytics([{
-                        players: currentActiveLineup,
-                        appearances: 1,
-                        totalPlusMinus: 0,
-                        isActive: true,
-                        plusMinus: 'Current',
-                        offPPP: 'Active',
-                        defPPP: 'Active',
-                        offRebPct: '--',
-                        defRebPct: '--',
-                        offTurnoverRate: '--',
-                        defTurnoverRate: '--',
-                        minutesPlayed: 'Active'
-                    }]);
-                    return;
-                }
-
-                // Convert to analytics array using COMBINED lineup stats
-                const analyticsArray = Array.from(lineupMap.values()).map(data => {
-                    console.log(`Calculating combined analytics for: ${data.players}`);
-                    
-                    // Use COMBINED stats from all times this lineup played together
-                    const offPPP = data.totalPossessions > 0 ? (data.totalVTPoints / data.totalPossessions).toFixed(2) : '0.00';
-                    const defPPP = data.totalPossessions > 0 ? (data.totalOppPoints / data.totalPossessions).toFixed(2) : '0.00';
-                    
-                    // Rebound percentages using combined stats
-                    const totalOffRebOpps = data.totalVTOffReb + data.totalOppDefReb;
-                    const offRebPct = totalOffRebOpps > 0 ? Math.round((data.totalVTOffReb / totalOffRebOpps) * 100) : 0;
-                    
-                    const totalDefRebOpps = data.totalVTDefReb + data.totalOppOffReb;
-                    const defRebPct = totalDefRebOpps > 0 ? Math.round((data.totalVTDefReb / totalDefRebOpps) * 100) : 0;
-                    
-                    // Turnover rates using combined stats
-                    const offTurnoverRate = data.totalPossessions > 0 ? Math.round((data.totalVTTurnovers / data.totalPossessions) * 100) : 0;
-                    const defTurnoverRate = '--';
-                    
-                    return {
-                        ...data,
-                        plusMinus: data.isActive ? 'Current' : data.totalPlusMinus,
-                        offPPP: data.isActive ? 'Active' : offPPP,
-                        defPPP: data.isActive ? 'Active' : defPPP,
-                        offRebPct: data.isActive ? '--' : offRebPct,
-                        defRebPct: data.isActive ? '--' : defRebPct,
-                        offTurnoverRate: data.isActive ? '--' : offTurnoverRate,
-                        defTurnoverRate: defTurnoverRate,
-                        minutesPlayed: data.isActive ? 'Active' : data.totalMinutes.toFixed(1)
-                    };
-                });
-
-                // Sort by plus/minus (active lineup last)
-                analyticsArray.sort((a, b) => {
-                    if (a.isActive) return 1;
-                    if (b.isActive) return -1;
-                    return b.totalPlusMinus - a.totalPlusMinus;
-                });
-
-                setLineupAnalytics(analyticsArray);
-            }, [lineupHistory, currentLineup]);
-
-            // Listen to live game data when a game is active
-            useEffect(() => {
-                if (!window.firebaseDb || !currentGame || gameStatus !== 'live') return;
-
-                let gameInfoUnsubscribe, statsUnsubscribe, changesUnsubscribe;
-
-                const gameInfoRef = window.firebaseDb.ref(`game-info/${currentGame}`);
-                const statsRef = window.firebaseDb.ref(`current-stats/${currentGame}`);
-                const changesRef = window.firebaseDb.ref(`lineup-changes/${currentGame}`);
-
-                gameInfoUnsubscribe = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        setGameInfo(data);
-                        if (data.currentLineup) {
-                            const lineupNames = data.currentLineup.split(', ');
-                            const lineupIds = lineupNames.map(name => 
+                        // Extract current lineup from most recent change
+                        if (changes.length > 0) {
+                            const latest = changes[changes.length - 1];
+                            const lineupIds = latest.lineup.split(', ').map(name => 
                                 roster.find(p => p.name === name)?.id
                             ).filter(id => id !== undefined);
                             setCurrentLineup(lineupIds);
+                        } else {
+                            // Default starting lineup if no changes yet
+                            setCurrentLineup([3, 2, 17, 1, 13]);
                         }
-                        setLastUpdate(new Date().toLocaleTimeString());
-                    }
-                });
-
-                statsUnsubscribe = window.firebaseDb.onValue(statsRef, (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        setCurrentStats(data);
-                        setLastUpdate(new Date().toLocaleTimeString());
-                    }
-                });
-
-                changesUnsubscribe = window.firebaseDb.onValue(changesRef, (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        const changesArray = Object.values(data);
-                        setLineupHistory(changesArray);
-                        setLastUpdate(new Date().toLocaleTimeString());
                     }
                 });
 
                 return () => {
-                    if (gameInfoUnsubscribe) gameInfoUnsubscribe();
-                    if (statsUnsubscribe) statsUnsubscribe();
-                    if (changesUnsubscribe) changesUnsubscribe();
+                    window.firebaseDb.off(gameInfoRef, unsubscribeGameInfo);
+                    window.firebaseDb.off(lineupChangesRef, unsubscribeLineupChanges);
                 };
-            }, [currentGame, gameStatus]);
+            }, [selectedGame]);
 
-            // Individual plus/minus calculation
-            const calculateIndividualPlusMinus = (playerId) => {
-                let totalPlusMinus = 0;
-                const playerName = roster.find(p => p.id === playerId)?.name;
-                if (!playerName) return 0;
+            // Calculate analytics when data changes
+            useEffect(() => {
+                calculateAnalytics();
+            }, [lineupHistory, playerAvailability, timeframe]);
 
-                lineupAnalytics.forEach(lineup => {
-                    if (lineup.players.includes(playerName)) {
-                        if (!lineup.isActive && typeof lineup.totalPlusMinus === 'number') {
-                            totalPlusMinus += lineup.totalPlusMinus;
-                        }
-                    }
-                });
+            const calculateAnalytics = () => {
+                if (lineupHistory.length === 0) return;
+
+                // Group lineup segments
+                const segments = [];
+                const startingLineup = [3, 2, 17, 1, 13]; // Default starting five
                 
-                return totalPlusMinus;
+                // First segment (game start to first substitution)
+                if (lineupHistory.length > 0) {
+                    segments.push({
+                        lineup: startingLineup,
+                        startScore: { vt: 0, opp: 0 },
+                        endScore: { vt: lineupHistory[0].vtScore, opp: lineupHistory[0].oppScore },
+                        startTime: '20:00 1st',
+                        endTime: lineupHistory[0].gameTime,
+                        stats: lineupHistory[0].segmentStats || { vt: {}, opponent: {} }
+                    });
+                }
+
+                // Subsequent segments
+                for (let i = 0; i < lineupHistory.length; i++) {
+                    const current = lineupHistory[i];
+                    const next = lineupHistory[i + 1];
+                    
+                    const lineupIds = current.lineup.split(', ').map(name => 
+                        roster.find(p => p.name === name)?.id
+                    ).filter(id => id !== undefined);
+
+                    segments.push({
+                        lineup: lineupIds,
+                        startScore: { vt: current.vtScore, opp: current.oppScore },
+                        endScore: next ? { vt: next.vtScore, opp: next.oppScore } : { vt: current.vtScore, opp: current.oppScore },
+                        startTime: current.gameTime,
+                        endTime: next ? next.gameTime : 'Current',
+                        stats: next ? next.segmentStats || { vt: {}, opponent: {} } : { vt: {}, opponent: {} }
+                    });
+                }
+
+                // Calculate lineup analytics
+                const lineupMap = new Map();
+                
+                segments.forEach(segment => {
+                    const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
+                    
+                    // Skip lineups with unavailable players
+                    const hasUnavailablePlayer = segment.lineup.some(playerId => !playerAvailability[playerId]);
+                    if (hasUnavailablePlayer) return;
+
+                    if (!lineupMap.has(lineupKey)) {
+                        lineupMap.set(lineupKey, {
+                            players: segment.lineup,
+                            segments: [],
+                            totalMinutes: 0,
+                            totalPlusMinus: 0,
+                            totalPossessions: 0,
+                            totalOffReb: 0,
+                            totalDefReb: 0,
+                            totalTurnovers: 0,
+                            totalOppPossessions: 0,
+                            totalOppOffReb: 0,
+                            totalOppDefReb: 0,
+                            totalOppTurnovers: 0,
+                            totalPoints: 0,
+                            totalOppPoints: 0
+                        });
+                    }
+
+                    const lineup = lineupMap.get(lineupKey);
+                    lineup.segments.push(segment);
+                    
+                    // Calculate metrics for this segment
+                    const vtPoints = segment.endScore.vt - segment.startScore.vt;
+                    const oppPoints = segment.endScore.opp - segment.startScore.opp;
+                    const plusMinus = vtPoints - oppPoints;
+                    
+                    // Estimate minutes (simplified - would need actual time parsing)
+                    const minutes = 2; // Placeholder - would calculate from time difference
+                    
+                    lineup.totalMinutes += minutes;
+                    lineup.totalPlusMinus += plusMinus;
+                    lineup.totalPoints += vtPoints;
+                    lineup.totalOppPoints += oppPoints;
+                    
+                    // Add stats
+                    const vtStats = segment.stats.vt || {};
+                    const oppStats = segment.stats.opponent || {};
+                    
+                    lineup.totalPossessions += vtStats.possessions || 0;
+                    lineup.totalOffReb += vtStats.offensiveRebounds || 0;
+                    lineup.totalDefReb += vtStats.defensiveRebounds || 0;
+                    lineup.totalTurnovers += vtStats.turnovers || 0;
+                    
+                    lineup.totalOppPossessions += oppStats.possessions || 0;
+                    lineup.totalOppOffReb += oppStats.offensiveRebounds || 0;
+                    lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
+                    lineup.totalOppTurnovers += oppStats.turnovers || 0;
+                });
+
+                // Convert to analytics array
+                const analytics = Array.from(lineupMap.values()).map(lineup => {
+                    const playerNames = lineup.players.map(id => roster.find(p => p.id === id)?.name).join(', ');
+                    
+                    // Calculate advanced metrics
+                    const offPossessions = lineup.totalPossessions || 1;
+                    const defPossessions = lineup.totalOppPossessions || 1;
+                    const totalRebounds = lineup.totalOffReb + lineup.totalDefReb;
+                    const totalOppRebounds = lineup.totalOppOffReb + lineup.totalOppDefReb;
+                    
+                    return {
+                        id: lineup.players.sort((a, b) => a - b).join('-'),
+                        players: playerNames,
+                        plusMinus: lineup.totalPlusMinus,
+                        pointsPerPossession: lineup.totalPoints / offPossessions,
+                        defPointsPerPossession: lineup.totalOppPoints / defPossessions,
+                        offRebRate: totalRebounds > 0 ? (lineup.totalOffReb / totalRebounds) * 100 : 0,
+                        defRebRate: totalOppRebounds > 0 ? (lineup.totalDefReb / totalOppRebounds) * 100 : 0,
+                        turnoverRate: offPossessions > 0 ? (lineup.totalTurnovers / offPossessions) * 100 : 0,
+                        defTurnoverRate: defPossessions > 0 ? (lineup.totalOppTurnovers / defPossessions) * 100 : 0,
+                        minutes: lineup.totalMinutes
+                    };
+                });
+
+                // Sort by selected column
+                analytics.sort((a, b) => {
+                    const aVal = a[sortColumn];
+                    const bVal = b[sortColumn];
+                    return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
+                });
+
+                setLineupAnalytics(analytics);
+
+                // Calculate player stats for +/-
+                const playerStatsMap = {};
+                roster.forEach(player => {
+                    playerStatsMap[player.id] = { plusMinus: 0, minutes: 0 };
+                });
+
+                segments.forEach(segment => {
+                    const vtPoints = segment.endScore.vt - segment.startScore.vt;
+                    const oppPoints = segment.endScore.opp - segment.startScore.opp;
+                    const plusMinus = vtPoints - oppPoints;
+                    const minutes = 2; // Placeholder
+
+                    segment.lineup.forEach(playerId => {
+                        if (playerStatsMap[playerId]) {
+                            playerStatsMap[playerId].plusMinus += plusMinus;
+                            playerStatsMap[playerId].minutes += minutes;
+                        }
+                    });
+                });
+
+                setPlayerStats(playerStatsMap);
             };
 
-            if (gameStatus === 'waiting') {
-                return (
-                    <div className={`min-h-screen p-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                        <div className="max-w-7xl mx-auto">
-                            <div className="flex justify-between items-center mb-6">
-                                <h1 className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    VT Basketball Analytics
-                                </h1>
+            const getColorClass = (value, column, analytics) => {
+                if (analytics.length < 2) return '';
+                
+                const values = analytics.map(item => item[column]).filter(v => !isNaN(v));
+                if (values.length < 2) return '';
+                
+                values.sort((a, b) => a - b);
+                const min = values[0];
+                const max = values[values.length - 1];
+                const range = max - min;
+                
+                if (range === 0) return '';
+                
+                const percentile = (value - min) / range;
+                
+                // For metrics where higher is better
+                const higherIsBetter = ['plusMinus', 'pointsPerPossession', 'offRebRate', 'defRebRate', 'defTurnoverRate'];
+                // For metrics where lower is better  
+                const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
+                
+                let colorIntensity;
+                if (higherIsBetter.includes(column)) {
+                    colorIntensity = percentile;
+                } else if (lowerIsBetter.includes(column)) {
+                    colorIntensity = 1 - percentile;
+                } else {
+                    colorIntensity = 0.5; // Neutral for minutes
+                }
+                
+                if (colorIntensity >= 0.8) return darkMode ? 'bg-green-800' : 'bg-green-200';
+                if (colorIntensity >= 0.6) return darkMode ? 'bg-green-900' : 'bg-green-100';
+                if (colorIntensity >= 0.4) return '';
+                if (colorIntensity >= 0.2) return darkMode ? 'bg-red-900' : 'bg-red-100';
+                return darkMode ? 'bg-red-800' : 'bg-red-200';
+            };
+
+            const handleSort = (column) => {
+                if (sortColumn === column) {
+                    setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc');
+                } else {
+                    setSortColumn(column);
+                    setSortDirection('desc');
+                }
+            };
+
+            const togglePlayerAvailability = (playerId) => {
+                setPlayerAvailability(prev => ({
+                    ...prev,
+                    [playerId]: !prev[playerId]
+                }));
+            };
+
+            const currentOpponent = gameSchedule.find(game => game.date === selectedGame)?.opponent || 'Opponent';
+
+            return (
+                <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+                    {/* Header */}
+                    <div className="p-4 border-b border-gray-300 dark:border-gray-700">
+                        <div className="flex justify-between items-center">
+                            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                VT Basketball Analytics
+                            </h1>
+                            <div className="flex items-center gap-4">
+                                <select
+                                    value={timeframe}
+                                    onChange={(e) => setTimeframe(e.target.value)}
+                                    className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                >
+                                    {timeframes.map(tf => (
+                                        <option key={tf.value} value={tf.value}>{tf.label}</option>
+                                    ))}
+                                </select>
                                 <button
                                     onClick={() => setDarkMode(!darkMode)}
-                                    className={`px-4 py-2 rounded-md ${
-                                        darkMode ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-600' : 'bg-gray-800 text-white hover:bg-gray-700'
-                                    }`}
+                                    className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}
                                 >
-                                    {darkMode ? '☀️' : '🌙'}
+                                    {darkMode ? 'Light' : 'Dark'}
                                 </button>
-                            </div>
-                            
-                            <div className={`rounded-lg shadow-lg p-12 text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                <div className="mb-4">
-                                    <div className="w-16 h-16 mx-auto bg-orange-500 rounded-full flex items-center justify-center">
-                                        <span className="text-2xl text-white">⏳</span>
-                                    </div>
-                                </div>
-                                <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    No Active Game
-                                </h2>
-                                <p className={`text-lg ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    Start a game from the input app to begin live analytics
-                                </p>
                             </div>
                         </div>
                     </div>
-                );
-            }
 
-            return (
-                <div className={`min-h-screen p-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                    <div className="max-w-7xl mx-auto">
-                        {/* Header */}
-                        <div className="flex justify-between items-center mb-6">
-                            <div>
-                                <h1 className={`text-4xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    Virginia Tech vs {currentOpponent}
-                                </h1>
-                                <div className="flex items-center gap-4 mt-2">
-                                    {gameInfo && (
-                                        <div className={`text-lg ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                            {gameInfo.gameTime} {gameInfo.currentHalf === 1 ? '1st' : gameInfo.currentHalf === 2 ? '2nd' : 'OT'}
+                    {/* Current Lineup +/- Display */}
+                    <div className="p-4 border-b border-gray-300 dark:border-gray-700">
+                        <h2 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            Current Lineup +/-
+                        </h2>
+                        <div className="grid grid-cols-5 gap-4">
+                            {currentLineup.map(playerId => {
+                                const player = roster.find(p => p.id === playerId);
+                                const stats = playerStats[playerId] || { plusMinus: 0 };
+                                
+                                return (
+                                    <div key={playerId} className={`p-3 rounded-lg text-center ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
+                                        <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                            {player?.name || 'Unknown'}
                                         </div>
-                                    )}
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                                        <span className={`text-sm font-medium ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                                            LIVE
-                                        </span>
+                                        <div className={`text-xl font-bold ${stats.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                            {stats.plusMinus >= 0 ? '+' : ''}{stats.plusMinus}
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                {lastUpdate && (
-                                    <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                        Updated: {lastUpdate}
-                                    </div>
-                                )}
-                                <button
-                                    onClick={() => setDarkMode(!darkMode)}
-                                    className={`px-4 py-2 rounded-md ${
-                                        darkMode ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-600' : 'bg-gray-800 text-white hover:bg-gray-700'
-                                    }`}
-                                >
-                                    {darkMode ? '☀️' : '🌙'}
-                                </button>
-                            </div>
+                                );
+                            })}
                         </div>
+                    </div>
 
-                        {/* Current Lineup with Individual & Cumulative Stats */}
-                        <div className={`rounded-lg shadow-lg p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h2 className={`text-2xl font-bold mb-6 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Current Lineup Performance
-                            </h2>
-                            
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                {/* Players with Individual Stats */}
-                                <div>
-                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        On Court
-                                    </h3>
-                                    <div className="space-y-2">
-                                        {currentLineup.map((playerId, index) => {
-                                            const player = roster.find(p => p.id === playerId);
-                                            const individualPlusMinus = calculateIndividualPlusMinus(playerId);
-                                            
-                                            return (
-                                                <div key={index} className={`flex items-center justify-between p-2 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                                                    <div className="flex items-center gap-3">
-                                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${darkMode ? 'bg-gray-600' : 'bg-gray-300'}`}>
-                                                            <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                                #{player?.id}
-                                                            </span>
-                                                        </div>
-                                                        <div>
-                                                            <div className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                                {player?.name || 'Unknown'} ({player?.position})
-                                                            </div>
-                                                        </div>
+                    <div className="flex">
+                        {/* Bench Players Sidebar */}
+                        <div className={`w-64 p-4 border-r border-gray-300 dark:border-gray-700 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                Bench Players
+                            </h3>
+                            <div className="space-y-2">
+                                {roster.filter(player => !currentLineup.includes(player.id)).map(player => {
+                                    const stats = playerStats[player.id] || { plusMinus: 0 };
+                                    const isAvailable = playerAvailability[player.id];
+                                    
+                                    return (
+                                        <div key={player.id} className={`p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} ${!isAvailable ? 'opacity-50' : ''}`}>
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <div className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {player.name}
                                                     </div>
-                                                    <div className={`text-base font-bold ${
-                                                        individualPlusMinus > 0 ? 'text-green-600' : 
-                                                        individualPlusMinus < 0 ? 'text-red-600' : 
-                                                        (darkMode ? 'text-white' : 'text-gray-900')
-                                                    }`}>
-                                                        {individualPlusMinus > 0 ? `+${individualPlusMinus}` : individualPlusMinus}
+                                                    <div className={`text-sm ${stats.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                        {stats.plusMinus >= 0 ? '+' : ''}{stats.plusMinus}
                                                     </div>
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                
-                                {/* Game Stats Grid - 8 Calculated Stats using cumulative */}
-                                <div>
-                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Advanced Stats
-                                    </h3>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {(() => {
-                                            const cumulativeStats = calculateCumulativeStats();
-                                            return (
-                                                <>
-                                                    {/* Row 1 - Points Per Possession - Simple: Latest sub score ÷ total possessions */}
-                                                    <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                        <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                            {(() => {
-                                                                const substitutions = lineupHistory.filter(change => change.change !== 'Game Started');
-                                                                if (substitutions.length === 0) return '0.00';
-                                                                const latestSub = substitutions[substitutions.length - 1];
-                                                                const vtScore = latestSub.ourScore || 0;
-                                                                return cumulativeStats.vt.possessions > 0 ? (vtScore / cumulativeStats.vt.possessions).toFixed(2) : '0.00';
-                                                            })()}
-                                                        </div>
-                                                        <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                            VT Points/Poss
-                                                        </div>
-                                                    </div>
-                                                    <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                        <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                            {(() => {
-                                                                const substitutions = lineupHistory.filter(change => change.change !== 'Game Started');
-                                                                if (substitutions.length === 0) return '0.00';
-                                                                const latestSub = substitutions[substitutions.length - 1];
-                                                                const oppScore = latestSub.oppScore || 0;
-                                                                return cumulativeStats.opponent.possessions > 0 ? (oppScore / cumulativeStats.opponent.possessions).toFixed(2) : '0.00';
-                                                            })()}
-                                                        </div>
-                                                        <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                            Opp Points/Poss
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Row 2 - Turnover Rates - Use cumulative stats */}
-                                                    <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                        <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                            {cumulativeStats.vt.possessions > 0 ? Math.round((cumulativeStats.vt.turnovers / cumulativeStats.vt.possessions) * 100) + '%' : '0%'}
-                                                        </div>
-                                                        <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                            VT TO Rate
-                                                        </div>
-                                                    </div>
-                                                    <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                        <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                            {cumulativeStats.opponent.possessions > 0 ? Math.round((cumulativeStats.opponent.turnovers / cumulativeStats.opponent.possessions) * 100) + '%' : '0%'}
-                                                        </div>
-                                                        <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                            Opp TO Rate
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Row 3 - Rebound Percentages - Use cumulative stats */}
-                                                    <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                        <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                            {(() => {
-                                                                const totalORebOpps = cumulativeStats.vt.offensiveRebounds + cumulativeStats.opponent.defensiveRebounds;
-                                                                return totalORebOpps > 0 ? Math.round((cumulativeStats.vt.offensiveRebounds / totalORebOpps) * 100) + '%' : '0%';
-                                                            })()}
-                                                        </div>
-                                                        <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                            VT OReb%
-                                                        </div>
-                                                    </div>
-                                                    <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                        <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                            {(() => {
-                                                                const totalDRebOpps = cumulativeStats.vt.defensiveRebounds + cumulativeStats.opponent.offensiveRebounds;
-                                                                return totalDRebOpps > 0 ? Math.round((cumulativeStats.vt.defensiveRebounds / totalDRebOpps) * 100) + '%' : '0%';
-                                                            })()}
-                                                        </div>
-                                                        <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                            VT DReb%
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Row 4 - Possessions - Use cumulative stats */}
-                                                    <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                        <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                            {cumulativeStats.vt.possessions}
-                                                        </div>
-                                                        <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                            VT Possessions
-                                                        </div>
-                                                    </div>
-                                                    <div className={`p-3 rounded text-center ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-300'}`}>
-                                                        <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
-                                                            {cumulativeStats.opponent.possessions}
-                                                        </div>
-                                                        <div className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                            Opp Possessions
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            );
-                                        })()}
-                                    </div>
-                                </div>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isAvailable}
+                                                    onChange={() => togglePlayerAvailability(player.id)}
+                                                    className="ml-2"
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 
-                        {/* Lineup Analytics Table */}
-                        <div className={`rounded-lg shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h2 className={`text-2xl font-bold mb-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Lineup Analytics
-                            </h2>
-                            
-                            {lineupAnalytics.length === 0 ? (
-                                <p className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                    No lineup data available yet
-                                </p>
-                            ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead>
-                                            <tr className={`border-b-2 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                                                <th className={`text-left p-3 font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    Lineup
-                                                </th>
-                                                <th className={`text-center p-3 font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    +/-
-                                                </th>
-                                                <th className={`text-center p-3 font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    Off PPP
-                                                </th>
-                                                <th className={`text-center p-3 font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    Def PPP
-                                                </th>
-                                                <th className={`text-center p-3 font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    OReb%
-                                                </th>
-                                                <th className={`text-center p-3 font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    DReb%
-                                                </th>
-                                                <th className={`text-center p-3 font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    Off TO Rate
-                                                </th>
-                                                <th className={`text-center p-3 font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    Def TO Rate
-                                                </th>
-                                                <th className={`text-center p-3 font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    Minutes
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {lineupAnalytics.map((lineup, index) => (
-                                                <tr key={index} className={`border-b ${
-                                                    lineup.isActive 
-                                                        ? (darkMode ? 'bg-blue-900/30 border-blue-600' : 'bg-blue-50 border-blue-300')
-                                                        : (darkMode ? 'border-gray-700' : 'border-gray-100')
-                                                }`}>
-                                                    <td className={`p-3 max-w-sm ${
-                                                        lineup.isActive 
-                                                            ? (darkMode ? 'text-blue-300' : 'text-blue-800') 
-                                                            : (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                    }`}>
-                                                        <div className="truncate" title={lineup.players}>
-                                                            {lineup.players}
-                                                            {lineup.isActive && <span className="ml-2 text-xs font-bold bg-blue-600 text-white px-2 py-1 rounded">CURRENT</span>}
-                                                        </div>
-                                                    </td>
-                                                    <td className={`p-3 text-center font-bold ${
-                                                        lineup.plusMinus === 'Current' 
-                                                            ? (darkMode ? 'text-blue-400' : 'text-blue-600')
-                                                            : lineup.plusMinus > 0 
-                                                                ? 'text-green-600' 
-                                                                : lineup.plusMinus < 0 
-                                                                    ? 'text-red-600' 
-                                                                    : (darkMode ? 'text-white' : 'text-gray-900')
-                                                    }`}>
-                                                        {lineup.plusMinus === 'Current' ? 'Current' :
-                                                         lineup.plusMinus > 0 ? `+${lineup.plusMinus}` : lineup.plusMinus}
-                                                    </td>
-                                                    <td className={`p-3 text-center font-semibold ${
-                                                        lineup.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
-                                                        (darkMode ? 'text-white' : 'text-gray-900')
-                                                    }`}>
-                                                        {lineup.offPPP}
-                                                    </td>
-                                                    <td className={`p-3 text-center font-semibold ${
-                                                        lineup.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
-                                                        (darkMode ? 'text-white' : 'text-gray-900')
-                                                    }`}>
-                                                        {lineup.defPPP}
-                                                    </td>
-                                                    <td className={`p-3 text-center ${
-                                                        lineup.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                    }`}>
-                                                        {lineup.offRebPct === '--' ? '--' : `${lineup.offRebPct}%`}
-                                                    </td>
-                                                    <td className={`p-3 text-center ${
-                                                        lineup.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                    }`}>
-                                                        {lineup.defRebPct === '--' ? '--' : `${lineup.defRebPct}%`}
-                                                    </td>
-                                                    <td className={`p-3 text-center ${
-                                                        lineup.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                    }`}>
-                                                        {lineup.offTurnoverRate === '--' ? '--' : `${lineup.offTurnoverRate}%`}
-                                                    </td>
-                                                    <td className={`p-3 text-center ${
-                                                        lineup.isActive ? (darkMode ? 'text-blue-300' : 'text-blue-800') :
-                                                        (darkMode ? 'text-gray-300' : 'text-gray-700')
-                                                    }`}>
-                                                        {lineup.defTurnoverRate === '--' ? '--' : `${lineup.defTurnoverRate}%`}
-                                                    </td>
-                                                    <td className={`p-3 text-center font-semibold ${
-                                                        lineup.isActive ? (darkMode ? 'text-blue-200' : 'text-blue-900') :
-                                                        (darkMode ? 'text-white' : 'text-gray-900')
-                                                    }`}>
-                                                        {lineup.minutesPlayed}
-                                                    </td>
+                        {/* Main Analytics Table */}
+                        <div className="flex-1 p-4">
+                            <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                <div className="p-4">
+                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        Lineup Analytics - {timeframes.find(tf => tf.value === timeframe)?.label}
+                                    </h3>
+                                    
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead>
+                                                <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                    <th className={`text-left p-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Lineup
+                                                    </th>
+                                                    {[
+                                                        { key: 'plusMinus', label: '+/-' },
+                                                        { key: 'pointsPerPossession', label: 'PPP' },
+                                                        { key: 'defPointsPerPossession', label: 'Def PPP' },
+                                                        { key: 'offRebRate', label: 'OReb%' },
+                                                        { key: 'defRebRate', label: 'DReb%' },
+                                                        { key: 'turnoverRate', label: 'TO%' },
+                                                        { key: 'defTurnoverRate', label: 'Def TO%' },
+                                                        { key: 'minutes', label: 'Min' }
+                                                    ].map(col => (
+                                                        <th
+                                                            key={col.key}
+                                                            onClick={() => handleSort(col.key)}
+                                                            className={`text-left p-2 cursor-pointer hover:bg-opacity-50 ${
+                                                                darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+                                                            } ${sortColumn === col.key ? 'font-bold' : ''}`}
+                                                        >
+                                                            {col.label}
+                                                            {sortColumn === col.key && (
+                                                                <span className="ml-1">
+                                                                    {sortDirection === 'desc' ? '↓' : '↑'}
+                                                                </span>
+                                                            )}
+                                                        </th>
+                                                    ))}
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                            
-                            {/* Legend */}
-                            <div className={`mt-6 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    <div><strong>+/-:</strong> Net point differential</div>
-                                    <div><strong>Off PPP:</strong> Offensive points per possession</div>
-                                    <div><strong>Def PPP:</strong> Defensive points per possession</div>
-                                    <div><strong>OReb%:</strong> Offensive rebound percentage</div>
-                                    <div><strong>DReb%:</strong> Defensive rebound percentage</div>
-                                    <div><strong>Off TO Rate:</strong> VT turnover rate</div>
-                                    <div><strong>Def TO Rate:</strong> Opponent turnover rate</div>
-                                    <div><strong>Minutes:</strong> Time played by lineup</div>
+                                            </thead>
+                                            <tbody>
+                                                {lineupAnalytics.map((lineup, index) => (
+                                                    <tr key={lineup.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                        <td className={`p-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.players}
+                                                        </td>
+                                                        <td className={`p-2 ${getColorClass(lineup.plusMinus, 'plusMinus', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.plusMinus >= 0 ? '+' : ''}{lineup.plusMinus}
+                                                        </td>
+                                                        <td className={`p-2 ${getColorClass(lineup.pointsPerPossession, 'pointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.pointsPerPossession.toFixed(2)}
+                                                        </td>
+                                                        <td className={`p-2 ${getColorClass(lineup.defPointsPerPossession, 'defPointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.defPointsPerPossession.toFixed(2)}
+                                                        </td>
+                                                        <td className={`p-2 ${getColorClass(lineup.offRebRate, 'offRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.offRebRate.toFixed(1)}%
+                                                        </td>
+                                                        <td className={`p-2 ${getColorClass(lineup.defRebRate, 'defRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.defRebRate.toFixed(1)}%
+                                                        </td>
+                                                        <td className={`p-2 ${getColorClass(lineup.turnoverRate, 'turnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.turnoverRate.toFixed(1)}%
+                                                        </td>
+                                                        <td className={`p-2 ${getColorClass(lineup.defTurnoverRate, 'defTurnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.defTurnoverRate.toFixed(1)}%
+                                                        </td>
+                                                        <td className={`p-2 ${getColorClass(lineup.minutes, 'minutes', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.minutes.toFixed(1)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                        
+                                        {lineupAnalytics.length === 0 && (
+                                            <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                No lineup data available
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -739,7 +531,7 @@
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<GameDisplay />);
+        root.render(<GamedayAnalyticsDisplay />);
     </script>
 </body>
 </html>
