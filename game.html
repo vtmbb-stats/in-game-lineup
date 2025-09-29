@@ -162,45 +162,109 @@
                 calculateAnalytics();
             }, [lineupHistory, playerAvailability, timeframe]);
 
-            const calculateAnalytics = () => {
-                if (lineupHistory.length === 0) return;
-
-                // Group lineup segments
-                const segments = [];
-                const startingLineup = [3, 2, 17, 1, 13]; // Default starting five
+            const parseGameTime = (timeString) => {
+                // Parse "15:32 1st" or "12:45 2nd" format
+                // Returns total seconds from start of game
+                if (!timeString || timeString === 'Current') return null;
                 
-                // First segment (game start to first substitution)
-                if (lineupHistory.length > 0) {
-                    segments.push({
-                        lineup: startingLineup,
-                        startScore: { vt: 0, opp: 0 },
-                        endScore: { vt: lineupHistory[0].vtScore, opp: lineupHistory[0].oppScore },
-                        startTime: '20:00 1st',
-                        endTime: lineupHistory[0].gameTime,
-                        stats: lineupHistory[0].segmentStats || { vt: {}, opponent: {} }
-                    });
+                const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                if (!match) return null;
+                
+                const minutes = parseInt(match[1]);
+                const seconds = parseInt(match[2]);
+                const half = match[3];
+                
+                let totalSeconds = 0;
+                
+                if (half === '1st') {
+                    // First half: 20:00 to 0:00
+                    totalSeconds = (20 * 60) - (minutes * 60 + seconds);
+                } else if (half === '2nd') {
+                    // Second half: 20:00 of first half + (20:00 to current time of 2nd)
+                    totalSeconds = (20 * 60) + ((20 * 60) - (minutes * 60 + seconds));
+                } else if (half === 'OT') {
+                    // OT: 40 minutes + (5:00 to current time of OT)
+                    totalSeconds = (40 * 60) + ((5 * 60) - (minutes * 60 + seconds));
                 }
+                
+                return totalSeconds;
+            };
+            
+            const calculateMinutesPlayed = (startTime, endTime) => {
+                if (endTime === 'Current') {
+                    return '--:--';
+                }
+                
+                const startSeconds = parseGameTime(startTime);
+                const endSeconds = parseGameTime(endTime);
+                
+                if (startSeconds === null || endSeconds === null) {
+                    return '--:--';
+                }
+                
+                const diffSeconds = endSeconds - startSeconds;
+                const mins = Math.floor(diffSeconds / 60);
+                const secs = diffSeconds % 60;
+                
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
 
-                // Subsequent segments
-                for (let i = 0; i < lineupHistory.length; i++) {
-                    const current = lineupHistory[i];
-                    const next = lineupHistory[i + 1];
-                    
-                    const lineupIds = current.lineup.split(', ').map(name => 
+            const calculateAnalytics = () => {
+                // Group lineup segments - including the starting lineup
+                const segments = [];
+                
+                // Get starting lineup from game data
+                let startingLineupIds = [3, 2, 17, 1, 13]; // Default
+                if (gameData && gameData.startingLineup) {
+                    startingLineupIds = gameData.startingLineup.split(', ').map(name => 
                         roster.find(p => p.name === name)?.id
                     ).filter(id => id !== undefined);
-
+                }
+                
+                // First segment (game start to first substitution or current)
+                if (lineupHistory.length === 0) {
+                    // No subs yet - starting lineup is still playing
                     segments.push({
-                        lineup: lineupIds,
-                        startScore: { vt: current.vtScore, opp: current.oppScore },
-                        endScore: next ? { vt: next.vtScore, opp: next.oppScore } : { vt: current.vtScore, opp: current.oppScore },
-                        startTime: current.gameTime,
-                        endTime: next ? next.gameTime : 'Current',
-                        stats: next ? next.segmentStats || { vt: {}, opponent: {} } : { vt: {}, opponent: {} }
+                        lineup: startingLineupIds,
+                        startScore: { vt: 0, opp: 0 },
+                        endScore: { vt: gameData?.vtScore || 0, opp: gameData?.oppScore || 0 },
+                        startTime: '20:00 1st',
+                        endTime: 'Current',
+                        stats: { vt: {}, opponent: {} }
                     });
+                } else {
+                    // Starting lineup played until first sub
+                    const firstChange = lineupHistory[0];
+                    segments.push({
+                        lineup: startingLineupIds,
+                        startScore: { vt: 0, opp: 0 },
+                        endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore },
+                        startTime: '20:00 1st',
+                        endTime: firstChange.gameTime,
+                        stats: firstChange.segmentStats || { vt: {}, opponent: {} }
+                    });
+                    
+                    // Subsequent segments - each lineup change creates a NEW segment
+                    for (let i = 0; i < lineupHistory.length; i++) {
+                        const current = lineupHistory[i];
+                        const next = lineupHistory[i + 1];
+                        
+                        const lineupIds = current.lineup.split(', ').map(name => 
+                            roster.find(p => p.name === name)?.id
+                        ).filter(id => id !== undefined);
+
+                        segments.push({
+                            lineup: lineupIds,
+                            startScore: { vt: current.vtScore, opp: current.oppScore },
+                            endScore: next ? { vt: next.vtScore, opp: next.oppScore } : { vt: gameData?.vtScore || current.vtScore, opp: gameData?.oppScore || current.oppScore },
+                            startTime: current.gameTime,
+                            endTime: next ? next.gameTime : 'Current',
+                            stats: next ? (next.segmentStats || { vt: {}, opponent: {} }) : { vt: {}, opponent: {} }
+                        });
+                    }
                 }
 
-                // Calculate lineup analytics
+                // Calculate lineup analytics - stats are ONLY from each segment, not accumulated
                 const lineupMap = new Map();
                 
                 segments.forEach(segment => {
@@ -214,7 +278,8 @@
                         lineupMap.set(lineupKey, {
                             players: segment.lineup,
                             segments: [],
-                            totalMinutes: 0,
+                            minutesDisplay: '',
+                            totalMinutesSeconds: 0,
                             totalPlusMinus: 0,
                             totalPossessions: 0,
                             totalOffReb: 0,
@@ -232,20 +297,23 @@
                     const lineup = lineupMap.get(lineupKey);
                     lineup.segments.push(segment);
                     
-                    // Calculate metrics for this segment
+                    // Calculate metrics for THIS SPECIFIC segment only
                     const vtPoints = segment.endScore.vt - segment.startScore.vt;
                     const oppPoints = segment.endScore.opp - segment.startScore.opp;
                     const plusMinus = vtPoints - oppPoints;
                     
-                    // Estimate minutes (simplified - would need actual time parsing)
-                    const minutes = 2; // Placeholder - would calculate from time difference
+                    // Calculate actual minutes from time stamps
+                    const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
+                    if (minutesStr !== '--:--') {
+                        const [mins, secs] = minutesStr.split(':').map(Number);
+                        lineup.totalMinutesSeconds += (mins * 60 + secs);
+                    }
                     
-                    lineup.totalMinutes += minutes;
                     lineup.totalPlusMinus += plusMinus;
                     lineup.totalPoints += vtPoints;
                     lineup.totalOppPoints += oppPoints;
                     
-                    // Add stats
+                    // Add stats from THIS segment only
                     const vtStats = segment.stats.vt || {};
                     const oppStats = segment.stats.opponent || {};
                     
@@ -270,6 +338,17 @@
                     const totalRebounds = lineup.totalOffReb + lineup.totalDefReb;
                     const totalOppRebounds = lineup.totalOppOffReb + lineup.totalOppDefReb;
                     
+                    // Format total minutes
+                    const hasCurrentSegment = lineup.segments.some(seg => seg.endTime === 'Current');
+                    let minutesDisplay;
+                    if (hasCurrentSegment) {
+                        minutesDisplay = '--:--';
+                    } else {
+                        const totalMins = Math.floor(lineup.totalMinutesSeconds / 60);
+                        const totalSecs = lineup.totalMinutesSeconds % 60;
+                        minutesDisplay = `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
+                    }
+                    
                     return {
                         id: lineup.players.sort((a, b) => a - b).join('-'),
                         players: playerNames,
@@ -280,40 +359,26 @@
                         defRebRate: totalOppRebounds > 0 ? (lineup.totalDefReb / totalOppRebounds) * 100 : 0,
                         turnoverRate: offPossessions > 0 ? (lineup.totalTurnovers / offPossessions) * 100 : 0,
                         defTurnoverRate: defPossessions > 0 ? (lineup.totalOppTurnovers / defPossessions) * 100 : 0,
-                        minutes: lineup.totalMinutes
+                        minutes: minutesDisplay,
+                        totalMinutesSeconds: lineup.totalMinutesSeconds
                     };
                 });
 
                 // Sort by selected column
                 analytics.sort((a, b) => {
-                    const aVal = a[sortColumn];
-                    const bVal = b[sortColumn];
+                    let aVal = a[sortColumn];
+                    let bVal = b[sortColumn];
+                    
+                    // Special handling for minutes sorting
+                    if (sortColumn === 'minutes') {
+                        aVal = a.totalMinutesSeconds;
+                        bVal = b.totalMinutesSeconds;
+                    }
+                    
                     return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
                 });
 
                 setLineupAnalytics(analytics);
-
-                // Calculate player stats for +/-
-                const playerStatsMap = {};
-                roster.forEach(player => {
-                    playerStatsMap[player.id] = { plusMinus: 0, minutes: 0 };
-                });
-
-                segments.forEach(segment => {
-                    const vtPoints = segment.endScore.vt - segment.startScore.vt;
-                    const oppPoints = segment.endScore.opp - segment.startScore.opp;
-                    const plusMinus = vtPoints - oppPoints;
-                    const minutes = 2; // Placeholder
-
-                    segment.lineup.forEach(playerId => {
-                        if (playerStatsMap[playerId]) {
-                            playerStatsMap[playerId].plusMinus += plusMinus;
-                            playerStatsMap[playerId].minutes += minutes;
-                        }
-                    });
-                });
-
-                setPlayerStats(playerStatsMap);
             };
 
             const getColorClass = (value, column, analytics) => {
@@ -410,8 +475,8 @@
                                 
                                 return (
                                     <div key={playerId} className={`p-3 rounded-lg text-center ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
-                                        <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                            #{player?.id ?? '?'}
+                                        <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                            #{player?.id ?? '?'} {player?.name.split(' ').pop()}
                                         </div>
                                         <div className={`text-xl font-bold ${stats.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                             {stats.plusMinus >= 0 ? '+' : ''}{stats.plusMinus}
