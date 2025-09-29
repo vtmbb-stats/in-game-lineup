@@ -105,36 +105,54 @@
                 const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
                 const liveGameRef = window.firebaseDb.ref(`live-game/${selectedGame}`);
                 const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
+                const playerStatsRef = window.firebaseDb.ref(`player-stats/${selectedGame}`);
 
                 const unsubscribeGameInfo = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
                     if (snapshot.exists()) {
-                        setGameData(snapshot.val());
+                        const data = snapshot.val();
+                        setGameData(data);
+                        
+                        // Extract current lineup from game info
+                        if (data.currentLineup) {
+                            const lineupIds = data.currentLineup.split(', ').map(name => 
+                                roster.find(p => p.name === name)?.id
+                            ).filter(id => id !== undefined);
+                            setCurrentLineup(lineupIds);
+                        }
+                    }
+                });
+
+                const unsubscribeLiveGame = window.firebaseDb.onValue(liveGameRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        const liveData = snapshot.val();
+                        // Update any live game state if needed
+                    }
+                });
+
+                const unsubscribePlayerStats = window.firebaseDb.onValue(playerStatsRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        setPlayerStats(snapshot.val());
                     }
                 });
 
                 const unsubscribeLineupChanges = window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
                     if (snapshot.exists()) {
-                        const changes = Object.values(snapshot.val()).sort((a, b) => 
-                            new Date(a.timestamp) - new Date(b.timestamp)
-                        );
+                        const changes = Object.values(snapshot.val()).sort((a, b) => {
+                            // Sort by timestamp
+                            const aTime = a.timestamp || a.gameTime || '';
+                            const bTime = b.timestamp || b.gameTime || '';
+                            return aTime.localeCompare(bTime);
+                        });
                         setLineupHistory(changes);
-                        
-                        // Extract current lineup from most recent change
-                        if (changes.length > 0) {
-                            const latest = changes[changes.length - 1];
-                            const lineupIds = latest.lineup.split(', ').map(name => 
-                                roster.find(p => p.name === name)?.id
-                            ).filter(id => id !== undefined);
-                            setCurrentLineup(lineupIds);
-                        } else {
-                            // Default starting lineup if no changes yet
-                            setCurrentLineup([3, 2, 17, 1, 13]);
-                        }
+                    } else {
+                        setLineupHistory([]);
                     }
                 });
 
                 return () => {
                     window.firebaseDb.off(gameInfoRef, unsubscribeGameInfo);
+                    window.firebaseDb.off(liveGameRef, unsubscribeLiveGame);
+                    window.firebaseDb.off(playerStatsRef, unsubscribePlayerStats);
                     window.firebaseDb.off(lineupChangesRef, unsubscribeLineupChanges);
                 };
             }, [selectedGame]);
@@ -392,8 +410,8 @@
                                 
                                 return (
                                     <div key={playerId} className={`p-3 rounded-lg text-center ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
-                                        <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                            {player?.name || 'Unknown'}
+                                        <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                            #{player?.id ?? '?'}
                                         </div>
                                         <div className={`text-xl font-bold ${stats.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                             {stats.plusMinus >= 0 ? '+' : ''}{stats.plusMinus}
@@ -428,7 +446,7 @@
                                                 </div>
                                                 <input
                                                     type="checkbox"
-                                                    checked={isAvailable}
+                                                    checked={isAvailable ?? true}
                                                     onChange={() => togglePlayerAvailability(player.id)}
                                                     className="ml-2"
                                                 />
