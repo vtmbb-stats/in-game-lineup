@@ -402,12 +402,28 @@
                                 
                                 <div className="flex items-center gap-3">
                                     {gameStarted && (
-                                        <div className={`text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                                                <div>Current: {gameTime} {currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : 'OT'}</div>
+                                        <>
+                                            <div className={`text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                                    <div>Current: {gameTime} {currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : 'OT'}</div>
+                                                </div>
                                             </div>
-                                        </div>
+                                            <button
+                                                onClick={() => {
+                                                    if (currentHalf === 1) {
+                                                        setCurrentHalf(2);
+                                                        setGameTime('20:00');
+                                                    } else if (currentHalf === 2) {
+                                                        setCurrentHalf(3);
+                                                        setGameTime('5:00');
+                                                    }
+                                                }}
+                                                className="px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm font-medium"
+                                            >
+                                                {currentHalf === 1 ? 'End 1st Half' : currentHalf === 2 ? 'Start OT' : 'Next OT'}
+                                            </button>
+                                        </>
                                     )}
                                     
                                     {!gameStarted ? (
