@@ -164,7 +164,7 @@
 
             const parseGameTime = (timeString) => {
                 // Parse "15:32 1st" or "12:45 2nd" format
-                // Returns total seconds from start of game
+                // Basketball clocks count DOWN, so we calculate elapsed time
                 if (!timeString || timeString === 'Current') return null;
                 
                 const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
@@ -174,20 +174,25 @@
                 const seconds = parseInt(match[2]);
                 const half = match[3];
                 
-                let totalSeconds = 0;
+                let elapsedSeconds = 0;
                 
                 if (half === '1st') {
-                    // First half: 20:00 to 0:00
-                    totalSeconds = (20 * 60) - (minutes * 60 + seconds);
+                    // First half: clock shows remaining time, so elapsed = 20:00 - remaining
+                    const remainingSeconds = minutes * 60 + seconds;
+                    elapsedSeconds = (20 * 60) - remainingSeconds;
                 } else if (half === '2nd') {
-                    // Second half: 20:00 of first half + (20:00 to current time of 2nd)
-                    totalSeconds = (20 * 60) + ((20 * 60) - (minutes * 60 + seconds));
+                    // Second half: 20:00 of 1st half + elapsed in 2nd half
+                    const remainingSeconds = minutes * 60 + seconds;
+                    const elapsedIn2nd = (20 * 60) - remainingSeconds;
+                    elapsedSeconds = (20 * 60) + elapsedIn2nd;
                 } else if (half === 'OT') {
-                    // OT: 40 minutes + (5:00 to current time of OT)
-                    totalSeconds = (40 * 60) + ((5 * 60) - (minutes * 60 + seconds));
+                    // OT: 40 minutes + elapsed in OT
+                    const remainingSeconds = minutes * 60 + seconds;
+                    const elapsedInOT = (5 * 60) - remainingSeconds;
+                    elapsedSeconds = (40 * 60) + elapsedInOT;
                 }
                 
-                return totalSeconds;
+                return elapsedSeconds;
             };
             
             const calculateMinutesPlayed = (startTime, endTime) => {
