@@ -926,13 +926,13 @@
                                             <div className="flex justify-between items-start">
                                                 <div>
                                                     <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {record.change}
+                                                        {record.changes || record.change}
                                                     </div>
                                                     <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                         {record.gameTime} | Score: {record.vtScore}-{record.oppScore}
                                                     </div>
                                                     <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                        Lineup: {record.lineup}
+                                                        New Lineup: {record.newLineup || record.lineup}
                                                     </div>
                                                 </div>
                                                 <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
