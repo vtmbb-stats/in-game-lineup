@@ -428,7 +428,7 @@
                                                 </div>
                                                 <input
                                                     type="checkbox"
-                                                    checked={isAvailable}
+                                                    checked={isAvailable ?? true}
                                                     onChange={() => togglePlayerAvailability(player.id)}
                                                     className="ml-2"
                                                 />
