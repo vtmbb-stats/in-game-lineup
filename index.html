@@ -114,6 +114,7 @@
 
                 const loadLiveGame = async () => {
                     const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                    const liveGameRef = window.firebaseDb.ref(`live-game/${selectedGame}`);
                     const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
                     const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
                     const playerStatsRef = window.firebaseDb.ref(`player-stats/${selectedGame}`);
@@ -129,8 +130,6 @@
                                 setGameStarted(true);
                                 setCurrentHalf(data.currentHalf || 1);
                                 setGameTime(data.gameTime || '20:00');
-                                setVtScore(data.vtScore || 0);
-                                setOppScore(data.oppScore || 0);
                                 
                                 // Parse and set current lineup
                                 if (data.currentLineup) {
@@ -141,6 +140,15 @@
                                         setCurrentLineup(lineupIds);
                                     }
                                 }
+                                
+                                // Load live game data (includes current score)
+                                window.firebaseDb.onValue(liveGameRef, (liveSnapshot) => {
+                                    if (liveSnapshot.exists()) {
+                                        const liveData = liveSnapshot.val();
+                                        setVtScore(liveData.vtScore || 0);
+                                        setOppScore(liveData.oppScore || 0);
+                                    }
+                                }, { onlyOnce: true });
                                 
                                 // Load lineup change history
                                 window.firebaseDb.onValue(lineupChangesRef, (histSnapshot) => {
