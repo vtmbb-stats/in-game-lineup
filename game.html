@@ -162,54 +162,55 @@
                 calculateAnalytics();
             }, [lineupHistory, playerAvailability, timeframe]);
 
-            const parseGameTime = (timeString) => {
-                // Parse "15:32 1st" or "12:45 2nd" format
-                // Basketball clocks count DOWN, so we calculate elapsed time
-                if (!timeString || timeString === 'Current') return null;
+            const parseGameTimeToSeconds = (timeString) => {
+                // Parse "15:01 1st" format and return clock time in seconds
+                if (!timeString || timeString === 'Current' || timeString === '20:00 1st') return null;
                 
                 const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
                 if (!match) return null;
                 
                 const minutes = parseInt(match[1]);
                 const seconds = parseInt(match[2]);
-                const half = match[3];
                 
-                let elapsedSeconds = 0;
-                
-                if (half === '1st') {
-                    // First half: clock shows remaining time, so elapsed = 20:00 - remaining
-                    const remainingSeconds = minutes * 60 + seconds;
-                    elapsedSeconds = (20 * 60) - remainingSeconds;
-                } else if (half === '2nd') {
-                    // Second half: 20:00 of 1st half + elapsed in 2nd half
-                    const remainingSeconds = minutes * 60 + seconds;
-                    const elapsedIn2nd = (20 * 60) - remainingSeconds;
-                    elapsedSeconds = (20 * 60) + elapsedIn2nd;
-                } else if (half === 'OT') {
-                    // OT: 40 minutes + elapsed in OT
-                    const remainingSeconds = minutes * 60 + seconds;
-                    const elapsedInOT = (5 * 60) - remainingSeconds;
-                    elapsedSeconds = (40 * 60) + elapsedInOT;
-                }
-                
-                return elapsedSeconds;
+                return minutes * 60 + seconds;
             };
             
             const calculateMinutesPlayed = (startTime, endTime) => {
+                // Handle current lineup
                 if (endTime === 'Current') {
                     return '--:--';
                 }
                 
-                const startSeconds = parseGameTime(startTime);
-                const endSeconds = parseGameTime(endTime);
+                // Starting lineup case
+                if (startTime === '20:00 1st') {
+                    const endSeconds = parseGameTimeToSeconds(endTime);
+                    if (endSeconds === null) return '--:--';
+                    
+                    // Clock counts down: 20:00 - endTime = minutes played
+                    const playedSeconds = (20 * 60) - endSeconds;
+                    const mins = Math.floor(playedSeconds / 60);
+                    const secs = playedSeconds % 60;
+                    return `${mins}:${secs.toString().padStart(2, '0')}`;
+                }
+                
+                // Regular segment
+                const startSeconds = parseGameTimeToSeconds(startTime);
+                const endSeconds = parseGameTimeToSeconds(endTime);
                 
                 if (startSeconds === null || endSeconds === null) {
                     return '--:--';
                 }
                 
-                const diffSeconds = endSeconds - startSeconds;
-                const mins = Math.floor(diffSeconds / 60);
-                const secs = diffSeconds % 60;
+                // Clock counts down: startTime - endTime = minutes played
+                const playedSeconds = startSeconds - endSeconds;
+                
+                if (playedSeconds < 0) {
+                    console.error('Negative time calculated:', { startTime, endTime, startSeconds, endSeconds });
+                    return '--:--';
+                }
+                
+                const mins = Math.floor(playedSeconds / 60);
+                const secs = playedSeconds % 60;
                 
                 return `${mins}:${secs.toString().padStart(2, '0')}`;
             };
