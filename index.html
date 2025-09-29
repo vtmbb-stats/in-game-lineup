@@ -310,18 +310,24 @@
                 const halfSuffix = currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : 'OT';
                 const fullGameTime = `${pendingGameTime} ${halfSuffix}`;
                 
-                const changeRecords = pendingChanges.map(change => ({
+                // Create one record for this substitution event
+                // The NEW lineup is in currentLineup
+                // The stats in currentStats were accumulated by the lineup that was JUST playing
+                const changeRecord = {
                     timestamp: fullGameTime,
                     gameTime: fullGameTime,
                     vtScore: vtScore,
                     oppScore: oppScore,
-                    change: `${roster.find(p => p.id === change.oldPlayerId)?.name} OUT, ${roster.find(p => p.id === change.newPlayerId)?.name} IN`,
-                    lineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                    changes: pendingChanges.map(change => 
+                        `${roster.find(p => p.id === change.oldPlayerId)?.name} OUT, ${roster.find(p => p.id === change.newPlayerId)?.name} IN`
+                    ).join('; '),
+                    newLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
                     half: currentHalf,
-                    segmentStats: currentStats
-                }));
+                    // These stats belong to the lineup that JUST FINISHED playing (before this sub)
+                    completedSegmentStats: currentStats
+                };
                 
-                const newLineupHistory = [...lineupHistory, ...changeRecords];
+                const newLineupHistory = [...lineupHistory, changeRecord];
                 setLineupHistory(newLineupHistory);
                 
                 // Write lineup changes to Firebase
