@@ -52,13 +52,10 @@
             const [currentLineup, setCurrentLineup] = useState([3, 2, 17, 1, 13]);
             const [pendingChanges, setPendingChanges] = useState([]);
             const [showTimeModal, setShowTimeModal] = useState(false);
-            const [showStartingLineupModal, setShowStartingLineupModal] = useState(false);
             const [pendingGameTime, setPendingGameTime] = useState('');
             const [vtScore, setVtScore] = useState(0);
             const [oppScore, setOppScore] = useState(0);
             const [lineupHistory, setLineupHistory] = useState([]);
-            const [lastScoreUpdate, setLastScoreUpdate] = useState({ vt: 0, opp: 0 });
-            const [playerGameStats, setPlayerGameStats] = useState({});
             
             const [currentStats, setCurrentStats] = useState({
                 vt: {
@@ -124,10 +121,6 @@
                     const statsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
                     await window.firebaseDb.set(statsRef, currentStats);
 
-                    // Save individual player stats
-                    const playerStatsRef = window.firebaseDb.ref(`player-stats/${selectedGame}`);
-                    await window.firebaseDb.set(playerStatsRef, playerGameStats);
-
                     console.log('Synced to Firebase');
                 } catch (error) {
                     console.error('Error syncing:', error);
@@ -137,31 +130,11 @@
             const updateScore = (team, points) => {
                 if (!gameStarted) return;
                 
-                const oldVtScore = vtScore;
-                const oldOppScore = oppScore;
-                
                 if (team === 'vt') {
                     setVtScore(prev => Math.max(0, prev + points));
                 } else {
                     setOppScore(prev => Math.max(0, prev + points));
                 }
-
-                // Update individual player plus/minus for current lineup
-                const vtScoreChange = team === 'vt' ? points : 0;
-                const oppScoreChange = team === 'opponent' ? points : 0;
-                const plusMinusChange = vtScoreChange - oppScoreChange;
-
-                // Update stats for all players currently on court
-                setPlayerGameStats(prevStats => {
-                    const newStats = { ...prevStats };
-                    currentLineup.forEach(playerId => {
-                        if (!newStats[playerId]) {
-                            newStats[playerId] = { plusMinus: 0, minutesPlayed: 0 };
-                        }
-                        newStats[playerId].plusMinus += plusMinusChange;
-                    });
-                    return newStats;
-                });
 
                 if (!autoSync) {
                     setTimeout(syncToFirebase, 100);
@@ -184,11 +157,6 @@
             };
 
             const startGame = async () => {
-                setShowStartingLineupModal(true);
-            };
-
-            const confirmStartGame = async () => {
-                console.log('Starting game...');
                 setGameStarted(true);
                 setCurrentHalf(1);
                 setGameTime('20:00');
@@ -199,17 +167,8 @@
                     opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
                 });
                 
-                // Initialize player stats for all roster players
-                const initialPlayerStats = {};
-                roster.forEach(player => {
-                    initialPlayerStats[player.id] = { plusMinus: 0, minutesPlayed: 0 };
-                });
-                setPlayerGameStats(initialPlayerStats);
-                
                 if (window.firebaseDb) {
                     try {
-                        const initialLineup = currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', ');
-                        
                         const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
                         await window.firebaseDb.set(gameInfoRef, {
                             started: true,
@@ -219,28 +178,14 @@
                             vtScore: 0,
                             oppScore: 0,
                             opponent: currentOpponent,
-                            currentLineup: initialLineup,
-                            startingLineup: initialLineup,
                             startTime: new Date().toISOString()
                         });
-
-                        // Initialize player stats in Firebase
-                        const playerStatsRef = window.firebaseDb.ref(`player-stats/${selectedGame}`);
-                        await window.firebaseDb.set(playerStatsRef, initialPlayerStats);
                         
                         console.log('Game started');
                     } catch (error) {
                         console.error('Error starting game:', error);
                     }
                 }
-                
-                setShowStartingLineupModal(false);
-            };
-
-            const handleStartingLineupChange = (positionIndex, newPlayerId) => {
-                const newLineup = [...currentLineup];
-                newLineup[positionIndex] = parseInt(newPlayerId);
-                setCurrentLineup(newLineup);
             };
 
             const endGame = async () => {
@@ -428,61 +373,6 @@
                                 </div>
                             </div>
                         </div>
-
-                        {/* Starting Lineup Modal */}
-                        {showStartingLineupModal && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                                <div className={`p-6 rounded-lg shadow-xl max-w-2xl w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <h3 className={`text-xl font-semibold mb-6 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Select Starting Lineup
-                                    </h3>
-                                    <div className="grid grid-cols-5 gap-4 mb-6">
-                                        {currentLineup.map((playerId, index) => (
-                                            <div key={index} className="text-center">
-                                                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                    Player {index + 1}
-                                                </label>
-                                                <select
-                                                    value={playerId}
-                                                    onChange={(e) => handleStartingLineupChange(index, e.target.value)}
-                                                    className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                        darkMode 
-                                                            ? 'bg-gray-700 border-gray-600 text-white' 
-                                                            : 'bg-white border-gray-300 text-gray-900'
-                                                    }`}
-                                                >
-                                                    {roster.filter(player => 
-                                                        (!currentLineup.includes(player.id) || player.id === playerId)
-                                                    ).map(player => (
-                                                        <option key={player.id} value={player.id}>
-                                                            {player.name} ({player.position})
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={() => setShowStartingLineupModal(false)}
-                                            className={`flex-1 px-4 py-2 border rounded-md ${
-                                                darkMode 
-                                                    ? 'text-gray-300 border-gray-600 hover:bg-gray-700' 
-                                                    : 'text-gray-600 border-gray-300 hover:bg-gray-50'
-                                            }`}
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={confirmStartGame}
-                                            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-                                        >
-                                            Start Game
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                         
                         {pendingChanges.length > 0 && (
                             <div className={`rounded-lg p-4 mb-6 border ${darkMode ? 'bg-yellow-800 border-yellow-600' : 'bg-yellow-100 border-yellow-400'}`}>
@@ -494,7 +384,7 @@
                                         <div className={`text-sm ${darkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>
                                             {pendingChanges.map((change, index) => (
                                                 <div key={index}>
-                                                    {roster.find(p => p.id === change.oldPlayerId)?.name} → {roster.find(p => p.id === change.newPlayerId)?.name}
+                                                    #{change.oldPlayerId} → #{change.newPlayerId}
                                                 </div>
                                             ))}
                                         </div>
