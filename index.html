@@ -212,13 +212,15 @@
             const updateScore = (team, points) => {
                 if (!gameStarted) return;
                 
-                const oldVtScore = vtScore;
-                const oldOppScore = oppScore;
+                let newVtScore = vtScore;
+                let newOppScore = oppScore;
                 
                 if (team === 'vt') {
-                    setVtScore(prev => Math.max(0, prev + points));
+                    newVtScore = Math.max(0, vtScore + points);
+                    setVtScore(newVtScore);
                 } else {
-                    setOppScore(prev => Math.max(0, prev + points));
+                    newOppScore = Math.max(0, oppScore + points);
+                    setOppScore(newOppScore);
                 }
 
                 // Update individual player plus/minus for current lineup
@@ -235,12 +237,22 @@
                         }
                         newStats[playerId].plusMinus += plusMinusChange;
                     });
+                    
+                    // Immediately sync to Firebase with updated stats
+                    if (window.firebaseDb) {
+                        const playerStatsRef = window.firebaseDb.ref(`player-stats/${selectedGame}`);
+                        window.firebaseDb.set(playerStatsRef, newStats);
+                        
+                        const liveDataRef = window.firebaseDb.ref(`live-game/${selectedGame}`);
+                        window.firebaseDb.update(liveDataRef, {
+                            vtScore: newVtScore,
+                            oppScore: newOppScore,
+                            lastUpdated: new Date().toISOString()
+                        });
+                    }
+                    
                     return newStats;
                 });
-
-                if (!autoSync) {
-                    setTimeout(syncToFirebase, 100);
-                }
             };
 
             const updateStat = (team, statName, value) => {
