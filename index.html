@@ -52,6 +52,7 @@
             const [currentHalf, setCurrentHalf] = useState(1);
             const [gameTime, setGameTime] = useState('20:00');
             const [currentLineup, setCurrentLineup] = useState([3, 2, 17, 1, 13]);
+            const [previousLineup, setPreviousLineup] = useState([3, 2, 17, 1, 13]);
             const [pendingChanges, setPendingChanges] = useState([]);
             const [showTimeModal, setShowTimeModal] = useState(false);
             const [showStartingLineupModal, setShowStartingLineupModal] = useState(false);
@@ -374,6 +375,11 @@
                 newPlayerId = parseInt(newPlayerId);
                 if (newPlayerId === currentLineup[positionIndex]) return;
                 
+                // CRITICAL: Capture previous lineup BEFORE making any changes (only on first change)
+                if (pendingChanges.length === 0) {
+                    setPreviousLineup([...currentLineup]);
+                }
+                
                 const oldPlayerId = currentLineup[positionIndex];
                 const existingChangeIndex = pendingChanges.findIndex(change => change.positionIndex === positionIndex);
                 
@@ -405,9 +411,8 @@
                 const halfSuffix = currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : 'OT';
                 const fullGameTime = `${pendingGameTime} ${halfSuffix}`;
                 
-                // Create one record for this substitution event
-                // The NEW lineup is in currentLineup
-                // The stats in currentStats were accumulated by the lineup that was JUST playing
+                // CRITICAL: Use previousLineup (the lineup that WAS playing) for the completed segment
+                // The stats in currentStats belong to previousLineup, NOT currentLineup
                 const changeRecord = {
                     timestamp: fullGameTime,
                     gameTime: fullGameTime,
@@ -416,9 +421,12 @@
                     changes: pendingChanges.map(change => 
                         `${roster.find(p => p.id === change.oldPlayerId)?.name} OUT, ${roster.find(p => p.id === change.newPlayerId)?.name} IN`
                     ).join('; '),
+                    // The lineup that's ENTERING (currentLineup after the changes)
                     newLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                    // The lineup that was PLAYING (previousLineup before the changes)
+                    previousLineup: previousLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
                     half: currentHalf,
-                    // These stats belong to the lineup that JUST FINISHED playing (before this sub)
+                    // These stats belong to the lineup that JUST FINISHED playing (previousLineup)
                     completedSegmentStats: currentStats
                 };
                 
@@ -461,6 +469,9 @@
                 };
                 setCurrentStats(resetStats);
                 
+                // Update previousLineup to match the NEW lineup that's now playing
+                setPreviousLineup([...currentLineup]);
+                
                 setGameTime(pendingGameTime);
                 setPendingChanges([]);
                 setShowTimeModal(false);
@@ -476,7 +487,8 @@
             };
 
             const cancelChanges = () => {
-                setCurrentLineup([3, 2, 17, 1, 13]);
+                // Reset to the lineup that was actually playing before any pending changes
+                setCurrentLineup([...previousLineup]);
                 setPendingChanges([]);
             };
 
