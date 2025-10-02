@@ -231,6 +231,11 @@
                 // Group lineup segments - including the starting lineup
                 const segments = [];
                 
+                console.log('calculateAnalytics called with:', {
+                    lineupHistoryLength: lineupHistory.length,
+                    lineupHistory: lineupHistory
+                });
+                
                 // Get starting lineup from game data
                 let startingLineupIds = [3, 2, 17, 1, 13]; // Default
                 if (gameData && gameData.startingLineup) {
