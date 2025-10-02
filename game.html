@@ -43,7 +43,7 @@
 
         const GamedayAnalyticsDisplay = () => {
             const [darkMode, setDarkMode] = useState(true);
-            const [selectedGame, setSelectedGame] = useState('2024-11-03');
+            const [selectedGame, setSelectedGame] = useState('2025-10-11');
             const [timeframe, setTimeframe] = useState('this-game');
             const [sortColumn, setSortColumn] = useState('plusMinus');
             const [sortDirection, setSortDirection] = useState('desc');
@@ -79,11 +79,19 @@
             ];
 
             const gameSchedule = [
-                { 
-                    date: '2024-11-03', 
-                    opponent: 'Charleston Southern',
-                    displayName: 'Nov 3 vs Charleston Southern'
-                }
+                { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall (Scrimmage)' },
+                { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne (Scrimmage)' },
+                { date: '2025-11-03', opponent: 'Charleston Southern', displayName: 'Nov 4 vs Charleston Southern' },
+                { date: '2025-11-08', opponent: 'Providence', displayName: 'Nov 8 vs Providence' },
+                { date: '2025-11-12', opponent: 'Saint Joseph\'s', displayName: 'Nov 12 vs Saint Joseph\'s' },
+                { date: '2025-11-16', opponent: 'Charlotte', displayName: 'Nov 16 vs Charlotte' },
+                { date: '2025-11-19', opponent: 'Bryant', displayName: 'Nov 19 vs Bryant' },
+                { date: '2025-11-26', opponent: 'Colorado State', displayName: 'Nov 26 vs Colorado State' },
+                { date: '2025-12-02', opponent: 'South Carolina', displayName: 'Dec 2 vs South Carolina' },
+                { date: '2025-12-06', opponent: 'George Mason', displayName: 'Dec 6 vs George Mason' },
+                { date: '2025-12-11', opponent: 'Western Carolina', displayName: 'Dec 11 vs Western Carolina' },
+                { date: '2025-12-14', opponent: 'Maryland-Eastern Shore', displayName: 'Dec 14 vs Maryland-Eastern Shore' },
+                { date: '2025-12-20', opponent: 'Elon', displayName: 'Dec 20 vs Elon' }
             ];
 
             const timeframes = [
@@ -103,15 +111,56 @@
                 setPlayerAvailability(availability);
             }, []);
 
-            // Firebase data listeners
+            // Check all games to find if any are live
             useEffect(() => {
                 if (!window.firebaseDb) return;
 
-                const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
-                const liveGameRef = window.firebaseDb.ref(`live-game/${selectedGame}`);
-                const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
-                const playerStatsRef = window.firebaseDb.ref(`player-stats/${selectedGame}`);
-                const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
+                const checkForLiveGame = async () => {
+                    let foundLiveGame = false;
+                    
+                    for (const game of gameSchedule) {
+                        const gameInfoRef = window.firebaseDb.ref(`game-info/${game.date}`);
+                        
+                        await new Promise((resolve) => {
+                            window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
+                                if (snapshot.exists()) {
+                                    const data = snapshot.val();
+                                    if (data.started && !data.ended) {
+                                        setLiveGameDate(game.date);
+                                        setLiveGameOpponent(game.opponent);
+                                        foundLiveGame = true;
+                                    }
+                                }
+                                resolve();
+                            }, { onlyOnce: true });
+                        });
+                        
+                        if (foundLiveGame) break;
+                    }
+                    
+                    if (!foundLiveGame) {
+                        setLiveGameDate(null);
+                        setLiveGameOpponent(null);
+                    }
+                };
+                
+                checkForLiveGame();
+                
+                // Check every 5 seconds for live game status
+                const interval = setInterval(checkForLiveGame, 5000);
+                
+                return () => clearInterval(interval);
+            }, []);
+
+            // Firebase data listeners - only when there's a live game
+            useEffect(() => {
+                if (!window.firebaseDb || !liveGameDate) return;
+
+                const gameInfoRef = window.firebaseDb.ref(`game-info/${liveGameDate}`);
+                const liveGameRef = window.firebaseDb.ref(`live-game/${liveGameDate}`);
+                const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${liveGameDate}`);
+                const playerStatsRef = window.firebaseDb.ref(`player-stats/${liveGameDate}`);
+                const currentStatsRef = window.firebaseDb.ref(`current-stats/${liveGameDate}`);
 
                 const unsubscribeGameInfo = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
                     if (snapshot.exists()) {
