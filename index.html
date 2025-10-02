@@ -726,7 +726,7 @@
                                                 {roster.find(p => p.id === playerId)?.name}
                                             </option>
                                             {roster.filter(player => 
-                                                (!currentLineup.includes(player.id) || player.id === playerId)
+                                                !currentLineup.includes(player.id)
                                             ).map(player => (
                                                 <option key={player.id} value={player.id}>
                                                     {player.name} ({player.position})
