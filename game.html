@@ -50,11 +50,16 @@
             
             // Game data state
             const [gameData, setGameData] = useState(null);
+            const [liveGameData, setLiveGameData] = useState(null);
             const [lineupHistory, setLineupHistory] = useState([]);
             const [currentLineup, setCurrentLineup] = useState([]);
             const [playerAvailability, setPlayerAvailability] = useState({});
             const [playerStats, setPlayerStats] = useState({});
             const [lineupAnalytics, setLineupAnalytics] = useState([]);
+            const [currentStats, setCurrentStats] = useState({
+                vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+            });
 
             const roster = [
                 { id: 0, name: 'Jailen Bedford', position: 'G' },
@@ -106,6 +111,7 @@
                 const liveGameRef = window.firebaseDb.ref(`live-game/${selectedGame}`);
                 const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
                 const playerStatsRef = window.firebaseDb.ref(`player-stats/${selectedGame}`);
+                const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
 
                 const unsubscribeGameInfo = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
                     if (snapshot.exists()) {
@@ -124,14 +130,19 @@
 
                 const unsubscribeLiveGame = window.firebaseDb.onValue(liveGameRef, (snapshot) => {
                     if (snapshot.exists()) {
-                        const liveData = snapshot.val();
-                        // Update any live game state if needed
+                        setLiveGameData(snapshot.val());
                     }
                 });
 
                 const unsubscribePlayerStats = window.firebaseDb.onValue(playerStatsRef, (snapshot) => {
                     if (snapshot.exists()) {
                         setPlayerStats(snapshot.val());
+                    }
+                });
+
+                const unsubscribeCurrentStats = window.firebaseDb.onValue(currentStatsRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        setCurrentStats(snapshot.val());
                     }
                 });
 
@@ -153,6 +164,7 @@
                     window.firebaseDb.off(gameInfoRef, unsubscribeGameInfo);
                     window.firebaseDb.off(liveGameRef, unsubscribeLiveGame);
                     window.firebaseDb.off(playerStatsRef, unsubscribePlayerStats);
+                    window.firebaseDb.off(currentStatsRef, unsubscribeCurrentStats);
                     window.firebaseDb.off(lineupChangesRef, unsubscribeLineupChanges);
                 };
             }, [selectedGame]);
@@ -160,7 +172,7 @@
             // Calculate analytics when data changes
             useEffect(() => {
                 calculateAnalytics();
-            }, [lineupHistory, playerAvailability, timeframe]);
+            }, [lineupHistory, playerAvailability, timeframe, liveGameData, currentStats]);
 
             const parseGameTimeToSeconds = (timeString) => {
                 // Parse "15:01 1st" format and return clock time in seconds
@@ -230,13 +242,14 @@
                 // First segment (game start to first substitution or current)
                 if (lineupHistory.length === 0) {
                     // No subs yet - starting lineup is still playing
+                    // Use LIVE current stats for this segment
                     segments.push({
                         lineup: startingLineupIds,
                         startScore: { vt: 0, opp: 0 },
-                        endScore: { vt: gameData?.vtScore || 0, opp: gameData?.oppScore || 0 },
+                        endScore: { vt: liveGameData?.vtScore || gameData?.vtScore || 0, opp: liveGameData?.oppScore || gameData?.oppScore || 0 },
                         startTime: '20:00 1st',
                         endTime: 'Current',
-                        stats: { vt: {}, opponent: {} }
+                        stats: currentStats // Use live current stats
                     });
                 } else {
                     // Starting lineup played until first sub
@@ -262,14 +275,16 @@
                             : current.lineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined);
 
                         // This lineup plays from current substitution until next substitution (or current time)
-                        // Their stats are in the NEXT change's completedSegmentStats
+                        // Their stats are in the NEXT change's completedSegmentStats, OR current live stats if this is the current lineup
+                        const isCurrentLineup = !next;
+                        
                         segments.push({
                             lineup: lineupIds,
                             startScore: { vt: current.vtScore, opp: current.oppScore },
-                            endScore: next ? { vt: next.vtScore, opp: next.oppScore } : { vt: gameData?.vtScore || current.vtScore, opp: gameData?.oppScore || current.oppScore },
+                            endScore: next ? { vt: next.vtScore, opp: next.oppScore } : { vt: liveGameData?.vtScore || gameData?.vtScore || current.vtScore, opp: liveGameData?.oppScore || gameData?.oppScore || current.oppScore },
                             startTime: current.gameTime,
                             endTime: next ? next.gameTime : 'Current',
-                            stats: next ? (next.completedSegmentStats || next.segmentStats || { vt: {}, opponent: {} }) : { vt: {}, opponent: {} }
+                            stats: isCurrentLineup ? currentStats : (next ? (next.completedSegmentStats || next.segmentStats || { vt: {}, opponent: {} }) : { vt: {}, opponent: {} })
                         });
                     }
                 }
