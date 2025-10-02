@@ -302,8 +302,19 @@
                     // Segment N: Current lineup (last newLineup to now)
                     const lastChange = lineupHistory[lineupHistory.length - 1];
                     const currentLineupIds = lastChange.newLineup 
-                        ? lastChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                        ? lastChange.newLineup.split(', ').map(name => {
+                            const player = roster.find(p => p.name === name);
+                            if (!player) console.warn('Could not find player:', name);
+                            return player?.id;
+                        }).filter(id => id !== undefined)
                         : [];
+                    
+                    console.log('Building current segment:', {
+                        lastChangeNewLineup: lastChange.newLineup,
+                        currentLineupIds,
+                        startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore },
+                        endScore: { vt: liveGameData?.vtScore || gameData?.vtScore, opp: liveGameData?.oppScore || gameData?.oppScore }
+                    });
                     
                     if (currentLineupIds.length === 5) {
                         segments.push({
@@ -314,6 +325,8 @@
                             endTime: 'Current',
                             stats: currentStats
                         });
+                    } else {
+                        console.warn('Current lineup has wrong number of players:', currentLineupIds.length);
                     }
                 }
 
