@@ -269,23 +269,47 @@
                         const current = lineupHistory[i];
                         const next = lineupHistory[i + 1];
                         
-                        // Get the lineup that came in at THIS substitution
-                        const lineupIds = current.newLineup 
-                            ? current.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                            : current.lineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined);
+                        // CRITICAL: Use previousLineup to identify which lineup was actually playing
+                        // The previousLineup field contains the lineup that accumulated the stats in completedSegmentStats
+                        let lineupIds;
+                        if (current.previousLineup) {
+                            // New format: use previousLineup to know which lineup the completed stats belong to
+                            lineupIds = current.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined);
+                        } else {
+                            // Fallback for old data: use newLineup (less accurate)
+                            lineupIds = current.newLineup 
+                                ? current.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                                : current.lineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined);
+                        }
 
-                        // This lineup plays from current substitution until next substitution (or current time)
-                        // Their stats are in the NEXT change's completedSegmentStats, OR current live stats if this is the current lineup
-                        const isCurrentLineup = !next;
-                        
+                        // This lineup's segment
                         segments.push({
                             lineup: lineupIds,
-                            startScore: { vt: current.vtScore, opp: current.oppScore },
-                            endScore: next ? { vt: next.vtScore, opp: next.oppScore } : { vt: liveGameData?.vtScore || gameData?.vtScore || current.vtScore, opp: liveGameData?.oppScore || gameData?.oppScore || current.oppScore },
-                            startTime: current.gameTime,
-                            endTime: next ? next.gameTime : 'Current',
-                            stats: isCurrentLineup ? currentStats : (next ? (next.completedSegmentStats || next.segmentStats || { vt: {}, opponent: {} }) : { vt: {}, opponent: {} })
+                            startScore: i === 0 ? { vt: 0, opp: 0 } : { vt: lineupHistory[i-1].vtScore, opp: lineupHistory[i-1].oppScore },
+                            endScore: { vt: current.vtScore, opp: current.oppScore },
+                            startTime: i === 0 ? '20:00 1st' : lineupHistory[i-1].gameTime,
+                            endTime: current.gameTime,
+                            stats: current.completedSegmentStats || current.segmentStats || { vt: {}, opponent: {} }
                         });
+                    }
+                    
+                    // Current lineup (the one playing now) - use newLineup from last change
+                    if (lineupHistory.length > 0) {
+                        const lastChange = lineupHistory[lineupHistory.length - 1];
+                        const currentLineupIds = lastChange.newLineup 
+                            ? lastChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                            : [];
+                        
+                        if (currentLineupIds.length === 5) {
+                            segments.push({
+                                lineup: currentLineupIds,
+                                startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore },
+                                endScore: { vt: liveGameData?.vtScore || gameData?.vtScore || lastChange.vtScore, opp: liveGameData?.oppScore || gameData?.oppScore || lastChange.oppScore },
+                                startTime: lastChange.gameTime,
+                                endTime: 'Current',
+                                stats: currentStats
+                            });
+                        }
                     }
                 }
 
