@@ -384,8 +384,11 @@
                     // Calculate advanced metrics
                     const offPossessions = lineup.totalPossessions || 1;
                     const defPossessions = lineup.totalOppPossessions || 1;
-                    const totalRebounds = lineup.totalOffReb + lineup.totalDefReb;
-                    const totalOppRebounds = lineup.totalOppOffReb + lineup.totalOppDefReb;
+                    
+                    // Rebound rates: OReb% = our OReb / (our OReb + their DReb)
+                    //                DReb% = our DReb / (our DReb + their OReb)
+                    const availableOffReb = lineup.totalOffReb + lineup.totalOppDefReb;
+                    const availableDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
                     
                     // Format total minutes
                     const hasCurrentSegment = lineup.segments.some(seg => seg.endTime === 'Current');
@@ -404,8 +407,8 @@
                         plusMinus: lineup.totalPlusMinus,
                         pointsPerPossession: lineup.totalPoints / offPossessions,
                         defPointsPerPossession: lineup.totalOppPoints / defPossessions,
-                        offRebRate: totalRebounds > 0 ? (lineup.totalOffReb / totalRebounds) * 100 : 0,
-                        defRebRate: totalOppRebounds > 0 ? (lineup.totalDefReb / totalOppRebounds) * 100 : 0,
+                        offRebRate: availableOffReb > 0 ? (lineup.totalOffReb / availableOffReb) * 100 : 0,
+                        defRebRate: availableDefReb > 0 ? (lineup.totalDefReb / availableDefReb) * 100 : 0,
                         turnoverRate: offPossessions > 0 ? (lineup.totalTurnovers / offPossessions) * 100 : 0,
                         defTurnoverRate: defPossessions > 0 ? (lineup.totalOppTurnovers / defPossessions) * 100 : 0,
                         minutes: minutesDisplay,
