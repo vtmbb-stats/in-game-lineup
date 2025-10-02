@@ -265,8 +265,16 @@
                 };
                 setCurrentStats(newStats);
                 
-                if (!autoSync) {
-                    setTimeout(syncToFirebase, 100);
+                // Immediately sync stats to Firebase
+                if (window.firebaseDb && gameStarted) {
+                    const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
+                    window.firebaseDb.set(currentStatsRef, newStats);
+                    
+                    const liveDataRef = window.firebaseDb.ref(`live-game/${selectedGame}`);
+                    window.firebaseDb.update(liveDataRef, {
+                        currentStats: newStats,
+                        lastUpdated: new Date().toISOString()
+                    });
                 }
             };
 
