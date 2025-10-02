@@ -253,7 +253,6 @@
                     });
                 } else {
                     // Starting lineup played until first sub
-                    // The completedSegmentStats in the first change belong to the starting lineup
                     const firstChange = lineupHistory[0];
                     
                     // Use previousLineup if available, otherwise fall back to starting lineup
@@ -270,24 +269,31 @@
                         stats: firstChange.completedSegmentStats || firstChange.segmentStats || { vt: {}, opponent: {} }
                     });
                     
-                    // Subsequent segments - skip the first one since we already handled it above
+                    // Middle segments: for each substitution after the first
+                    // The lineup that was playing is newLineup from the PREVIOUS change
+                    // The stats for that lineup are in the CURRENT change's completedSegmentStats
                     for (let i = 1; i < lineupHistory.length; i++) {
                         const current = lineupHistory[i];
                         const previous = lineupHistory[i - 1];
                         
-                        // Use previousLineup to identify which lineup was actually playing
+                        // The lineup that was playing is in current.previousLineup
+                        // (or fallback to previous.newLineup for old data)
                         const lineupIds = current.previousLineup 
                             ? current.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                            : current.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined);
+                            : (previous.newLineup 
+                                ? previous.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                                : []);
 
-                        segments.push({
-                            lineup: lineupIds,
-                            startScore: { vt: previous.vtScore, opp: previous.oppScore },
-                            endScore: { vt: current.vtScore, opp: current.oppScore },
-                            startTime: previous.gameTime,
-                            endTime: current.gameTime,
-                            stats: current.completedSegmentStats || current.segmentStats || { vt: {}, opponent: {} }
-                        });
+                        if (lineupIds.length === 5) {
+                            segments.push({
+                                lineup: lineupIds,
+                                startScore: { vt: previous.vtScore, opp: previous.oppScore },
+                                endScore: { vt: current.vtScore, opp: current.oppScore },
+                                startTime: previous.gameTime,
+                                endTime: current.gameTime,
+                                stats: current.completedSegmentStats || current.segmentStats || { vt: {}, opponent: {} }
+                            });
+                        }
                     }
                     
                     // Current lineup (the one playing now) - use newLineup from last change
