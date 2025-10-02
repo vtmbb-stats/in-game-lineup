@@ -722,6 +722,9 @@
                                                     : 'bg-white border-gray-300 text-gray-900'
                                             }`}
                                         >
+                                            <option value={playerId}>
+                                                {roster.find(p => p.id === playerId)?.name}
+                                            </option>
                                             {roster.filter(player => 
                                                 (!currentLineup.includes(player.id) || player.id === playerId)
                                             ).map(player => (
