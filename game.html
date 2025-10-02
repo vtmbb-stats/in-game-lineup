@@ -418,7 +418,10 @@
 
                 // Convert to analytics array
                 const analytics = Array.from(lineupMap.values()).map(lineup => {
-                    const playerNames = lineup.players.map(id => roster.find(p => p.id === id)?.name).join(', ');
+                    const playerNames = lineup.players.map(id => {
+                        const player = roster.find(p => p.id === id);
+                        return player ? player.name.split(' ').pop() : '';
+                    }).join(', ');
                     
                     // Calculate advanced metrics
                     const offPossessions = lineup.totalPossessions || 1;
