@@ -39,11 +39,12 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect } = React;
 
         const GamedayAnalyticsDisplay = () => {
             const [darkMode, setDarkMode] = useState(true);
-            const [selectedGame, setSelectedGame] = useState('2025-10-11');
+            const [liveGameDate, setLiveGameDate] = useState(null);
+            const [liveGameOpponent, setLiveGameOpponent] = useState(null);
             const [timeframe, setTimeframe] = useState('this-game');
             const [sortColumn, setSortColumn] = useState('plusMinus');
             const [sortDirection, setSortDirection] = useState('desc');
@@ -102,7 +103,7 @@
                 { value: 'season', label: 'Season' }
             ];
 
-            // Initialize player availability - all available by default
+            // Initialize player availability
             useEffect(() => {
                 const availability = {};
                 roster.forEach(player => {
@@ -111,45 +112,37 @@
                 setPlayerAvailability(availability);
             }, []);
 
-            // Check all games to find if any are live
+            // Check all games to find if any are live using Firebase listeners
             useEffect(() => {
                 if (!window.firebaseDb) return;
 
-                const checkForLiveGame = async () => {
-                    let foundLiveGame = false;
+                const listeners = [];
+                
+                gameSchedule.forEach(game => {
+                    const gameInfoRef = window.firebaseDb.ref(`game-info/${game.date}`);
                     
-                    for (const game of gameSchedule) {
-                        const gameInfoRef = window.firebaseDb.ref(`game-info/${game.date}`);
-                        
-                        await new Promise((resolve) => {
-                            window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
-                                if (snapshot.exists()) {
-                                    const data = snapshot.val();
-                                    if (data.started && !data.ended) {
-                                        setLiveGameDate(game.date);
-                                        setLiveGameOpponent(game.opponent);
-                                        foundLiveGame = true;
-                                    }
-                                }
-                                resolve();
-                            }, { onlyOnce: true });
-                        });
-                        
-                        if (foundLiveGame) break;
-                    }
+                    const unsubscribe = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
+                        if (snapshot.exists()) {
+                            const data = snapshot.val();
+                            if (data.started && !data.ended) {
+                                setLiveGameDate(game.date);
+                                setLiveGameOpponent(game.opponent);
+                            } else if (data.ended) {
+                                // If this was the live game and it just ended, clear it
+                                setLiveGameDate(prev => prev === game.date ? null : prev);
+                                setLiveGameOpponent(prev => prev === game.opponent ? null : prev);
+                            }
+                        }
+                    });
                     
-                    if (!foundLiveGame) {
-                        setLiveGameDate(null);
-                        setLiveGameOpponent(null);
-                    }
+                    listeners.push({ ref: gameInfoRef, unsubscribe });
+                });
+                
+                return () => {
+                    listeners.forEach(({ ref, unsubscribe }) => {
+                        window.firebaseDb.off(ref, unsubscribe);
+                    });
                 };
-                
-                checkForLiveGame();
-                
-                // Check every 5 seconds for live game status
-                const interval = setInterval(checkForLiveGame, 5000);
-                
-                return () => clearInterval(interval);
             }, []);
 
             // Firebase data listeners - only when there's a live game
@@ -167,7 +160,6 @@
                         const data = snapshot.val();
                         setGameData(data);
                         
-                        // Extract current lineup from game info
                         if (data.currentLineup) {
                             const lineupIds = data.currentLineup.split(', ').map(name => 
                                 roster.find(p => p.name === name)?.id
@@ -198,26 +190,20 @@
                 const unsubscribeLineupChanges = window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
                     if (snapshot.exists()) {
                         const changes = Object.values(snapshot.val()).sort((a, b) => {
-                            // Sort by game time - later clock times happened earlier
-                            // "18:00 1st" happened before "15:30 1st"
-                            const aTime = a.timestamp || a.gameTime || '';
-                            const bTime = b.timestamp || b.gameTime || '';
-                            
-                            // Parse times to compare properly (clock counts down)
                             const parseTime = (timeStr) => {
                                 const match = timeStr.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
                                 if (!match) return 0;
                                 const mins = parseInt(match[1]);
                                 const secs = parseInt(match[2]);
                                 const period = match[3] === '1st' ? 0 : match[3] === '2nd' ? 1 : 2;
-                                // Higher time values happened earlier in the game
                                 return period * 10000 + (mins * 60 + secs);
                             };
                             
+                            const aTime = a.timestamp || a.gameTime || '';
+                            const bTime = b.timestamp || b.gameTime || '';
                             const aVal = parseTime(aTime);
                             const bVal = parseTime(bTime);
                             
-                            // Sort descending (higher clock time = earlier in game = lower index)
                             return bVal - aVal;
                         });
                         setLineupHistory(changes);
@@ -233,15 +219,16 @@
                     window.firebaseDb.off(currentStatsRef, unsubscribeCurrentStats);
                     window.firebaseDb.off(lineupChangesRef, unsubscribeLineupChanges);
                 };
-            }, [selectedGame]);
+            }, [liveGameDate]);
 
             // Calculate analytics when data changes
             useEffect(() => {
-                calculateAnalytics();
-            }, [lineupHistory, playerAvailability, timeframe, liveGameData, currentStats]);
+                if (liveGameDate) {
+                    calculateAnalytics();
+                }
+            }, [lineupHistory, playerAvailability, timeframe, liveGameData, currentStats, liveGameDate]);
 
             const parseGameTimeToSeconds = (timeString) => {
-                // Parse "15:01 1st" format and return clock time in seconds
                 if (!timeString || timeString === 'Current' || timeString === '20:00 1st') return null;
                 
                 const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
@@ -254,24 +241,20 @@
             };
             
             const calculateMinutesPlayed = (startTime, endTime) => {
-                // Handle current lineup
                 if (endTime === 'Current') {
                     return '--:--';
                 }
                 
-                // Starting lineup case
                 if (startTime === '20:00 1st') {
                     const endSeconds = parseGameTimeToSeconds(endTime);
                     if (endSeconds === null) return '--:--';
                     
-                    // Clock counts down: 20:00 - endTime = minutes played
                     const playedSeconds = (20 * 60) - endSeconds;
                     const mins = Math.floor(playedSeconds / 60);
                     const secs = playedSeconds % 60;
                     return `${mins}:${secs.toString().padStart(2, '0')}`;
                 }
                 
-                // Regular segment
                 const startSeconds = parseGameTimeToSeconds(startTime);
                 const endSeconds = parseGameTimeToSeconds(endTime);
                 
@@ -279,7 +262,6 @@
                     return '--:--';
                 }
                 
-                // Clock counts down: startTime - endTime = minutes played
                 const playedSeconds = startSeconds - endSeconds;
                 
                 if (playedSeconds < 0) {
@@ -294,43 +276,25 @@
             };
 
             const calculateAnalytics = () => {
-                // Group lineup segments - including the starting lineup
                 const segments = [];
                 
-                console.log('calculateAnalytics called with:', {
-                    lineupHistoryLength: lineupHistory.length,
-                    lineupHistory: lineupHistory
-                });
-                
-                // Get starting lineup from game data
-                let startingLineupIds = [3, 2, 17, 1, 13]; // Default
+                let startingLineupIds = [3, 2, 17, 1, 13];
                 if (gameData && gameData.startingLineup) {
                     startingLineupIds = gameData.startingLineup.split(', ').map(name => 
                         roster.find(p => p.name === name)?.id
                     ).filter(id => id !== undefined);
                 }
                 
-                // First segment (game start to first substitution or current)
                 if (lineupHistory.length === 0) {
-                    // No subs yet - starting lineup is still playing
-                    // Use LIVE current stats for this segment
                     segments.push({
                         lineup: startingLineupIds,
                         startScore: { vt: 0, opp: 0 },
                         endScore: { vt: liveGameData?.vtScore || gameData?.vtScore || 0, opp: liveGameData?.oppScore || gameData?.oppScore || 0 },
                         startTime: '20:00 1st',
                         endTime: 'Current',
-                        stats: currentStats // Use live current stats
+                        stats: currentStats
                     });
                 } else {
-                    // Build segments from substitution history
-                    // Each substitution record contains:
-                    // - previousLineup: the 5 players who just finished playing
-                    // - newLineup: the 5 players entering
-                    // - completedSegmentStats: stats from the previousLineup's segment
-                    // - vtScore/oppScore: score at the moment of substitution
-                    
-                    // Segment 1: Starting lineup (game start to first sub)
                     const firstChange = lineupHistory[0];
                     const firstSegmentLineup = firstChange.previousLineup
                         ? firstChange.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
@@ -345,15 +309,10 @@
                         stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} }
                     });
                     
-                    // Segment 2 through N-1: Middle lineups
-                    // For change i, the lineup that was playing is change[i-1].newLineup
-                    // Their segment goes from change[i-1].gameTime to change[i].gameTime
-                    // Their stats are in change[i].completedSegmentStats
                     for (let i = 1; i < lineupHistory.length; i++) {
                         const thisChange = lineupHistory[i];
                         const prevChange = lineupHistory[i - 1];
                         
-                        // The lineup that was playing between these two subs
                         const segmentLineup = prevChange.newLineup
                             ? prevChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
                             : [];
@@ -370,22 +329,10 @@
                         }
                     }
                     
-                    // Segment N: Current lineup (last newLineup to now)
                     const lastChange = lineupHistory[lineupHistory.length - 1];
                     const currentLineupIds = lastChange.newLineup 
-                        ? lastChange.newLineup.split(', ').map(name => {
-                            const player = roster.find(p => p.name === name);
-                            if (!player) console.warn('Could not find player:', name);
-                            return player?.id;
-                        }).filter(id => id !== undefined)
+                        ? lastChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
                         : [];
-                    
-                    console.log('Building current segment:', {
-                        lastChangeNewLineup: lastChange.newLineup,
-                        currentLineupIds,
-                        startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore },
-                        endScore: { vt: liveGameData?.vtScore || gameData?.vtScore, opp: liveGameData?.oppScore || gameData?.oppScore }
-                    });
                     
                     if (currentLineupIds.length === 5) {
                         segments.push({
@@ -396,18 +343,14 @@
                             endTime: 'Current',
                             stats: currentStats
                         });
-                    } else {
-                        console.warn('Current lineup has wrong number of players:', currentLineupIds.length);
                     }
                 }
 
-                // Calculate lineup analytics - stats are ONLY from each segment, not accumulated
                 const lineupMap = new Map();
                 
                 segments.forEach(segment => {
                     const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
                     
-                    // Skip lineups with unavailable players
                     const hasUnavailablePlayer = segment.lineup.some(playerId => !playerAvailability[playerId]);
                     if (hasUnavailablePlayer) return;
 
@@ -415,7 +358,6 @@
                         lineupMap.set(lineupKey, {
                             players: segment.lineup,
                             segments: [],
-                            minutesDisplay: '',
                             totalMinutesSeconds: 0,
                             totalPlusMinus: 0,
                             totalPossessions: 0,
@@ -434,12 +376,10 @@
                     const lineup = lineupMap.get(lineupKey);
                     lineup.segments.push(segment);
                     
-                    // Calculate metrics for THIS SPECIFIC segment only
                     const vtPoints = segment.endScore.vt - segment.startScore.vt;
                     const oppPoints = segment.endScore.opp - segment.startScore.opp;
                     const plusMinus = vtPoints - oppPoints;
                     
-                    // Calculate actual minutes from time stamps
                     const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
                     if (minutesStr !== '--:--') {
                         const [mins, secs] = minutesStr.split(':').map(Number);
@@ -450,7 +390,6 @@
                     lineup.totalPoints += vtPoints;
                     lineup.totalOppPoints += oppPoints;
                     
-                    // Add stats from THIS segment only
                     const vtStats = segment.stats.vt || {};
                     const oppStats = segment.stats.opponent || {};
                     
@@ -465,23 +404,17 @@
                     lineup.totalOppTurnovers += oppStats.turnovers || 0;
                 });
 
-                // Convert to analytics array
                 const analytics = Array.from(lineupMap.values()).map(lineup => {
                     const playerNames = lineup.players.map(id => {
                         const player = roster.find(p => p.id === id);
                         return player ? player.name.split(' ').pop() : '';
                     }).join(', ');
                     
-                    // Calculate advanced metrics
                     const offPossessions = lineup.totalPossessions || 1;
                     const defPossessions = lineup.totalOppPossessions || 1;
-                    
-                    // Rebound rates: OReb% = our OReb / (our OReb + their DReb)
-                    //                DReb% = our DReb / (our DReb + their OReb)
                     const availableOffReb = lineup.totalOffReb + lineup.totalOppDefReb;
                     const availableDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
                     
-                    // Format total minutes
                     const hasCurrentSegment = lineup.segments.some(seg => seg.endTime === 'Current');
                     let minutesDisplay;
                     if (hasCurrentSegment) {
@@ -507,12 +440,10 @@
                     };
                 });
 
-                // Sort by selected column
                 analytics.sort((a, b) => {
                     let aVal = a[sortColumn];
                     let bVal = b[sortColumn];
                     
-                    // Special handling for minutes sorting
                     if (sortColumn === 'minutes') {
                         aVal = a.totalMinutesSeconds;
                         bVal = b.totalMinutesSeconds;
@@ -539,9 +470,7 @@
                 
                 const percentile = (value - min) / range;
                 
-                // For metrics where higher is better
                 const higherIsBetter = ['plusMinus', 'pointsPerPossession', 'offRebRate', 'defRebRate', 'defTurnoverRate'];
-                // For metrics where lower is better  
                 const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
                 
                 let colorIntensity;
@@ -550,7 +479,7 @@
                 } else if (lowerIsBetter.includes(column)) {
                     colorIntensity = 1 - percentile;
                 } else {
-                    colorIntensity = 0.5; // Neutral for minutes
+                    colorIntensity = 0.5;
                 }
                 
                 if (colorIntensity >= 0.8) return darkMode ? 'bg-green-800' : 'bg-green-200';
@@ -576,16 +505,34 @@
                 }));
             };
 
-            const currentOpponent = gameSchedule.find(game => game.date === selectedGame)?.opponent || 'Opponent';
+            // Show "No Game Live" screen if no live game
+            if (!liveGameDate) {
+                return (
+                    <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+                        <div className="text-center">
+                            <h1 className={`text-4xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                No Game Live
+                            </h1>
+                            <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                Start a game from the input app to view live analytics
+                            </p>
+                        </div>
+                    </div>
+                );
+            }
 
             return (
                 <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                    {/* Header */}
                     <div className="p-4 border-b border-gray-300 dark:border-gray-700">
                         <div className="flex justify-between items-center">
-                            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                VT Basketball Analytics
-                            </h1>
+                            <div>
+                                <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                    VT Basketball Analytics
+                                </h1>
+                                <p className={`text-sm mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                    Live: vs {liveGameOpponent}
+                                </p>
+                            </div>
                             <div className="flex items-center gap-4">
                                 <select
                                     value={timeframe}
@@ -606,7 +553,6 @@
                         </div>
                     </div>
 
-                    {/* Current Lineup +/- Display */}
                     <div className="p-4 border-b border-gray-300 dark:border-gray-700">
                         <h2 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                             Current Lineup +/-
@@ -631,7 +577,6 @@
                     </div>
 
                     <div className="flex">
-                        {/* Bench Players Sidebar */}
                         <div className={`w-64 p-4 border-r border-gray-300 dark:border-gray-700 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                             <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                 Bench Players
@@ -665,7 +610,6 @@
                             </div>
                         </div>
 
-                        {/* Main Analytics Table */}
                         <div className="flex-1 p-4">
                             <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                                 <div className="p-4">
@@ -708,7 +652,7 @@
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {lineupAnalytics.map((lineup, index) => (
+                                                {lineupAnalytics.map((lineup) => (
                                                     <tr key={lineup.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                                                         <td className={`p-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                                             {lineup.players}
