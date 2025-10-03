@@ -376,6 +376,14 @@
 
                 const lineupMap = new Map();
                 
+                console.log('All segments:', segments.map(s => ({ 
+                    lineup: s.lineup.map(id => roster.find(p => p.id === id)?.name).join(', '), 
+                    startTime: s.startTime, 
+                    endTime: s.endTime,
+                    startScore: s.startScore,
+                    endScore: s.endScore
+                })));
+                
                 segments.forEach(segment => {
                     const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
                     
