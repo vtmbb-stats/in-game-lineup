@@ -325,24 +325,6 @@
                         });
                         await window.firebaseDb.set(lineupChangesRef, updates);
                         
-                        const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
-                        await window.firebaseDb.update(gameInfoRef, {
-                            currentLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
-                            currentHalf: 2,
-                            gameTime: '20:00'
-                        });
-                        
-                        const liveDataRef = window.firebaseDb.ref(`live-game/${selectedGame}`);
-                        await window.firebaseDb.update(liveDataRef, {
-                            vtScore: vtScore,
-                            oppScore: oppScore,
-                            gameTime: '20:00',
-                            currentHalf: 2,
-                            currentLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
-                            currentStats: resetStats,
-                            lastUpdated: new Date().toISOString()
-                        });
-                        
                         const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
                         await window.firebaseDb.set(currentStatsRef, resetStats);
                     } catch (error) {
