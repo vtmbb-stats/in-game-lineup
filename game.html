@@ -56,6 +56,7 @@
             const [playerAvailability, setPlayerAvailability] = useState({});
             const [playerStats, setPlayerStats] = useState({});
             const [lineupAnalytics, setLineupAnalytics] = useState([]);
+            const [sortedAnalytics, setSortedAnalytics] = useState([]);
             const [currentStats, setCurrentStats] = useState({
                 vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
                 opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
@@ -220,7 +221,7 @@
                 if (liveGameDate) {
                     calculateAnalytics();
                 }
-            }, [lineupHistory, playerAvailability, timeframe, liveGameData, currentStats, liveGameDate, sortColumn, sortDirection]);
+            }, [lineupHistory, playerAvailability, timeframe, liveGameData, currentStats, liveGameDate]);
 
             const parseGameTimeToSeconds = (timeString) => {
                 if (!timeString || timeString === 'Current' || timeString === '20:00 1st') return null;
@@ -573,7 +574,11 @@
                     };
                 });
 
-                analytics.sort((a, b) => {
+                setLineupAnalytics(analytics);
+            };
+
+            useEffect(() => {
+                const sorted = [...lineupAnalytics].sort((a, b) => {
                     let aVal = a[sortColumn];
                     let bVal = b[sortColumn];
                     
@@ -584,9 +589,8 @@
                     
                     return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
                 });
-
-                setLineupAnalytics(analytics);
-            };
+                setSortedAnalytics(sorted);
+            }, [lineupAnalytics, sortColumn, sortDirection]);
 
             const getColorClass = (value, column, analytics) => {
                 if (analytics.length < 2) return '';
@@ -784,7 +788,7 @@
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {lineupAnalytics.map((lineup) => (
+                                                {sortedAnalytics.map((lineup) => (
                                                     <tr key={lineup.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                                                         <td className={`p-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                                             {lineup.players}
