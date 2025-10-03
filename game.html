@@ -245,27 +245,55 @@
                     return '--:--';
                 }
                 
-                if (startTime === '20:00 1st') {
-                    const endSeconds = parseGameTimeToSeconds(endTime);
-                    if (endSeconds === null) return '--:--';
+                // Parse time with period info
+                const parseTimeWithPeriod = (timeStr) => {
+                    const match = timeStr.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                    if (!match) return null;
                     
-                    const playedSeconds = (20 * 60) - endSeconds;
+                    const mins = parseInt(match[1]);
+                    const secs = parseInt(match[2]);
+                    const period = match[3];
+                    
+                    return {
+                        minutes: mins,
+                        seconds: secs,
+                        period: period,
+                        totalSeconds: mins * 60 + secs
+                    };
+                };
+                
+                const start = parseTimeWithPeriod(startTime);
+                const end = parseTimeWithPeriod(endTime);
+                
+                if (!start || !end) return '--:--';
+                
+                // Handle cross-period segments (e.g., 0:06 1st to 15:27 2nd)
+                if (start.period !== end.period) {
+                    let totalPlayed = 0;
+                    
+                    // Time remaining in first period (clock counts down to 0:00)
+                    totalPlayed += start.totalSeconds;
+                    
+                    // Time played in second period (20:00 down to end time)
+                    totalPlayed += (20 * 60) - end.totalSeconds;
+                    
+                    const mins = Math.floor(totalPlayed / 60);
+                    const secs = totalPlayed % 60;
+                    return `${mins}:${secs.toString().padStart(2, '0')}`;
+                }
+                
+                // Same period - normal calculation
+                if (startTime === '20:00 1st') {
+                    const playedSeconds = (20 * 60) - end.totalSeconds;
                     const mins = Math.floor(playedSeconds / 60);
                     const secs = playedSeconds % 60;
                     return `${mins}:${secs.toString().padStart(2, '0')}`;
                 }
                 
-                const startSeconds = parseGameTimeToSeconds(startTime);
-                const endSeconds = parseGameTimeToSeconds(endTime);
-                
-                if (startSeconds === null || endSeconds === null) {
-                    return '--:--';
-                }
-                
-                const playedSeconds = startSeconds - endSeconds;
+                const playedSeconds = start.totalSeconds - end.totalSeconds;
                 
                 if (playedSeconds < 0) {
-                    console.error('Negative time calculated:', { startTime, endTime, startSeconds, endSeconds });
+                    console.error('Negative time calculated:', { startTime, endTime, start, end });
                     return '--:--';
                 }
                 
