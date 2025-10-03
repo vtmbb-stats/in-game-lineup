@@ -352,6 +352,13 @@
                         
                         const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
                         await window.firebaseDb.set(currentStatsRef, resetStats);
+                        
+                        const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                        await window.firebaseDb.update(gameInfoRef, {
+                            currentLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                            currentHalf: 2,
+                            gameTime: '20:00'
+                        });
                     } catch (error) {
                         console.error('Error starting 2nd half:', error);
                     }
