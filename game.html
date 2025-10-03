@@ -656,6 +656,31 @@
                     lineup.totalOppTurnovers += oppStats.turnovers || 0;
                 });
 
+                // Add baseline-only lineups that haven't played in current game
+                baselineLineupStats.forEach((baselineData, lineupKey) => {
+                    if (!lineupMap.has(lineupKey)) {
+                        const hasUnavailablePlayer = baselineData.players.some(playerId => !playerAvailability[playerId]);
+                        if (!hasUnavailablePlayer) {
+                            lineupMap.set(lineupKey, {
+                                players: baselineData.players,
+                                segments: [],
+                                totalMinutesSeconds: baselineData.totalMinutesSeconds,
+                                totalPlusMinus: baselineData.totalPlusMinus,
+                                totalPossessions: baselineData.totalPossessions,
+                                totalOffReb: baselineData.totalOffReb,
+                                totalDefReb: baselineData.totalDefReb,
+                                totalTurnovers: baselineData.totalTurnovers,
+                                totalOppPossessions: baselineData.totalOppPossessions,
+                                totalOppOffReb: baselineData.totalOppOffReb,
+                                totalOppDefReb: baselineData.totalOppDefReb,
+                                totalOppTurnovers: baselineData.totalOppTurnovers,
+                                totalPoints: baselineData.totalPoints,
+                                totalOppPoints: baselineData.totalOppPoints
+                            });
+                        }
+                    }
+                });
+
                 const analytics = Array.from(lineupMap.values()).map(lineup => {
                     const playerNames = lineup.players.map(id => {
                         const player = roster.find(p => p.id === id);
