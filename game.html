@@ -364,51 +364,57 @@
                             const thisChange = realChanges[i];
                             const prevChange = realChanges[i - 1];
                             
-                            if (endOf1stHalf && prevChange.half === 1 && thisChange.half === 2) {
-                                const endOf1stSegmentLineup = prevChange.newLineup
-                                    ? prevChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                            const segmentLineup = prevChange.newLineup
+                                ? prevChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                                : [];
+
+                            if (segmentLineup.length === 5) {
+                                segments.push({
+                                    lineup: segmentLineup,
+                                    startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
+                                    endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
+                                    startTime: prevChange.gameTime,
+                                    endTime: thisChange.gameTime,
+                                    stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
+                                });
+                            }
+                        }
+                        
+                        if (endOf1stHalf) {
+                            const lastFirstHalfChange = realChanges.filter(r => r.half === 1).pop();
+                            if (lastFirstHalfChange) {
+                                const endOf1stSegmentLineup = lastFirstHalfChange.newLineup
+                                    ? lastFirstHalfChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
                                     : [];
                                 
                                 if (endOf1stSegmentLineup.length === 5) {
                                     segments.push({
                                         lineup: endOf1stSegmentLineup,
-                                        startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
+                                        startScore: { vt: lastFirstHalfChange.vtScore, opp: lastFirstHalfChange.oppScore },
                                         endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore },
-                                        startTime: prevChange.gameTime,
+                                        startTime: lastFirstHalfChange.gameTime,
                                         endTime: '0:00 1st',
                                         stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} }
                                     });
                                 }
-                                
-                                const startOf2ndSegmentLineup = startOf2ndHalf?.newLineup
-                                    ? startOf2ndHalf.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                    : endOf1stSegmentLineup;
-                                
-                                if (startOf2ndSegmentLineup.length === 5) {
-                                    segments.push({
-                                        lineup: startOf2ndSegmentLineup,
-                                        startScore: { vt: startOf2ndHalf?.vtScore || endOf1stHalf?.vtScore || 0, opp: startOf2ndHalf?.oppScore || endOf1stHalf?.oppScore || 0 },
-                                        endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
-                                        startTime: '20:00 2nd',
-                                        endTime: thisChange.gameTime,
-                                        stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
-                                    });
-                                }
-                            } else {
-                                const segmentLineup = prevChange.newLineup
-                                    ? prevChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                    : [];
-
-                                if (segmentLineup.length === 5) {
-                                    segments.push({
-                                        lineup: segmentLineup,
-                                        startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
-                                        endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
-                                        startTime: prevChange.gameTime,
-                                        endTime: thisChange.gameTime,
-                                        stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
-                                    });
-                                }
+                            }
+                        }
+                        
+                        if (startOf2ndHalf) {
+                            const firstSecondHalfChange = realChanges.find(r => r.half === 2);
+                            const startOf2ndSegmentLineup = startOf2ndHalf.newLineup
+                                ? startOf2ndHalf.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                                : [];
+                            
+                            if (startOf2ndSegmentLineup.length === 5 && firstSecondHalfChange) {
+                                segments.push({
+                                    lineup: startOf2ndSegmentLineup,
+                                    startScore: { vt: startOf2ndHalf.vtScore, opp: startOf2ndHalf.oppScore },
+                                    endScore: { vt: firstSecondHalfChange.vtScore, opp: firstSecondHalfChange.oppScore },
+                                    startTime: '20:00 2nd',
+                                    endTime: firstSecondHalfChange.gameTime,
+                                    stats: firstSecondHalfChange.completedSegmentStats || { vt: {}, opponent: {} }
+                                });
                             }
                         }
                         
