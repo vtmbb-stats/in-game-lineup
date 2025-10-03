@@ -443,7 +443,8 @@
                     const availableOffReb = lineup.totalOffReb + lineup.totalOppDefReb;
                     const availableDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
                     
-                    const hasCurrentSegment = lineup.segments.some(seg => seg.endTime === 'Current');
+                    // Check if only the LAST segment for this lineup is current
+                    const hasCurrentSegment = lineup.segments[lineup.segments.length - 1]?.endTime === 'Current';
                     let minutesDisplay;
                     if (hasCurrentSegment) {
                         minutesDisplay = '--:--';
