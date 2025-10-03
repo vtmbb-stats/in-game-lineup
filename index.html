@@ -584,6 +584,44 @@
                                             <button
                                                 onClick={() => {
                                                     if (currentHalf === 1) {
+                                                        // Create a phantom lineup change at end of 1st half
+                                                        const endOfHalfRecord = {
+                                                            timestamp: '0:00 1st',
+                                                            gameTime: '0:00 1st',
+                                                            vtScore: vtScore,
+                                                            oppScore: oppScore,
+                                                            changes: 'End of 1st Half',
+                                                            newLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            previousLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            half: 1,
+                                                            completedSegmentStats: currentStats
+                                                        };
+                                                        
+                                                        const newHistory = [...lineupHistory, endOfHalfRecord];
+                                                        setLineupHistory(newHistory);
+                                                        
+                                                        // Write to Firebase
+                                                        if (window.firebaseDb) {
+                                                            const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
+                                                            const updates = {};
+                                                            newHistory.forEach((record, index) => {
+                                                                updates[`${index}`] = record;
+                                                            });
+                                                            window.firebaseDb.set(lineupChangesRef, updates);
+                                                        }
+                                                        
+                                                        // Reset stats for new half
+                                                        const resetStats = {
+                                                            vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                                                            opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+                                                        };
+                                                        setCurrentStats(resetStats);
+                                                        
+                                                        if (window.firebaseDb) {
+                                                            const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
+                                                            window.firebaseDb.set(currentStatsRef, resetStats);
+                                                        }
+                                                        
                                                         setCurrentHalf(2);
                                                         setGameTime('20:00');
                                                     } else if (currentHalf === 2) {
