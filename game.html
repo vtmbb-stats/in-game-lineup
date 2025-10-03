@@ -222,7 +222,7 @@
                 if (liveGameDate) {
                     calculateAnalytics();
                 }
-            }, [lineupHistory, playerAvailability, timeframe, liveGameData, currentStats, liveGameDate]);
+            }, [lineupHistory, playerAvailability, timeframe, liveGameData, currentStats, liveGameDate, baselineLineupStats]);
 
             useEffect(() => {
                 if (timeframe === 'this-game' || !liveGameDate) {
