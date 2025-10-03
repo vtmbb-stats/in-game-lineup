@@ -56,6 +56,7 @@
             const [pendingChanges, setPendingChanges] = useState([]);
             const [showTimeModal, setShowTimeModal] = useState(false);
             const [showStartingLineupModal, setShowStartingLineupModal] = useState(false);
+            const [isStarting2ndHalf, setIsStarting2ndHalf] = useState(false);
             const [pendingGameTime, setPendingGameTime] = useState('');
             const [vtScore, setVtScore] = useState(0);
             const [oppScore, setOppScore] = useState(0);
@@ -274,6 +275,7 @@
             };
 
             const startGame = async () => {
+                setIsStarting2ndHalf(false);
                 setShowStartingLineupModal(true);
             };
 
@@ -631,6 +633,7 @@
                                             <button
                                                 onClick={() => {
                                                     if (currentHalf === 1) {
+                                                        setIsStarting2ndHalf(true);
                                                         setShowStartingLineupModal(true);
                                                     } else if (currentHalf === 2) {
                                                         setCurrentHalf(3);
@@ -667,7 +670,7 @@
                             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                                 <div className={`p-6 rounded-lg shadow-xl max-w-2xl w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                                     <h3 className={`text-xl font-semibold mb-6 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        {currentHalf === 1 ? 'Select Starting Lineup' : 'Select 2nd Half Starting Lineup'}
+                                        {isStarting2ndHalf ? 'Select 2nd Half Starting Lineup' : 'Select Starting Lineup'}
                                     </h3>
                                     <div className="grid grid-cols-5 gap-4 mb-6">
                                         {currentLineup.map((playerId, index) => (
@@ -707,10 +710,10 @@
                                             Cancel
                                         </button>
                                         <button
-                                            onClick={currentHalf === 1 ? confirmStartGame : confirmStart2ndHalf}
+                                            onClick={isStarting2ndHalf ? confirmStart2ndHalf : confirmStartGame}
                                             className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
                                         >
-                                            {currentHalf === 1 ? 'Start Game' : 'Start 2nd Half'}
+                                            {isStarting2ndHalf ? 'Start 2nd Half' : 'Start Game'}
                                         </button>
                                     </div>
                                 </div>
