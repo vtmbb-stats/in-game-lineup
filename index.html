@@ -275,8 +275,33 @@
             };
 
             const startGame = async () => {
-                setIsStarting2ndHalf(false);
-                setShowStartingLineupModal(true);
+                if (window.firebaseDb) {
+                    const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                    window.firebaseDb.onValue(gameInfoRef, async (snapshot) => {
+                        if (snapshot.exists()) {
+                            const data = snapshot.val();
+                            if (data.started) {
+                                const confirmOverwrite = window.confirm(
+                                    `Warning: This game (${selectedGame}) already has data!\n\n` +
+                                    `Started: ${data.startTime ? new Date(data.startTime).toLocaleString() : 'Unknown'}\n` +
+                                    `Score: ${data.vtScore || 0}-${data.oppScore || 0}\n\n` +
+                                    `Starting a new game will OVERWRITE all existing data.\n\n` +
+                                    `Do you want to continue?`
+                                );
+                                
+                                if (!confirmOverwrite) {
+                                    return;
+                                }
+                            }
+                        }
+                        
+                        setIsStarting2ndHalf(false);
+                        setShowStartingLineupModal(true);
+                    }, { onlyOnce: true });
+                } else {
+                    setIsStarting2ndHalf(false);
+                    setShowStartingLineupModal(true);
+                }
             };
 
             const confirmStart2ndHalf = async () => {
