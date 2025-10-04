@@ -629,7 +629,7 @@
                         lineupMap.set(lineupKey, {
                             players: segment.lineup,
                             segments: [],
-                            totalMinutesSeconds: baselineData?.totalMinutesSeconds || 0,
+                            totalMinutesSeconds: 0, // Minutes only from current game
                             totalPlusMinus: baselineData?.totalPlusMinus || 0,
                             totalPossessions: baselineData?.totalPossessions || 0,
                             totalOffReb: baselineData?.totalOffReb || 0,
