@@ -56,6 +56,7 @@
             const [pendingChanges, setPendingChanges] = useState([]);
             const [showTimeModal, setShowTimeModal] = useState(false);
             const [showStartingLineupModal, setShowStartingLineupModal] = useState(false);
+            const [showEndGameModal, setShowEndGameModal] = useState(false);
             const [isStarting2ndHalf, setIsStarting2ndHalf] = useState(false);
             const [pendingGameTime, setPendingGameTime] = useState('');
             const [vtScore, setVtScore] = useState(0);
@@ -444,16 +445,52 @@
             };
 
             const endGame = async () => {
-                setGameStarted(false);
-                setAutoSync(false);
-                
+                setShowEndGameModal(true);
+            };
+
+            const confirmEndGame = async () => {
+                if (!pendingGameTime) {
+                    alert('Please enter the final game time.');
+                    return;
+                }
+
+                const halfSuffix = currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : 'OT';
+                const fullGameTime = `${pendingGameTime} ${halfSuffix}`;
+
+                const endOfGameRecord = {
+                    timestamp: fullGameTime,
+                    gameTime: fullGameTime,
+                    vtScore: vtScore,
+                    oppScore: oppScore,
+                    changes: 'End of Game',
+                    newLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                    previousLineup: previousLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                    half: currentHalf,
+                    completedSegmentStats: currentStats
+                };
+
+                const newLineupHistory = [...lineupHistory, endOfGameRecord];
+                setLineupHistory(newLineupHistory);
+
                 if (window.firebaseDb) {
+                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
+                    const updates = {};
+                    newLineupHistory.forEach((record, index) => {
+                        updates[`${index}`] = record;
+                    });
+                    await window.firebaseDb.set(lineupChangesRef, updates);
+
                     const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
                     await window.firebaseDb.update(gameInfoRef, {
                         ended: true,
                         endTime: new Date().toISOString()
                     });
                 }
+
+                setGameStarted(false);
+                setAutoSync(false);
+                setShowEndGameModal(false);
+                setPendingGameTime('');
             };
 
             const handleLineupChange = (positionIndex, newPlayerId) => {
@@ -737,6 +774,55 @@
                             </div>
                         )}
                         
+                        {showEndGameModal && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                <div className={`p-6 rounded-lg shadow-xl max-w-md w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        End Game
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                Final Game Time ({currentHalf === 1 ? '1st Half' : currentHalf === 2 ? '2nd Half' : 'Overtime'})
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={pendingGameTime}
+                                                onChange={(e) => setPendingGameTime(e.target.value)}
+                                                placeholder="e.g., 0:00"
+                                                className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
+                                                    darkMode 
+                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                                                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                                                }`}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3 mt-6">
+                                        <button
+                                            onClick={() => {
+                                                setShowEndGameModal(false);
+                                                setPendingGameTime('');
+                                            }}
+                                            className={`flex-1 px-4 py-2 border rounded-md ${
+                                                darkMode 
+                                                    ? 'text-gray-300 border-gray-600 hover:bg-gray-700' 
+                                                    : 'text-gray-600 border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={confirmEndGame}
+                                            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                                        >
+                                            End Game
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {pendingChanges.length > 0 && (
                             <div className={`rounded-lg p-4 mb-6 border ${darkMode ? 'bg-yellow-800 border-yellow-600' : 'bg-yellow-100 border-yellow-400'}`}>
                                 <div className="flex justify-between items-center">
