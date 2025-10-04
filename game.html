@@ -342,6 +342,8 @@
                 const realChanges = sortedHistory.filter(record => 
                     record.changes !== 'End of 1st Half' && record.changes !== 'Start of 2nd Half'
                 );
+                
+                const endOf1stHalf = sortedHistory.find(r => r.changes === 'End of 1st Half');
 
                 if (realChanges.length === 0) return segments;
 
@@ -379,6 +381,23 @@
                             stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
                         });
                     }
+                }
+                
+                // Handle the last segment (from last sub to end of game/half)
+                const lastChange = realChanges[realChanges.length - 1];
+                const lastSegmentLineup = lastChange.newLineup
+                    ? lastChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                    : [];
+                
+                if (lastSegmentLineup.length === 5 && endOf1stHalf) {
+                    segments.push({
+                        lineup: lastSegmentLineup,
+                        startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore },
+                        endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore },
+                        startTime: lastChange.gameTime,
+                        endTime: '0:00 1st',
+                        stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} }
+                    });
                 }
 
                 return segments;
