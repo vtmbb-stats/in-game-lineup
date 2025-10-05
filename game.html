@@ -248,7 +248,6 @@
                 } else if (timeframe === 'season') {
                     gamesToLoad = gameSchedule.slice(0, currentGameIndex);
                 } else if (timeframe === 'acc-games') {
-                    // Will implement when you tell me which games are ACC
                     gamesToLoad = [];
                 }
 
@@ -383,7 +382,6 @@
                     }
                 }
                 
-                // Handle the last segment (from last sub to end of game/half)
                 const lastChange = realChanges[realChanges.length - 1];
                 const lastSegmentLineup = lastChange.newLineup
                     ? lastChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
@@ -614,9 +612,31 @@
                     }
                 }
 
-                console.log('All segments:', segments);
+                console.log('Current game segments:', segments);
 
                 const lineupMap = new Map();
+                
+                baselineLineupStats.forEach((baselineData, lineupKey) => {
+                    const hasUnavailablePlayer = baselineData.players.some(playerId => !playerAvailability[playerId]);
+                    if (!hasUnavailablePlayer) {
+                        lineupMap.set(lineupKey, {
+                            players: baselineData.players,
+                            segments: [],
+                            totalMinutesSeconds: baselineData.totalMinutesSeconds,
+                            totalPlusMinus: baselineData.totalPlusMinus,
+                            totalPossessions: baselineData.totalPossessions,
+                            totalOffReb: baselineData.totalOffReb,
+                            totalDefReb: baselineData.totalDefReb,
+                            totalTurnovers: baselineData.totalTurnovers,
+                            totalOppPossessions: baselineData.totalOppPossessions,
+                            totalOppOffReb: baselineData.totalOppOffReb,
+                            totalOppDefReb: baselineData.totalOppDefReb,
+                            totalOppTurnovers: baselineData.totalOppTurnovers,
+                            totalPoints: baselineData.totalPoints,
+                            totalOppPoints: baselineData.totalOppPoints
+                        });
+                    }
+                });
                 
                 segments.forEach(segment => {
                     const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
@@ -625,22 +645,21 @@
                     if (hasUnavailablePlayer) return;
 
                     if (!lineupMap.has(lineupKey)) {
-                        const baselineData = baselineLineupStats.get(lineupKey);
                         lineupMap.set(lineupKey, {
                             players: segment.lineup,
                             segments: [],
-                            totalMinutesSeconds: 0, // Minutes only from current game
-                            totalPlusMinus: baselineData?.totalPlusMinus || 0,
-                            totalPossessions: baselineData?.totalPossessions || 0,
-                            totalOffReb: baselineData?.totalOffReb || 0,
-                            totalDefReb: baselineData?.totalDefReb || 0,
-                            totalTurnovers: baselineData?.totalTurnovers || 0,
-                            totalOppPossessions: baselineData?.totalOppPossessions || 0,
-                            totalOppOffReb: baselineData?.totalOppOffReb || 0,
-                            totalOppDefReb: baselineData?.totalOppDefReb || 0,
-                            totalOppTurnovers: baselineData?.totalOppTurnovers || 0,
-                            totalPoints: baselineData?.totalPoints || 0,
-                            totalOppPoints: baselineData?.totalOppPoints || 0
+                            totalMinutesSeconds: 0,
+                            totalPlusMinus: 0,
+                            totalPossessions: 0,
+                            totalOffReb: 0,
+                            totalDefReb: 0,
+                            totalTurnovers: 0,
+                            totalOppPossessions: 0,
+                            totalOppOffReb: 0,
+                            totalOppDefReb: 0,
+                            totalOppTurnovers: 0,
+                            totalPoints: 0,
+                            totalOppPoints: 0
                         });
                     }
 
@@ -675,30 +694,7 @@
                     lineup.totalOppTurnovers += oppStats.turnovers || 0;
                 });
 
-                // Add baseline-only lineups that haven't played in current game
-                baselineLineupStats.forEach((baselineData, lineupKey) => {
-                    if (!lineupMap.has(lineupKey)) {
-                        const hasUnavailablePlayer = baselineData.players.some(playerId => !playerAvailability[playerId]);
-                        if (!hasUnavailablePlayer) {
-                            lineupMap.set(lineupKey, {
-                                players: baselineData.players,
-                                segments: [],
-                                totalMinutesSeconds: baselineData.totalMinutesSeconds,
-                                totalPlusMinus: baselineData.totalPlusMinus,
-                                totalPossessions: baselineData.totalPossessions,
-                                totalOffReb: baselineData.totalOffReb,
-                                totalDefReb: baselineData.totalDefReb,
-                                totalTurnovers: baselineData.totalTurnovers,
-                                totalOppPossessions: baselineData.totalOppPossessions,
-                                totalOppOffReb: baselineData.totalOppOffReb,
-                                totalOppDefReb: baselineData.totalOppDefReb,
-                                totalOppTurnovers: baselineData.totalOppTurnovers,
-                                totalPoints: baselineData.totalPoints,
-                                totalOppPoints: baselineData.totalOppPoints
-                            });
-                        }
-                    }
-                });
+                console.log('Final lineup map:', Array.from(lineupMap.entries()));
 
                 const analytics = Array.from(lineupMap.values()).map(lineup => {
                     const playerNames = lineup.players.map(id => {
@@ -711,7 +707,7 @@
                     const availableOffReb = lineup.totalOffReb + lineup.totalOppDefReb;
                     const availableDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
                     
-                    const hasCurrentSegment = lineup.segments[lineup.segments.length - 1]?.endTime === 'Current';
+                    const hasCurrentSegment = lineup.segments.length > 0 && lineup.segments[lineup.segments.length - 1]?.endTime === 'Current';
                     let minutesDisplay;
                     if (hasCurrentSegment) {
                         minutesDisplay = '--:--';
