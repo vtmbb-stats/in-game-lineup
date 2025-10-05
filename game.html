@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+        import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
         
         const firebaseConfig = {
             apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
@@ -24,7 +24,8 @@
         
         window.firebaseDb = {
             ref: (path) => ref(database, path),
-            onValue: (dbRef, callback) => onValue(dbRef, callback)
+            onValue: (dbRef, callback) => onValue(dbRef, callback),
+            off: (dbRef, callback) => off(dbRef, callback)
         };
         
         console.log('Firebase initialized successfully');
