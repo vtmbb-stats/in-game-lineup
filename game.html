@@ -32,15 +32,13 @@
 </head>
 <body>
     <div id="root"></div>
-
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        function SingleGameViewer() {
+        const SingleGameViewer = () => {
             const [darkMode, setDarkMode] = useState(true);
             const [selectedGame, setSelectedGame] = useState('2025-10-11');
             const [sortColumn, setSortColumn] = useState('plusMinus');
@@ -86,46 +84,263 @@
 
             useEffect(() => {
                 const availability = {};
-                roster.forEach(player => {
-                    availability[player.id] = true;
-                });
+                roster.forEach(player => { availability[player.id] = true; });
                 setPlayerAvailability(availability);
             }, []);
 
             useEffect(() => {
                 if (!window.firebaseDb) return;
-
                 const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
                 const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
                 
-                const unsubscribeGameInfo = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
-                    if (snapshot.exists()) {
-                        const gameInfo = snapshot.val();
-                        setGameEnded(gameInfo.ended || false);
-                    } else {
-                        setGameEnded(false);
-                    }
+                const u1 = window.firebaseDb.onValue(gameInfoRef, (s) => {
+                    setGameEnded(s.exists() ? (s.val().ended || false) : false);
                 });
-
-                const unsubscribeLineup = window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
-                    if (snapshot.exists()) {
-                        const changes = Object.values(snapshot.val());
-                        setLineupHistory(changes);
-                    } else {
-                        setLineupHistory([]);
-                    }
+                const u2 = window.firebaseDb.onValue(lineupChangesRef, (s) => {
+                    setLineupHistory(s.exists() ? Object.values(s.val()) : []);
                 });
-
-                return () => {
-                    if (gameInfoRef && unsubscribeGameInfo) {
-                        window.firebaseDb.off(gameInfoRef, unsubscribeGameInfo);
-                    }
-                    if (lineupChangesRef && unsubscribeLineup) {
-                        window.firebaseDb.off(lineupChangesRef, unsubscribeLineup);
-                    }
-                };
+                return () => { window.firebaseDb.off(gameInfoRef, u1); window.firebaseDb.off(lineupChangesRef, u2); };
             }, [selectedGame]);
 
+            useEffect(() => { calculateAnalytics(); }, [lineupHistory, playerAvailability]);
             useEffect(() => {
-                calculateAnalytics();
-            }, [lineupHistory, playerAvailability]);
+                const sorted = [...lineupAnalytics].sort((a, b) => {
+                    let aVal = a[sortColumn], bVal = b[sortColumn];
+                    if (sortColumn === 'minutes') { aVal = a.totalMinutesSeconds; bVal = b.totalMinutesSeconds; }
+                    return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
+                });
+                setSortedAnalytics(sorted);
+            }, [lineupAnalytics, sortColumn, sortDirection]);
+
+            const buildSegments = (lineupHistory) => {
+                const segments = [];
+                const sortedHistory = [...lineupHistory].sort((a, b) => {
+                    const parseTime = (t) => {
+                        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                        if (!m) return 0;
+                        const p = m[3] === '1st' ? 0 : m[3] === '2nd' ? 1 : 2;
+                        return p * 100000 + ((20 * 60) - (parseInt(m[1]) * 60 + parseInt(m[2])));
+                    };
+                    return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
+                });
+                const realChanges = sortedHistory.filter(r => r.changes !== 'End of 1st Half');
+                const endOf1stHalf = sortedHistory.find(r => r.changes === 'End of 1st Half');
+                if (realChanges.length === 0) return segments;
+                const firstChange = realChanges[0];
+                const isStartOf2ndHalf = firstChange.changes === 'Start of 2nd Half';
+                if (!isStartOf2ndHalf) {
+                    const firstLineup = firstChange.previousLineup ? firstChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
+                    if (firstLineup.length === 5) {
+                        segments.push({ lineup: firstLineup, startScore: { vt: 0, opp: 0 }, endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore }, startTime: '20:00 1st', endTime: firstChange.gameTime, stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} } });
+                    }
+                }
+                for (let i = 1; i < realChanges.length; i++) {
+                    const thisChange = realChanges[i], prevChange = realChanges[i - 1];
+                    const segmentLineup = prevChange.newLineup ? prevChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
+                    if (segmentLineup.length === 5) {
+                        segments.push({ lineup: segmentLineup, startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, startTime: prevChange.gameTime, endTime: thisChange.gameTime, stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } });
+                    }
+                }
+                if (!isStartOf2ndHalf && realChanges.length > 0) {
+                    const lastChange = realChanges[realChanges.length - 1];
+                    const lastLineup = lastChange.newLineup ? lastChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
+                    if (lastLineup.length === 5 && endOf1stHalf && lastChange.half === 1) {
+                        segments.push({ lineup: lastLineup, startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore }, endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore }, startTime: lastChange.gameTime, endTime: '0:00 1st', stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} } });
+                    }
+                }
+                return segments;
+            };
+
+            const calculateMinutesPlayed = (startTime, endTime) => {
+                if (endTime === 'Current') return '--:--';
+                const parse = (t) => {
+                    const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                    return m ? { minutes: parseInt(m[1]), seconds: parseInt(m[2]), period: m[3], totalSeconds: parseInt(m[1]) * 60 + parseInt(m[2]) } : null;
+                };
+                const start = parse(startTime), end = parse(endTime);
+                if (!start || !end) return '--:--';
+                let playedSeconds;
+                if (start.period !== end.period) {
+                    playedSeconds = start.totalSeconds + ((20 * 60) - end.totalSeconds);
+                } else if (startTime === '20:00 1st') {
+                    playedSeconds = (20 * 60) - end.totalSeconds;
+                } else {
+                    playedSeconds = start.totalSeconds - end.totalSeconds;
+                }
+                if (playedSeconds < 0) return '--:--';
+                return `${Math.floor(playedSeconds / 60)}:${(playedSeconds % 60).toString().padStart(2, '0')}`;
+            };
+
+            const calculateAnalytics = () => {
+                const segments = buildSegments(lineupHistory);
+                const lineupMap = new Map();
+                segments.forEach(segment => {
+                    const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
+                    if (segment.lineup.some(pid => !playerAvailability[pid])) return;
+                    if (!lineupMap.has(lineupKey)) {
+                        lineupMap.set(lineupKey, { players: segment.lineup, segments: [], totalMinutesSeconds: 0, totalPlusMinus: 0, totalPossessions: 0, totalOffReb: 0, totalDefReb: 0, totalTurnovers: 0, totalOppPossessions: 0, totalOppOffReb: 0, totalOppDefReb: 0, totalOppTurnovers: 0, totalPoints: 0, totalOppPoints: 0 });
+                    }
+                    const lineup = lineupMap.get(lineupKey);
+                    lineup.segments.push(segment);
+                    const vtPoints = segment.endScore.vt - segment.startScore.vt;
+                    const oppPoints = segment.endScore.opp - segment.startScore.opp;
+                    lineup.totalPlusMinus += vtPoints - oppPoints;
+                    if (segment.endTime !== 'Current') {
+                        const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
+                        if (minutesStr !== '--:--') {
+                            const [mins, secs] = minutesStr.split(':').map(Number);
+                            lineup.totalMinutesSeconds += (mins * 60 + secs);
+                        }
+                    }
+                    lineup.totalPoints += vtPoints;
+                    lineup.totalOppPoints += oppPoints;
+                    const vtStats = segment.stats.vt || {}, oppStats = segment.stats.opponent || {};
+                    lineup.totalPossessions += vtStats.possessions || 0;
+                    lineup.totalOffReb += vtStats.offensiveRebounds || 0;
+                    lineup.totalDefReb += vtStats.defensiveRebounds || 0;
+                    lineup.totalTurnovers += vtStats.turnovers || 0;
+                    lineup.totalOppPossessions += oppStats.possessions || 0;
+                    lineup.totalOppOffReb += oppStats.offensiveRebounds || 0;
+                    lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
+                    lineup.totalOppTurnovers += oppStats.turnovers || 0;
+                });
+                const analytics = Array.from(lineupMap.values()).map(lineup => {
+                    const playerNames = lineup.players.map(id => roster.find(p => p.id === id)?.name.split(' ').pop() || '').join(', ');
+                    const offPoss = lineup.totalPossessions || 1, defPoss = lineup.totalOppPossessions || 1;
+                    const availOffReb = lineup.totalOffReb + lineup.totalOppDefReb, availDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
+                    const hasCurrent = lineup.segments.length > 0 && lineup.segments[lineup.segments.length - 1]?.endTime === 'Current';
+                    const minutesDisplay = hasCurrent ? '--:--' : `${Math.floor(lineup.totalMinutesSeconds / 60)}:${(lineup.totalMinutesSeconds % 60).toString().padStart(2, '0')}`;
+                    return {
+                        id: lineup.players.sort((a, b) => a - b).join('-'), players: playerNames, playerIds: lineup.players,
+                        plusMinus: lineup.totalPlusMinus, pointsPerPossession: lineup.totalPoints / offPoss,
+                        defPointsPerPossession: lineup.totalOppPoints / defPoss,
+                        offRebRate: availOffReb > 0 ? (lineup.totalOffReb / availOffReb) * 100 : 0,
+                        defRebRate: availDefReb > 0 ? (lineup.totalDefReb / availDefReb) * 100 : 0,
+                        turnoverRate: offPoss > 0 ? (lineup.totalTurnovers / offPoss) * 100 : 0,
+                        defTurnoverRate: defPoss > 0 ? (lineup.totalOppTurnovers / defPoss) * 100 : 0,
+                        minutes: minutesDisplay, totalMinutesSeconds: lineup.totalMinutesSeconds
+                    };
+                });
+                setLineupAnalytics(analytics);
+            };
+
+            const getPlayerPlusMinus = (playerId) => {
+                return lineupAnalytics.reduce((sum, lineup) => sum + (lineup.playerIds.includes(playerId) ? lineup.plusMinus : 0), 0);
+            };
+
+            const getColorClass = (value, column, analytics) => {
+                if (analytics.length < 2) return '';
+                const values = analytics.map(item => item[column]).filter(v => !isNaN(v));
+                if (values.length < 2) return '';
+                values.sort((a, b) => a - b);
+                const min = values[0], max = values[values.length - 1], range = max - min;
+                if (range === 0) return '';
+                const percentile = (value - min) / range;
+                const higherIsBetter = ['plusMinus', 'pointsPerPossession', 'offRebRate', 'defRebRate', 'defTurnoverRate'];
+                const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
+                let colorIntensity = higherIsBetter.includes(column) ? percentile : lowerIsBetter.includes(column) ? 1 - percentile : 0.5;
+                if (colorIntensity >= 0.8) return darkMode ? 'bg-green-800' : 'bg-green-200';
+                if (colorIntensity >= 0.6) return darkMode ? 'bg-green-900' : 'bg-green-100';
+                if (colorIntensity >= 0.4) return '';
+                if (colorIntensity >= 0.2) return darkMode ? 'bg-red-900' : 'bg-red-100';
+                return darkMode ? 'bg-red-800' : 'bg-red-200';
+            };
+
+            const handleSort = (column) => {
+                if (sortColumn === column) { setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc'); }
+                else { setSortColumn(column); setSortDirection('desc'); }
+            };
+
+            const togglePlayerAvailability = (playerId) => {
+                setPlayerAvailability(prev => ({ ...prev, [playerId]: !prev[playerId] }));
+            };
+
+            const currentOpponent = gameSchedule.find(g => g.date === selectedGame)?.opponent || 'Opponent';
+
+            return (
+                <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+                    <div className="p-4 border-b border-gray-300 dark:border-gray-700">
+                        <div className="flex justify-between items-center">
+                            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>VT Basketball Game Viewer</h1>
+                            <div className="flex items-center gap-4">
+                                <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                                    {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                                </select>
+                                <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex">
+                        <div className={`w-64 p-4 border-r border-gray-300 dark:border-gray-700 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Players</h3>
+                            <div className="space-y-2">
+                                {roster.map(player => {
+                                    const plusMinus = getPlayerPlusMinus(player.id);
+                                    const isAvailable = playerAvailability[player.id];
+                                    return (
+                                        <div key={player.id} className={`p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} ${!isAvailable ? 'opacity-50' : ''}`}>
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <div className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{player.name}</div>
+                                                    <div className={`text-sm ${plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>{plusMinus >= 0 ? '+' : ''}{plusMinus}</div>
+                                                </div>
+                                                <input type="checkbox" checked={isAvailable ?? true} onChange={() => togglePlayerAvailability(player.id)} className="ml-2" />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <div className="flex-1 p-4">
+                            {!gameEnded ? (
+                                <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'} p-8`}>
+                                    <div className={`text-center text-xl ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Game not yet completed</div>
+                                </div>
+                            ) : (
+                                <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                    <div className="p-4">
+                                        <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Lineup Analytics - vs {currentOpponent}</h3>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full">
+                                                <thead>
+                                                    <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                        <th className={`text-left p-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Lineup</th>
+                                                        {[{ key: 'plusMinus', label: '+/-' }, { key: 'pointsPerPossession', label: 'PPP' }, { key: 'defPointsPerPossession', label: 'Def PPP' }, { key: 'offRebRate', label: 'OReb%' }, { key: 'defRebRate', label: 'DReb%' }, { key: 'turnoverRate', label: 'TO%' }, { key: 'defTurnoverRate', label: 'Def TO%' }, { key: 'minutes', label: 'Min' }].map(col => (
+                                                            <th key={col.key} onClick={() => handleSort(col.key)} className={`text-left p-2 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${sortColumn === col.key ? 'font-bold' : ''}`}>
+                                                                {col.label}{sortColumn === col.key && (<span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>)}
+                                                            </th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {sortedAnalytics.map(lineup => (
+                                                        <tr key={lineup.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                            <td className={`p-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.players}</td>
+                                                            <td className={`p-2 ${getColorClass(lineup.plusMinus, 'plusMinus', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.plusMinus >= 0 ? '+' : ''}{lineup.plusMinus}</td>
+                                                            <td className={`p-2 ${getColorClass(lineup.pointsPerPossession, 'pointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.pointsPerPossession.toFixed(2)}</td>
+                                                            <td className={`p-2 ${getColorClass(lineup.defPointsPerPossession, 'defPointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defPointsPerPossession.toFixed(2)}</td>
+                                                            <td className={`p-2 ${getColorClass(lineup.offRebRate, 'offRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.offRebRate.toFixed(1)}%</td>
+                                                            <td className={`p-2 ${getColorClass(lineup.defRebRate, 'defRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defRebRate.toFixed(1)}%</td>
+                                                            <td className={`p-2 ${getColorClass(lineup.turnoverRate, 'turnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.turnoverRate.toFixed(1)}%</td>
+                                                            <td className={`p-2 ${getColorClass(lineup.defTurnoverRate, 'defTurnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defTurnoverRate.toFixed(1)}%</td>
+                                                            <td className={`p-2 ${getColorClass(lineup.minutes, 'minutes', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.minutes}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                            {lineupAnalytics.length === 0 && (<div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No lineup data available for this game</div>)}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SingleGameViewer />);
+    </script>
+</body>
+</html>
