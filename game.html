@@ -670,10 +670,13 @@
                     const oppPoints = segment.endScore.opp - segment.startScore.opp;
                     const plusMinus = vtPoints - oppPoints;
                     
-                    const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
-                    if (minutesStr !== '--:--') {
-                        const [mins, secs] = minutesStr.split(':').map(Number);
-                        lineup.totalMinutesSeconds += (mins * 60 + secs);
+                    // CRITICAL FIX: Only add minutes if this segment is NOT currently active
+                    if (segment.endTime !== 'Current') {
+                        const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
+                        if (minutesStr !== '--:--') {
+                            const [mins, secs] = minutesStr.split(':').map(Number);
+                            lineup.totalMinutesSeconds += (mins * 60 + secs);
+                        }
                     }
                     
                     lineup.totalPlusMinus += plusMinus;
