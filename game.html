@@ -332,19 +332,22 @@
 
             const buildSegmentsForGame = (lineupHistory, gameDate) => {
                 const segments = [];
-                const sortedHistory = lineupHistory.sort((a, b) => {
+                
+                // Sort chronologically FIRST
+                const sortedHistory = [...lineupHistory].sort((a, b) => {
                     const parseTime = (timeStr) => {
                         const match = timeStr.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
                         if (!match) return 0;
                         const mins = parseInt(match[1]);
                         const secs = parseInt(match[2]);
                         const period = match[3] === '1st' ? 0 : match[3] === '2nd' ? 1 : 2;
-                        return period * 10000 + (mins * 60 + secs);
+                        // Return elapsed time (higher = later in game)
+                        return period * 100000 + ((20 * 60) - (mins * 60 + secs));
                     };
                     
                     const aTime = a.timestamp || a.gameTime || '';
                     const bTime = b.timestamp || b.gameTime || '';
-                    return parseTime(bTime) - parseTime(aTime);
+                    return parseTime(aTime) - parseTime(bTime);
                 });
 
                 const realChanges = sortedHistory.filter(record => 
