@@ -42,7 +42,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect } = React;
 
         const BasketballLineupTracker = () => {
             const [darkMode, setDarkMode] = useState(false);
@@ -56,13 +56,11 @@
             const [pendingChanges, setPendingChanges] = useState([]);
             const [showTimeModal, setShowTimeModal] = useState(false);
             const [showStartingLineupModal, setShowStartingLineupModal] = useState(false);
-            const [showEndGameModal, setShowEndGameModal] = useState(false);
             const [isStarting2ndHalf, setIsStarting2ndHalf] = useState(false);
             const [pendingGameTime, setPendingGameTime] = useState('');
             const [vtScore, setVtScore] = useState(0);
             const [oppScore, setOppScore] = useState(0);
             const [lineupHistory, setLineupHistory] = useState([]);
-            const [lastScoreUpdate, setLastScoreUpdate] = useState({ vt: 0, opp: 0 });
             const [playerGameStats, setPlayerGameStats] = useState({});
             
             const [currentStats, setCurrentStats] = useState({
@@ -445,17 +443,8 @@
             };
 
             const endGame = async () => {
-                setShowEndGameModal(true);
-            };
-
-            const confirmEndGame = async () => {
-                if (!pendingGameTime) {
-                    alert('Please enter the final game time.');
-                    return;
-                }
-
-                const halfSuffix = currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : 'OT';
-                const fullGameTime = `${pendingGameTime} ${halfSuffix}`;
+                const halfSuffix = currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : currentHalf === 3 ? 'OT' : `${currentHalf - 2}OT`;
+                const fullGameTime = `0:00 ${halfSuffix}`;
 
                 const endOfGameRecord = {
                     timestamp: fullGameTime,
@@ -470,7 +459,6 @@
                 };
 
                 const newLineupHistory = [...lineupHistory, endOfGameRecord];
-                setLineupHistory(newLineupHistory);
 
                 if (window.firebaseDb) {
                     const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
@@ -489,8 +477,14 @@
 
                 setGameStarted(false);
                 setAutoSync(false);
-                setShowEndGameModal(false);
-                setPendingGameTime('');
+                setLineupHistory([]);
+                setCurrentStats({
+                    vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                    opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+                });
+                setPlayerGameStats({});
+                setCurrentHalf(1);
+                setGameTime('20:00');
             };
 
             const handleLineupChange = (positionIndex, newPlayerId) => {
@@ -529,7 +523,7 @@
                     return;
                 }
                 
-                const halfSuffix = currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : 'OT';
+                const halfSuffix = currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : currentHalf === 3 ? 'OT' : `${currentHalf - 2}OT`;
                 const fullGameTime = `${pendingGameTime} ${halfSuffix}`;
                 
                 const changeRecord = {
@@ -692,6 +686,9 @@
                                                     } else if (currentHalf === 2) {
                                                         setCurrentHalf(3);
                                                         setGameTime('5:00');
+                                                    } else {
+                                                        setCurrentHalf(currentHalf + 1);
+                                                        setGameTime('5:00');
                                                     }
                                                 }}
                                                 className="px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm font-medium"
@@ -768,55 +765,6 @@
                                             className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
                                         >
                                             {isStarting2ndHalf ? 'Start 2nd Half' : 'Start Game'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        
-                        {showEndGameModal && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                                <div className={`p-6 rounded-lg shadow-xl max-w-md w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        End Game
-                                    </h3>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                Final Game Time ({currentHalf === 1 ? '1st Half' : currentHalf === 2 ? '2nd Half' : 'Overtime'})
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={pendingGameTime}
-                                                onChange={(e) => setPendingGameTime(e.target.value)}
-                                                placeholder="e.g., 0:00"
-                                                className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
-                                                    darkMode 
-                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                        : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                                                }`}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-3 mt-6">
-                                        <button
-                                            onClick={() => {
-                                                setShowEndGameModal(false);
-                                                setPendingGameTime('');
-                                            }}
-                                            className={`flex-1 px-4 py-2 border rounded-md ${
-                                                darkMode 
-                                                    ? 'text-gray-300 border-gray-600 hover:bg-gray-700' 
-                                                    : 'text-gray-600 border-gray-300 hover:bg-gray-50'
-                                            }`}
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={confirmEndGame}
-                                            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-                                        >
-                                            End Game
                                         </button>
                                     </div>
                                 </div>
