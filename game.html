@@ -234,6 +234,8 @@
             }, [timeframe, liveGameDate]);
 
             const loadBaselineStats = async () => {
+                console.log('=== LOADING BASELINE ===', { timeframe, liveGameDate });
+                
                 if (!window.firebaseDb || !liveGameDate) return;
 
                 const currentGameIndex = gameSchedule.findIndex(g => g.date === liveGameDate);
@@ -251,6 +253,8 @@
                     gamesToLoad = [];
                 }
 
+                console.log('Games to load for baseline:', gamesToLoad.map(g => g.date));
+
                 const baselineMap = new Map();
 
                 for (const game of gamesToLoad) {
@@ -260,7 +264,9 @@
                         window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
                             if (snapshot.exists()) {
                                 const changes = Object.values(snapshot.val());
+                                console.log(`Loaded ${changes.length} changes from ${game.date}:`, changes);
                                 const segments = buildSegmentsForGame(changes, game.date);
+                                console.log(`Built ${segments.length} segments from ${game.date}:`, segments);
                                 
                                 segments.forEach(segment => {
                                     const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
@@ -312,12 +318,15 @@
                                     lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
                                     lineup.totalOppTurnovers += oppStats.turnovers || 0;
                                 });
+                            } else {
+                                console.log(`No data found for ${game.date}`);
                             }
                             resolve();
                         }, { onlyOnce: true });
                     });
                 }
 
+                console.log('=== BASELINE LOADED ===', Array.from(baselineMap.entries()));
                 setBaselineLineupStats(baselineMap);
             };
 
