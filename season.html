@@ -127,13 +127,25 @@
                 const gamesFound = [];
 
                 for (const game of gameSchedule) {
-                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${game.date}`);
+                    const gameInfoRef = window.firebaseDb.ref(`game-info/${game.date}`);
                     
                     await new Promise((resolve) => {
-                        window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
+                        window.firebaseDb.onValue(gameInfoRef, async (snapshot) => {
                             if (snapshot.exists()) {
-                                gamesData[game.date] = Object.values(snapshot.val());
-                                gamesFound.push(game.date);
+                                const gameInfo = snapshot.val();
+                                if (gameInfo.ended) {
+                                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${game.date}`);
+                                    
+                                    await new Promise((resolveLineup) => {
+                                        window.firebaseDb.onValue(lineupChangesRef, (lineupSnapshot) => {
+                                            if (lineupSnapshot.exists()) {
+                                                gamesData[game.date] = Object.values(lineupSnapshot.val());
+                                                gamesFound.push(game.date);
+                                            }
+                                            resolveLineup();
+                                        }, { onlyOnce: true });
+                                    });
+                                }
                             }
                             resolve();
                         }, { onlyOnce: true });
