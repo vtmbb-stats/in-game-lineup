@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VT Basketball Season Totals</title>
+    <title>VT Basketball Game Viewer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -40,14 +40,16 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        const SeasonTotalsViewer = () => {
+        const SingleGameViewer = () => {
             const [darkMode, setDarkMode] = useState(true);
+            const [selectedGame, setSelectedGame] = useState('2025-10-11');
             const [sortColumn, setSortColumn] = useState('plusMinus');
             const [sortDirection, setSortDirection] = useState('desc');
+            
+            const [lineupHistory, setLineupHistory] = useState([]);
             const [playerAvailability, setPlayerAvailability] = useState({});
             const [lineupAnalytics, setLineupAnalytics] = useState([]);
             const [sortedAnalytics, setSortedAnalytics] = useState([]);
-            const [loading, setLoading] = useState(true);
 
             const roster = [
                 { id: 0, name: 'Jailen Bedford', position: 'G' },
@@ -67,19 +69,19 @@
             ];
 
             const gameSchedule = [
-                { date: '2025-10-11', opponent: 'Seton Hall' },
-                { date: '2025-10-25', opponent: 'Duquesne' },
-                { date: '2025-11-03', opponent: 'Charleston Southern' },
-                { date: '2025-11-08', opponent: 'Providence' },
-                { date: '2025-11-12', opponent: 'Saint Joseph\'s' },
-                { date: '2025-11-16', opponent: 'Charlotte' },
-                { date: '2025-11-19', opponent: 'Bryant' },
-                { date: '2025-11-26', opponent: 'Colorado State' },
-                { date: '2025-12-02', opponent: 'South Carolina' },
-                { date: '2025-12-06', opponent: 'George Mason' },
-                { date: '2025-12-11', opponent: 'Western Carolina' },
-                { date: '2025-12-14', opponent: 'Maryland-Eastern Shore' },
-                { date: '2025-12-20', opponent: 'Elon' }
+                { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall (Scrimmage)' },
+                { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne (Scrimmage)' },
+                { date: '2025-11-03', opponent: 'Charleston Southern', displayName: 'Nov 4 vs Charleston Southern' },
+                { date: '2025-11-08', opponent: 'Providence', displayName: 'Nov 8 vs Providence' },
+                { date: '2025-11-12', opponent: 'Saint Joseph\'s', displayName: 'Nov 12 vs Saint Joseph\'s' },
+                { date: '2025-11-16', opponent: 'Charlotte', displayName: 'Nov 16 vs Charlotte' },
+                { date: '2025-11-19', opponent: 'Bryant', displayName: 'Nov 19 vs Bryant' },
+                { date: '2025-11-26', opponent: 'Colorado State', displayName: 'Nov 26 vs Colorado State' },
+                { date: '2025-12-02', opponent: 'South Carolina', displayName: 'Dec 2 vs South Carolina' },
+                { date: '2025-12-06', opponent: 'George Mason', displayName: 'Dec 6 vs George Mason' },
+                { date: '2025-12-11', opponent: 'Western Carolina', displayName: 'Dec 11 vs Western Carolina' },
+                { date: '2025-12-14', opponent: 'Maryland-Eastern Shore', displayName: 'Dec 14 vs Maryland-Eastern Shore' },
+                { date: '2025-12-20', opponent: 'Elon', displayName: 'Dec 20 vs Elon' }
             ];
 
             useEffect(() => {
@@ -91,12 +93,29 @@
             }, []);
 
             useEffect(() => {
-                loadAllGames();
-            }, []);
+                if (!window.firebaseDb) return;
+
+                const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
+                
+                const unsubscribe = window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        const changes = Object.values(snapshot.val());
+                        setLineupHistory(changes);
+                    } else {
+                        setLineupHistory([]);
+                    }
+                });
+
+                return () => {
+                    if (lineupChangesRef && unsubscribe) {
+                        window.firebaseDb.off(lineupChangesRef, unsubscribe);
+                    }
+                };
+            }, [selectedGame]);
 
             useEffect(() => {
-                calculateSeasonAnalytics();
-            }, [playerAvailability]);
+                calculateAnalytics();
+            }, [lineupHistory, playerAvailability]);
 
             useEffect(() => {
                 const sorted = [...lineupAnalytics].sort((a, b) => {
@@ -113,32 +132,7 @@
                 setSortedAnalytics(sorted);
             }, [lineupAnalytics, sortColumn, sortDirection]);
 
-            const [allGamesData, setAllGamesData] = useState({});
-
-            const loadAllGames = async () => {
-                if (!window.firebaseDb) return;
-
-                setLoading(true);
-                const gamesData = {};
-
-                for (const game of gameSchedule) {
-                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${game.date}`);
-                    
-                    await new Promise((resolve) => {
-                        window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
-                            if (snapshot.exists()) {
-                                gamesData[game.date] = Object.values(snapshot.val());
-                            }
-                            resolve();
-                        }, { onlyOnce: true });
-                    });
-                }
-
-                setAllGamesData(gamesData);
-                setLoading(false);
-            };
-
-            const buildSegmentsForGame = (lineupHistory) => {
+            const buildSegments = (lineupHistory) => {
                 const segments = [];
                 
                 const sortedHistory = [...lineupHistory].sort((a, b) => {
@@ -227,7 +221,7 @@
 
             const calculateMinutesPlayed = (startTime, endTime) => {
                 if (endTime === 'Current') {
-                    return 0;
+                    return '--:--';
                 }
                 
                 const parseTimeWithPeriod = (timeStr) => {
@@ -236,89 +230,110 @@
                     
                     const mins = parseInt(match[1]);
                     const secs = parseInt(match[2]);
+                    const period = match[3];
                     
                     return {
-                        totalSeconds: mins * 60 + secs,
-                        period: match[3]
+                        minutes: mins,
+                        seconds: secs,
+                        period: period,
+                        totalSeconds: mins * 60 + secs
                     };
                 };
                 
                 const start = parseTimeWithPeriod(startTime);
                 const end = parseTimeWithPeriod(endTime);
                 
-                if (!start || !end) return 0;
+                if (!start || !end) return '--:--';
                 
                 if (start.period !== end.period) {
                     let totalPlayed = 0;
                     totalPlayed += start.totalSeconds;
                     totalPlayed += (20 * 60) - end.totalSeconds;
-                    return totalPlayed;
+                    
+                    const mins = Math.floor(totalPlayed / 60);
+                    const secs = totalPlayed % 60;
+                    return `${mins}:${secs.toString().padStart(2, '0')}`;
                 }
                 
                 if (startTime === '20:00 1st') {
-                    return (20 * 60) - end.totalSeconds;
+                    const playedSeconds = (20 * 60) - end.totalSeconds;
+                    const mins = Math.floor(playedSeconds / 60);
+                    const secs = playedSeconds % 60;
+                    return `${mins}:${secs.toString().padStart(2, '0')}`;
                 }
                 
                 const playedSeconds = start.totalSeconds - end.totalSeconds;
-                return playedSeconds < 0 ? 0 : playedSeconds;
+                
+                if (playedSeconds < 0) {
+                    return '--:--';
+                }
+                
+                const mins = Math.floor(playedSeconds / 60);
+                const secs = playedSeconds % 60;
+                
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
             };
 
-            const calculateSeasonAnalytics = () => {
+            const calculateAnalytics = () => {
+                const segments = buildSegments(lineupHistory);
                 const lineupMap = new Map();
-
-                Object.values(allGamesData).forEach(gameHistory => {
-                    const segments = buildSegmentsForGame(gameHistory);
+                
+                segments.forEach(segment => {
+                    const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
                     
-                    segments.forEach(segment => {
-                        const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
-                        
-                        const hasUnavailablePlayer = segment.lineup.some(playerId => !playerAvailability[playerId]);
-                        if (hasUnavailablePlayer) return;
+                    const hasUnavailablePlayer = segment.lineup.some(playerId => !playerAvailability[playerId]);
+                    if (hasUnavailablePlayer) return;
 
-                        if (!lineupMap.has(lineupKey)) {
-                            lineupMap.set(lineupKey, {
-                                players: segment.lineup,
-                                totalMinutesSeconds: 0,
-                                totalPlusMinus: 0,
-                                totalPossessions: 0,
-                                totalOffReb: 0,
-                                totalDefReb: 0,
-                                totalTurnovers: 0,
-                                totalOppPossessions: 0,
-                                totalOppOffReb: 0,
-                                totalOppDefReb: 0,
-                                totalOppTurnovers: 0,
-                                totalPoints: 0,
-                                totalOppPoints: 0
-                            });
+                    if (!lineupMap.has(lineupKey)) {
+                        lineupMap.set(lineupKey, {
+                            players: segment.lineup,
+                            segments: [],
+                            totalMinutesSeconds: 0,
+                            totalPlusMinus: 0,
+                            totalPossessions: 0,
+                            totalOffReb: 0,
+                            totalDefReb: 0,
+                            totalTurnovers: 0,
+                            totalOppPossessions: 0,
+                            totalOppOffReb: 0,
+                            totalOppDefReb: 0,
+                            totalOppTurnovers: 0,
+                            totalPoints: 0,
+                            totalOppPoints: 0
+                        });
+                    }
+
+                    const lineup = lineupMap.get(lineupKey);
+                    lineup.segments.push(segment);
+                    
+                    const vtPoints = segment.endScore.vt - segment.startScore.vt;
+                    const oppPoints = segment.endScore.opp - segment.startScore.opp;
+                    const plusMinus = vtPoints - oppPoints;
+                    
+                    if (segment.endTime !== 'Current') {
+                        const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
+                        if (minutesStr !== '--:--') {
+                            const [mins, secs] = minutesStr.split(':').map(Number);
+                            lineup.totalMinutesSeconds += (mins * 60 + secs);
                         }
-
-                        const lineup = lineupMap.get(lineupKey);
-                        
-                        const vtPoints = segment.endScore.vt - segment.startScore.vt;
-                        const oppPoints = segment.endScore.opp - segment.startScore.opp;
-                        const plusMinus = vtPoints - oppPoints;
-                        
-                        const minutesSeconds = calculateMinutesPlayed(segment.startTime, segment.endTime);
-                        lineup.totalMinutesSeconds += minutesSeconds;
-                        
-                        lineup.totalPlusMinus += plusMinus;
-                        lineup.totalPoints += vtPoints;
-                        lineup.totalOppPoints += oppPoints;
-                        
-                        const vtStats = segment.stats.vt || {};
-                        const oppStats = segment.stats.opponent || {};
-                        
-                        lineup.totalPossessions += vtStats.possessions || 0;
-                        lineup.totalOffReb += vtStats.offensiveRebounds || 0;
-                        lineup.totalDefReb += vtStats.defensiveRebounds || 0;
-                        lineup.totalTurnovers += vtStats.turnovers || 0;
-                        
-                        lineup.totalOppPossessions += oppStats.possessions || 0;
-                        lineup.totalOppOffReb += oppStats.offensiveRebounds || 0;
-                        lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
-                        lineup.totalOppTurnovers += oppStats.turnovers || 0;
-                    });
+                    }
+                    
+                    lineup.totalPlusMinus += plusMinus;
+                    lineup.totalPoints += vtPoints;
+                    lineup.totalOppPoints += oppPoints;
+                    
+                    const vtStats = segment.stats.vt || {};
+                    const oppStats = segment.stats.opponent || {};
+                    
+                    lineup.totalPossessions += vtStats.possessions || 0;
+                    lineup.totalOffReb += vtStats.offensiveRebounds || 0;
+                    lineup.totalDefReb += vtStats.defensiveRebounds || 0;
+                    lineup.totalTurnovers += vtStats.turnovers || 0;
+                    
+                    lineup.totalOppPossessions += oppStats.possessions || 0;
+                    lineup.totalOppOffReb += oppStats.offensiveRebounds || 0;
+                    lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
+                    lineup.totalOppTurnovers += oppStats.turnovers || 0;
                 });
 
                 const analytics = Array.from(lineupMap.values()).map(lineup => {
@@ -332,9 +347,15 @@
                     const availableOffReb = lineup.totalOffReb + lineup.totalOppDefReb;
                     const availableDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
                     
-                    const totalMins = Math.floor(lineup.totalMinutesSeconds / 60);
-                    const totalSecs = lineup.totalMinutesSeconds % 60;
-                    const minutesDisplay = `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
+                    const hasCurrentSegment = lineup.segments.length > 0 && lineup.segments[lineup.segments.length - 1]?.endTime === 'Current';
+                    let minutesDisplay;
+                    if (hasCurrentSegment) {
+                        minutesDisplay = '--:--';
+                    } else {
+                        const totalMins = Math.floor(lineup.totalMinutesSeconds / 60);
+                        const totalSecs = lineup.totalMinutesSeconds % 60;
+                        minutesDisplay = `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
+                    }
                     
                     return {
                         id: lineup.players.sort((a, b) => a - b).join('-'),
@@ -417,15 +438,7 @@
                 }));
             };
 
-            if (loading) {
-                return (
-                    <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                        <div className={`text-xl ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                            Loading season data...
-                        </div>
-                    </div>
-                );
-            }
+            const currentOpponent = gameSchedule.find(g => g.date === selectedGame)?.opponent || 'Opponent';
 
             return (
                 <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
@@ -433,15 +446,26 @@
                         <div className="flex justify-between items-center">
                             <div>
                                 <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    VT Basketball Season Totals
+                                    VT Basketball Game Viewer
                                 </h1>
                             </div>
-                            <button
-                                onClick={() => setDarkMode(!darkMode)}
-                                className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}
-                            >
-                                {darkMode ? 'Light' : 'Dark'}
-                            </button>
+                            <div className="flex items-center gap-4">
+                                <select
+                                    value={selectedGame}
+                                    onChange={(e) => setSelectedGame(e.target.value)}
+                                    className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                >
+                                    {gameSchedule.map(game => (
+                                        <option key={game.date} value={game.date}>{game.displayName}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    onClick={() => setDarkMode(!darkMode)}
+                                    className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}
+                                >
+                                    {darkMode ? 'Light' : 'Dark'}
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -483,7 +507,7 @@
                             <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                                 <div className="p-4">
                                     <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Season Lineup Analytics
+                                        Lineup Analytics - vs {currentOpponent}
                                     </h3>
                                     
                                     <div className="overflow-x-auto">
@@ -538,4 +562,39 @@
                                                         <td className={`p-2 ${getColorClass(lineup.offRebRate, 'offRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                                             {lineup.offRebRate.toFixed(1)}%
                                                         </td>
-                                                        <td className={`p-2 ${getColorClass(lineup.
+                                                        <td className={`p-2 ${getColorClass(lineup.defRebRate, 'defRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.defRebRate.toFixed(1)}%
+                                                        </td>
+                                                        <td className={`p-2 ${getColorClass(lineup.turnoverRate, 'turnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.turnoverRate.toFixed(1)}%
+                                                        </td>
+                                                        <td className={`p-2 ${getColorClass(lineup.defTurnoverRate, 'defTurnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.defTurnoverRate.toFixed(1)}%
+                                                        </td>
+                                                        <td className={`p-2 ${getColorClass(lineup.minutes, 'minutes', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {lineup.minutes}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                        
+                                        {lineupAnalytics.length === 0 && (
+                                            <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                No lineup data available for this game
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SingleGameViewer />);
+    </script>
+</body>
+</html>
