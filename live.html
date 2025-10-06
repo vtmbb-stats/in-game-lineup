@@ -616,6 +616,25 @@
                             });
                         }
                         
+                        // If still in 1st half (no endOf1stHalf), create current segment
+                        if (!endOf1stHalf && firstHalfChanges.length > 0) {
+                            const lastFirstHalfChange = firstHalfChanges[firstHalfChanges.length - 1];
+                            const currentLineupIds = lastFirstHalfChange.newLineup 
+                                ? lastFirstHalfChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                                : [];
+                            
+                            if (currentLineupIds.length === 5) {
+                                segments.push({
+                                    lineup: currentLineupIds,
+                                    startScore: { vt: lastFirstHalfChange.vtScore, opp: lastFirstHalfChange.oppScore },
+                                    endScore: { vt: liveGameData?.vtScore || gameData?.vtScore || lastFirstHalfChange.vtScore, opp: liveGameData?.oppScore || gameData?.oppScore || lastFirstHalfChange.oppScore },
+                                    startTime: lastFirstHalfChange.gameTime,
+                                    endTime: 'Current',
+                                    stats: currentStats
+                                });
+                            }
+                        }
+                        
                         // Now process 2nd half
                         if (startOf2ndHalf) {
                             if (secondHalfChanges.length > 0) {
