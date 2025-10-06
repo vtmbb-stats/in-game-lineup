@@ -542,18 +542,51 @@
                         }
                     } else {
                         const firstChange = realChanges[0];
-                        const firstSegmentLineup = firstChange.previousLineup
-                            ? firstChange.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                            : startingLineupIds;
                         
-                        segments.push({
-                            lineup: firstSegmentLineup,
-                            startScore: { vt: 0, opp: 0 },
-                            endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore },
-                            startTime: '20:00 1st',
-                            endTime: firstChange.gameTime,
-                            stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} }
-                        });
+                        // Check if first change is in 2nd half
+                        if (firstChange.half === 2 && endOf1stHalf && startOf2ndHalf) {
+                            // Handle 1st half as a single segment
+                            const firstHalfLineup = startOf2ndHalf.previousLineup
+                                ? startOf2ndHalf.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                                : startingLineupIds;
+                            
+                            segments.push({
+                                lineup: firstHalfLineup,
+                                startScore: { vt: 0, opp: 0 },
+                                endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore },
+                                startTime: '20:00 1st',
+                                endTime: '0:00 1st',
+                                stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} }
+                            });
+                            
+                            // Handle start of 2nd half to first 2nd half change
+                            const startOf2ndSegmentLineup = startOf2ndHalf.newLineup
+                                ? startOf2ndHalf.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                                : firstHalfLineup;
+                            
+                            segments.push({
+                                lineup: startOf2ndSegmentLineup,
+                                startScore: { vt: startOf2ndHalf.vtScore, opp: startOf2ndHalf.oppScore },
+                                endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore },
+                                startTime: '20:00 2nd',
+                                endTime: firstChange.gameTime,
+                                stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} }
+                            });
+                        } else {
+                            // First change is in 1st half - original logic
+                            const firstSegmentLineup = firstChange.previousLineup
+                                ? firstChange.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                                : startingLineupIds;
+                            
+                            segments.push({
+                                lineup: firstSegmentLineup,
+                                startScore: { vt: 0, opp: 0 },
+                                endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore },
+                                startTime: '20:00 1st',
+                                endTime: firstChange.gameTime,
+                                stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} }
+                            });
+                        }
                         
                         for (let i = 1; i < realChanges.length; i++) {
                             const thisChange = realChanges[i];
