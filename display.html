@@ -40,8 +40,8 @@
 
         const ComboAnalysisViewer = () => {
             const [darkMode, setDarkMode] = useState(true);
-            const [startGame, setStartGame] = useState('2025-10-11');
-            const [endGame, setEndGame] = useState('2025-12-20');
+            const [startGame, setStartGame] = useState('2024-11-03');
+            const [endGame, setEndGame] = useState('2024-11-03');
             const [loading, setLoading] = useState(true);
             const [allGamesData, setAllGamesData] = useState({});
             const [gamesWithData, setGamesWithData] = useState([]);
@@ -71,19 +71,7 @@
             ];
 
             const gameSchedule = [
-                { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall' },
-                { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne' },
-                { date: '2025-11-03', opponent: 'Charleston Southern', displayName: 'Nov 4 vs Charleston Southern' },
-                { date: '2025-11-08', opponent: 'Providence', displayName: 'Nov 8 vs Providence' },
-                { date: '2025-11-12', opponent: 'Saint Joseph\'s', displayName: 'Nov 12 vs Saint Joseph\'s' },
-                { date: '2025-11-16', opponent: 'Charlotte', displayName: 'Nov 16 vs Charlotte' },
-                { date: '2025-11-19', opponent: 'Bryant', displayName: 'Nov 19 vs Bryant' },
-                { date: '2025-11-26', opponent: 'Colorado State', displayName: 'Nov 26 vs Colorado State' },
-                { date: '2025-12-02', opponent: 'South Carolina', displayName: 'Dec 2 vs South Carolina' },
-                { date: '2025-12-06', opponent: 'George Mason', displayName: 'Dec 6 vs George Mason' },
-                { date: '2025-12-11', opponent: 'Western Carolina', displayName: 'Dec 11 vs Western Carolina' },
-                { date: '2025-12-14', opponent: 'Maryland-Eastern Shore', displayName: 'Dec 14 vs Maryland-Eastern Shore' },
-                { date: '2025-12-20', opponent: 'Elon', displayName: 'Dec 20 vs Elon' }
+                { date: '2024-11-03', opponent: 'Charleston Southern', displayName: 'Nov 3 vs Charleston Southern' }
             ];
 
             useEffect(() => { loadAllGames(); }, []);
@@ -113,19 +101,16 @@
                     await new Promise((resolve) => {
                         window.firebaseDb.onValue(gameInfoRef, async (snapshot) => {
                             if (snapshot.exists()) {
-                                const gameInfo = snapshot.val();
-                                if (gameInfo.ended) {
-                                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${game.date}`);
-                                    await new Promise((resolveLineup) => {
-                                        window.firebaseDb.onValue(lineupChangesRef, (lineupSnapshot) => {
-                                            if (lineupSnapshot.exists()) {
-                                                gamesData[game.date] = Object.values(lineupSnapshot.val());
-                                                gamesFound.push(game.date);
-                                            }
-                                            resolveLineup();
-                                        }, { onlyOnce: true });
-                                    });
-                                }
+                                const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${game.date}`);
+                                await new Promise((resolveLineup) => {
+                                    window.firebaseDb.onValue(lineupChangesRef, (lineupSnapshot) => {
+                                        if (lineupSnapshot.exists()) {
+                                            gamesData[game.date] = Object.values(lineupSnapshot.val());
+                                            gamesFound.push(game.date);
+                                        }
+                                        resolveLineup();
+                                    }, { onlyOnce: true });
+                                });
                             }
                             resolve();
                         }, { onlyOnce: true });
@@ -142,59 +127,62 @@
 
             const buildSegments = (lineupHistory) => {
                 const segments = [];
-                const sortedHistory = [...lineupHistory].sort((a, b) => {
-                    const parseTime = (t) => {
-                        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                        if (!m) return 0;
-                        const p = m[3] === '1st' ? 0 : m[3] === '2nd' ? 1 : 2;
-                        return p * 100000 + ((20 * 60) - (parseInt(m[1]) * 60 + parseInt(m[2])));
-                    };
-                    return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
+                const startingLineupIds = [3, 2, 17, 1, 13];
+                
+                if (lineupHistory.length === 0) return segments;
+                
+                const firstChange = lineupHistory[0];
+                segments.push({
+                    lineup: startingLineupIds,
+                    startScore: { vt: 0, opp: 0 },
+                    endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore },
+                    startTime: '20:00 1st',
+                    endTime: firstChange.gameTime,
+                    stats: firstChange.completedSegmentStats || firstChange.segmentStats || { vt: {}, opponent: {} }
                 });
-                const realChanges = sortedHistory.filter(r => r.changes !== 'End of 1st Half');
-                const endOf1stHalf = sortedHistory.find(r => r.changes === 'End of 1st Half');
-                if (realChanges.length === 0) return segments;
-                const firstChange = realChanges[0];
-                const isStartOf2ndHalf = firstChange.changes === 'Start of 2nd Half';
-                if (!isStartOf2ndHalf) {
-                    const firstLineup = firstChange.previousLineup ? firstChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    if (firstLineup.length === 5) {
-                        segments.push({ lineup: firstLineup, startScore: { vt: 0, opp: 0 }, endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore }, startTime: '20:00 1st', endTime: firstChange.gameTime });
+                
+                for (let i = 0; i < lineupHistory.length; i++) {
+                    const current = lineupHistory[i];
+                    const next = lineupHistory[i + 1];
+                    
+                    const lineupIds = current.newLineup 
+                        ? current.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                        : [];
+                    
+                    if (lineupIds.length === 5) {
+                        segments.push({
+                            lineup: lineupIds,
+                            startScore: { vt: current.vtScore, opp: current.oppScore },
+                            endScore: next ? { vt: next.vtScore, opp: next.oppScore } : { vt: current.vtScore, opp: current.oppScore },
+                            startTime: current.gameTime,
+                            endTime: next ? next.gameTime : 'Current',
+                            stats: next ? (next.completedSegmentStats || next.segmentStats || { vt: {}, opponent: {} }) : { vt: {}, opponent: {} }
+                        });
                     }
                 }
-                for (let i = 1; i < realChanges.length; i++) {
-                    const thisChange = realChanges[i], prevChange = realChanges[i - 1];
-                    const segmentLineup = prevChange.newLineup ? prevChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    if (segmentLineup.length === 5) {
-                        segments.push({ lineup: segmentLineup, startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, startTime: prevChange.gameTime, endTime: thisChange.gameTime });
-                    }
-                }
-                if (!isStartOf2ndHalf && realChanges.length > 0) {
-                    const lastChange = realChanges[realChanges.length - 1];
-                    const lastLineup = lastChange.newLineup ? lastChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    if (lastLineup.length === 5 && endOf1stHalf && lastChange.half === 1) {
-                        segments.push({ lineup: lastLineup, startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore }, endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore }, startTime: lastChange.gameTime, endTime: '0:00 1st' });
-                    }
-                }
+                
                 return segments;
             };
 
             const calculateMinutesPlayed = (startTime, endTime) => {
                 if (endTime === 'Current') return 0;
-                const parse = (t) => {
-                    const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                    return m ? { totalSeconds: parseInt(m[1]) * 60 + parseInt(m[2]), period: m[3] } : null;
+                
+                const parseTime = (timeString) => {
+                    if (!timeString) return null;
+                    const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                    return match ? parseInt(match[1]) * 60 + parseInt(match[2]) : null;
                 };
-                const start = parse(startTime), end = parse(endTime);
-                if (!start || !end) return 0;
-                let playedSeconds;
-                if (start.period !== end.period) {
-                    playedSeconds = start.totalSeconds + ((20 * 60) - end.totalSeconds);
-                } else if (startTime === '20:00 1st') {
-                    playedSeconds = (20 * 60) - end.totalSeconds;
-                } else {
-                    playedSeconds = start.totalSeconds - end.totalSeconds;
+                
+                const start = parseTime(startTime);
+                const end = parseTime(endTime);
+                
+                if (start === null || end === null) return 0;
+                
+                if (startTime === '20:00 1st') {
+                    return (20 * 60) - end;
                 }
+                
+                const playedSeconds = start - end;
                 return playedSeconds < 0 ? 0 : playedSeconds;
             };
 
@@ -260,12 +248,7 @@
                             const totalMins = c.totalSeconds / 60;
                             const pmPerMin = c.totalPlusMinus / totalMins;
                             const names = c.players.map(id => roster.find(p => p.id === id)?.name || '').join(', ');
-                            return {
-                                names,
-                                totalPlusMinus: c.totalPlusMinus,
-                                totalMinutes: totalMins,
-                                pmPerMinute: pmPerMin
-                            };
+                            return { names, totalPlusMinus: c.totalPlusMinus, totalMinutes: totalMins, pmPerMinute: pmPerMin };
                         })
                         .sort((a, b) => b.pmPerMinute - a.pmPerMinute);
                 };
@@ -283,33 +266,49 @@
                 }
                 const gamesToInclude = gameSchedule.slice(startIdx, endIdx + 1);
                 const lineupMap = new Map();
+                
                 gamesToInclude.forEach(game => {
                     const gameHistory = allGamesData[game.date];
                     if (!gameHistory) return;
                     const segments = buildSegments(gameHistory);
+                    
                     segments.forEach(segment => {
                         const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
                         if (segment.lineup.some(playerId => !playerAvailability[playerId])) return;
+                        
                         if (!lineupMap.has(lineupKey)) {
                             lineupMap.set(lineupKey, { players: segment.lineup, totalMinutesSeconds: 0, totalPlusMinus: 0, totalPossessions: 0, totalOffReb: 0, totalDefReb: 0, totalTurnovers: 0, totalOppPossessions: 0, totalOppOffReb: 0, totalOppDefReb: 0, totalOppTurnovers: 0, totalPoints: 0, totalOppPoints: 0 });
                         }
+                        
                         const lineup = lineupMap.get(lineupKey);
                         const vtPoints = segment.endScore.vt - segment.startScore.vt;
                         const oppPoints = segment.endScore.opp - segment.startScore.opp;
                         lineup.totalPlusMinus += vtPoints - oppPoints;
-                        const minutesSeconds = calculateMinutesPlayed(segment.startTime, segment.endTime);
-                        lineup.totalMinutesSeconds += minutesSeconds;
                         lineup.totalPoints += vtPoints;
                         lineup.totalOppPoints += oppPoints;
+                        lineup.totalMinutesSeconds += calculateMinutesPlayed(segment.startTime, segment.endTime);
+                        
+                        const vtStats = segment.stats.vt || {};
+                        const oppStats = segment.stats.opponent || {};
+                        
+                        lineup.totalPossessions += vtStats.possessions || 0;
+                        lineup.totalOffReb += vtStats.offensiveRebounds || 0;
+                        lineup.totalDefReb += vtStats.defensiveRebounds || 0;
+                        lineup.totalTurnovers += vtStats.turnovers || 0;
+                        lineup.totalOppPossessions += oppStats.possessions || 0;
+                        lineup.totalOppOffReb += oppStats.offensiveRebounds || 0;
+                        lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
+                        lineup.totalOppTurnovers += oppStats.turnovers || 0;
                     });
                 });
+                
                 const analytics = Array.from(lineupMap.values()).map(lineup => {
                     const playerNames = lineup.players.map(id => roster.find(p => p.id === id)?.name.split(' ').pop() || '').join(', ');
                     const offPoss = lineup.totalPossessions || 1, defPoss = lineup.totalOppPossessions || 1;
                     const availOffReb = lineup.totalOffReb + lineup.totalOppDefReb, availDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
-                    const totalMins = Math.floor(lineup.totalMinutesSeconds / 60);
-                    const totalSecs = lineup.totalMinutesSeconds % 60;
+                    const totalMins = Math.floor(lineup.totalMinutesSeconds / 60), totalSecs = lineup.totalMinutesSeconds % 60;
                     const minutesDisplay = `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
+                    
                     return {
                         id: lineup.players.sort((a, b) => a - b).join('-'), players: playerNames, playerIds: lineup.players,
                         plusMinus: lineup.totalPlusMinus, pointsPerPossession: lineup.totalPoints / offPoss,
@@ -321,6 +320,7 @@
                         minutes: minutesDisplay, totalMinutesSeconds: lineup.totalMinutesSeconds
                     };
                 });
+                
                 setLineupAnalytics(analytics);
             };
 
@@ -518,13 +518,6 @@
                                         ))}
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-
-                        <div className={`rounded-lg shadow p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Opponent-Weighted Lineup Scores</h2>
-                            <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'} text-lg`}>
-                                Opponent strengths not available yet
                             </div>
                         </div>
                     </div>
