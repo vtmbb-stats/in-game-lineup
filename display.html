@@ -98,35 +98,52 @@
                 if (!window.firebaseDb) return;
                 setLoading(true);
                 const gamesData = {}, gamesFound = [];
-                for (const game of gameSchedule) {
-                    const gameInfoRef = window.firebaseDb.ref(`game-info/${game.date}`);
-                    await new Promise((resolve) => {
-                        window.firebaseDb.onValue(gameInfoRef, async (snapshot) => {
-                            if (snapshot.exists()) {
-                                const gameInfo = snapshot.val();
-                                // Only load games that have been completed
+                
+                // Scan Firebase for all available games by checking the game-info node
+                const gameInfoRootRef = window.firebaseDb.ref('game-info');
+                await new Promise((resolve) => {
+                    window.firebaseDb.onValue(gameInfoRootRef, async (snapshot) => {
+                        if (snapshot.exists()) {
+                            const allGames = snapshot.val();
+                            const gameKeys = Object.keys(allGames);
+                            
+                            // Load lineup data for each game that exists
+                            for (const gameDate of gameKeys) {
+                                const gameInfo = allGames[gameDate];
                                 if (gameInfo.started) {
-                                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${game.date}`);
+                                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${gameDate}`);
                                     await new Promise((resolveLineup) => {
                                         window.firebaseDb.onValue(lineupChangesRef, (lineupSnapshot) => {
                                             if (lineupSnapshot.exists()) {
-                                                gamesData[game.date] = Object.values(lineupSnapshot.val());
-                                                gamesFound.push(game.date);
+                                                gamesData[gameDate] = Object.values(lineupSnapshot.val());
+                                                gamesFound.push({
+                                                    date: gameDate,
+                                                    opponent: gameInfo.opponent || 'Unknown',
+                                                    displayName: `${gameDate} vs ${gameInfo.opponent || 'Unknown'}`
+                                                });
                                             }
                                             resolveLineup();
                                         }, { onlyOnce: true });
                                     });
                                 }
                             }
-                            resolve();
-                        }, { onlyOnce: true });
-                    });
-                }
+                        }
+                        resolve();
+                    }, { onlyOnce: true });
+                });
+                
+                // Sort games by date
+                gamesFound.sort((a, b) => a.date.localeCompare(b.date));
+                
                 setAllGamesData(gamesData);
-                setGamesWithData(gamesFound);
+                setGamesWithData(gamesFound.map(g => g.date));
+                
+                // Store the game schedule dynamically
+                window.dynamicGameSchedule = gamesFound;
+                
                 if (gamesFound.length > 0) {
-                    setStartGame(gamesFound[0]);
-                    setEndGame(gamesFound[gamesFound.length - 1]);
+                    setStartGame(gamesFound[0].date);
+                    setEndGame(gamesFound[gamesFound.length - 1].date);
                 }
                 setLoading(false);
             };
@@ -383,13 +400,13 @@
                                 <div className="flex items-center gap-2">
                                     <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>From:</label>
                                     <select value={startGame} onChange={(e) => setStartGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-                                        {gameSchedule.filter(g => gamesWithData.includes(g.date)).map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                                        {(window.dynamicGameSchedule || []).map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
                                     </select>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>To:</label>
                                     <select value={endGame} onChange={(e) => setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-                                        {gameSchedule.filter(g => gamesWithData.includes(g.date)).map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                                        {(window.dynamicGameSchedule || []).map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
                                     </select>
                                 </div>
                                 <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
