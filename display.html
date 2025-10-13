@@ -150,40 +150,40 @@
 
             const buildSegments = (lineupHistory) => {
                 const segments = [];
-                const startingLineupIds = [3, 2, 17, 1, 13];
-                
-                if (lineupHistory.length === 0) return segments;
-                
-                const firstChange = lineupHistory[0];
-                segments.push({
-                    lineup: startingLineupIds,
-                    startScore: { vt: 0, opp: 0 },
-                    endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore },
-                    startTime: '20:00 1st',
-                    endTime: firstChange.gameTime,
-                    stats: firstChange.completedSegmentStats || firstChange.segmentStats || { vt: {}, opponent: {} }
+                const sortedHistory = [...lineupHistory].sort((a, b) => {
+                    const parseTime = (t) => {
+                        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                        if (!m) return 0;
+                        const p = m[3] === '1st' ? 0 : m[3] === '2nd' ? 1 : 2;
+                        return p * 100000 + ((20 * 60) - (parseInt(m[1]) * 60 + parseInt(m[2])));
+                    };
+                    return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
                 });
-                
-                for (let i = 0; i < lineupHistory.length; i++) {
-                    const current = lineupHistory[i];
-                    const next = lineupHistory[i + 1];
-                    
-                    const lineupIds = current.newLineup 
-                        ? current.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                        : [];
-                    
-                    if (lineupIds.length === 5) {
-                        segments.push({
-                            lineup: lineupIds,
-                            startScore: { vt: current.vtScore, opp: current.oppScore },
-                            endScore: next ? { vt: next.vtScore, opp: next.oppScore } : { vt: current.vtScore, opp: current.oppScore },
-                            startTime: current.gameTime,
-                            endTime: next ? next.gameTime : 'Current',
-                            stats: next ? (next.completedSegmentStats || next.segmentStats || { vt: {}, opponent: {} }) : { vt: {}, opponent: {} }
-                        });
+                const realChanges = sortedHistory.filter(r => r.changes !== 'End of 1st Half');
+                const endOf1stHalf = sortedHistory.find(r => r.changes === 'End of 1st Half');
+                if (realChanges.length === 0) return segments;
+                const firstChange = realChanges[0];
+                const isStartOf2ndHalf = firstChange.changes === 'Start of 2nd Half';
+                if (!isStartOf2ndHalf) {
+                    const firstLineup = firstChange.previousLineup ? firstChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
+                    if (firstLineup.length === 5) {
+                        segments.push({ lineup: firstLineup, startScore: { vt: 0, opp: 0 }, endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore }, startTime: '20:00 1st', endTime: firstChange.gameTime, stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} } });
                     }
                 }
-                
+                for (let i = 1; i < realChanges.length; i++) {
+                    const thisChange = realChanges[i], prevChange = realChanges[i - 1];
+                    const segmentLineup = prevChange.newLineup ? prevChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
+                    if (segmentLineup.length === 5) {
+                        segments.push({ lineup: segmentLineup, startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, startTime: prevChange.gameTime, endTime: thisChange.gameTime, stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } });
+                    }
+                }
+                if (!isStartOf2ndHalf && realChanges.length > 0) {
+                    const lastChange = realChanges[realChanges.length - 1];
+                    const lastLineup = lastChange.newLineup ? lastChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
+                    if (lastLineup.length === 5 && endOf1stHalf && lastChange.half === 1) {
+                        segments.push({ lineup: lastLineup, startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore }, endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore }, startTime: lastChange.gameTime, endTime: '0:00 1st', stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} } });
+                    }
+                }
                 return segments;
             };
 
