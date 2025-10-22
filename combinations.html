@@ -47,9 +47,9 @@
             const [guardCombos, setGuardCombos] = useState([]);
             const [bigCombos, setBigCombos] = useState([]);
             const [loading, setLoading] = useState(true);
-            const [guardSortColumn, setGuardSortColumn] = useState('pmPerMinute');
+            const [guardSortColumn, setGuardSortColumn] = useState('plusMinus');
             const [guardSortDirection, setGuardSortDirection] = useState('desc');
-            const [bigSortColumn, setBigSortColumn] = useState('pmPerMinute');
+            const [bigSortColumn, setBigSortColumn] = useState('plusMinus');
             const [bigSortDirection, setBigSortDirection] = useState('desc');
 
             const roster = [
@@ -495,9 +495,6 @@
                                                 <th onClick={() => handleGuardSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
                                                     +/- {guardSortColumn === 'plusMinus' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
                                                 </th>
-                                                <th onClick={() => handleGuardSort('pmPerMinute')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'pmPerMinute' ? 'font-bold' : ''}`}>
-                                                    Efficiency {guardSortColumn === 'pmPerMinute' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
-                                                </th>
                                                 <th onClick={() => handleGuardSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'minutes' ? 'font-bold' : ''}`}>
                                                     Minutes {guardSortColumn === 'minutes' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
                                                 </th>
@@ -509,9 +506,6 @@
                                                     <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
                                                     <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                                         {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
-                                                    </td>
-                                                    <td className={`p-3 font-semibold ${combo.pmPerMinute >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                        {combo.totalSeconds > 0 ? (combo.pmPerMinute >= 0 ? '+' : '') + combo.pmPerMinute.toFixed(2) : '-'}
                                                     </td>
                                                     <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
                                                 </tr>
@@ -537,9 +531,6 @@
                                                 <th onClick={() => handleBigSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
                                                     +/- {bigSortColumn === 'plusMinus' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
                                                 </th>
-                                                <th onClick={() => handleBigSort('pmPerMinute')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'pmPerMinute' ? 'font-bold' : ''}`}>
-                                                    Efficiency {bigSortColumn === 'pmPerMinute' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
-                                                </th>
                                                 <th onClick={() => handleBigSort('orebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'orebPct' ? 'font-bold' : ''}`}>
                                                     OReb% {bigSortColumn === 'orebPct' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
                                                 </th>
@@ -557,9 +548,6 @@
                                                     <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
                                                     <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                                         {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
-                                                    </td>
-                                                    <td className={`p-3 font-semibold ${combo.pmPerMinute >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                        {combo.totalSeconds > 0 ? (combo.pmPerMinute >= 0 ? '+' : '') + combo.pmPerMinute.toFixed(2) : '-'}
                                                     </td>
                                                     <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                                         {combo.totalSeconds > 0 ? combo.orebPct.toFixed(1) + '%' : '-'}
