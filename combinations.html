@@ -383,7 +383,14 @@
                         plusMinus: stat.totalPlusMinus,
                         pmPerMinute: pmPerMinute
                     };
-                }).sort((a, b) => b.pmPerMinute - a.pmPerMinute);
+                }).sort((a, b) => {
+                    // Put 0-minute lineups at the bottom
+                    if (a.totalSeconds === 0 && b.totalSeconds === 0) return 0;
+                    if (a.totalSeconds === 0) return 1;
+                    if (b.totalSeconds === 0) return -1;
+                    // Otherwise sort by efficiency (pmPerMinute)
+                    return b.pmPerMinute - a.pmPerMinute;
+                });
 
                 // Calculate final stats for bigs
                 const finalBigCombos = bigStats.map(stat => {
@@ -405,7 +412,14 @@
                         orebPct: orebPct,
                         drebPct: drebPct
                     };
-                }).sort((a, b) => b.pmPerMinute - a.pmPerMinute);
+                }).sort((a, b) => {
+                    // Put 0-minute lineups at the bottom
+                    if (a.totalSeconds === 0 && b.totalSeconds === 0) return 0;
+                    if (a.totalSeconds === 0) return 1;
+                    if (b.totalSeconds === 0) return -1;
+                    // Otherwise sort by efficiency (pmPerMinute)
+                    return b.pmPerMinute - a.pmPerMinute;
+                });
 
                 setGuardCombos(finalGuardCombos);
                 setBigCombos(finalBigCombos);
@@ -448,22 +462,22 @@
                                         <thead>
                                             <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                                                 <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Minutes</th>
                                                 <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>+/-</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>+/-/Min</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Efficiency</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Minutes</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {guardCombos.map((combo, idx) => (
-                                                <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
                                                     <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
-                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
                                                     <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                                         {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
                                                     </td>
                                                     <td className={`p-3 font-semibold ${combo.pmPerMinute >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                        {combo.pmPerMinute >= 0 ? '+' : ''}{combo.pmPerMinute.toFixed(2)}
+                                                        {combo.totalSeconds > 0 ? (combo.pmPerMinute >= 0 ? '+' : '') + combo.pmPerMinute.toFixed(2) : '-'}
                                                     </td>
+                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -484,26 +498,30 @@
                                         <thead>
                                             <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                                                 <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Minutes</th>
                                                 <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>+/-</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>+/-/Min</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Efficiency</th>
                                                 <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>OReb%</th>
                                                 <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>DReb%</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Minutes</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {bigCombos.map((combo, idx) => (
-                                                <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
                                                     <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
-                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
                                                     <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                                         {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
                                                     </td>
                                                     <td className={`p-3 font-semibold ${combo.pmPerMinute >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                        {combo.pmPerMinute >= 0 ? '+' : ''}{combo.pmPerMinute.toFixed(2)}
+                                                        {combo.totalSeconds > 0 ? (combo.pmPerMinute >= 0 ? '+' : '') + combo.pmPerMinute.toFixed(2) : '-'}
                                                     </td>
-                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.orebPct.toFixed(1)}%</td>
-                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.drebPct.toFixed(1)}%</td>
+                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {combo.totalSeconds > 0 ? combo.orebPct.toFixed(1) + '%' : '-'}
+                                                    </td>
+                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {combo.totalSeconds > 0 ? combo.drebPct.toFixed(1) + '%' : '-'}
+                                                    </td>
+                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
