@@ -47,6 +47,10 @@
             const [guardCombos, setGuardCombos] = useState([]);
             const [bigCombos, setBigCombos] = useState([]);
             const [loading, setLoading] = useState(true);
+            const [guardSortColumn, setGuardSortColumn] = useState('pmPerMinute');
+            const [guardSortDirection, setGuardSortDirection] = useState('desc');
+            const [bigSortColumn, setBigSortColumn] = useState('pmPerMinute');
+            const [bigSortDirection, setBigSortDirection] = useState('desc');
 
             const roster = [
                 { id: 0, name: 'Jailen Bedford', position: 'G' },
@@ -190,6 +194,44 @@
                 const mins = Math.floor(seconds / 60);
                 const secs = Math.floor(seconds % 60);
                 return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const handleGuardSort = (column) => {
+                if (guardSortColumn === column) {
+                    setGuardSortDirection(guardSortDirection === 'desc' ? 'asc' : 'desc');
+                } else {
+                    setGuardSortColumn(column);
+                    setGuardSortDirection('desc');
+                }
+            };
+
+            const handleBigSort = (column) => {
+                if (bigSortColumn === column) {
+                    setBigSortDirection(bigSortDirection === 'desc' ? 'asc' : 'desc');
+                } else {
+                    setBigSortColumn(column);
+                    setBigSortDirection('desc');
+                }
+            };
+
+            const sortCombos = (combos, sortColumn, sortDirection) => {
+                return [...combos].sort((a, b) => {
+                    // Always put 0-minute lineups at the bottom
+                    if (a.totalSeconds === 0 && b.totalSeconds === 0) return 0;
+                    if (a.totalSeconds === 0) return 1;
+                    if (b.totalSeconds === 0) return -1;
+                    
+                    let aVal = a[sortColumn];
+                    let bVal = b[sortColumn];
+                    
+                    // Handle minutes sorting by totalSeconds
+                    if (sortColumn === 'minutes') {
+                        aVal = a.totalSeconds;
+                        bVal = b.totalSeconds;
+                    }
+                    
+                    return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
+                });
             };
 
             const buildSegments = (lineupHistory) => {
@@ -383,13 +425,6 @@
                         plusMinus: stat.totalPlusMinus,
                         pmPerMinute: pmPerMinute
                     };
-                }).sort((a, b) => {
-                    // Put 0-minute lineups at the bottom
-                    if (a.totalSeconds === 0 && b.totalSeconds === 0) return 0;
-                    if (a.totalSeconds === 0) return 1;
-                    if (b.totalSeconds === 0) return -1;
-                    // Otherwise sort by efficiency (pmPerMinute)
-                    return b.pmPerMinute - a.pmPerMinute;
                 });
 
                 // Calculate final stats for bigs
@@ -412,13 +447,6 @@
                         orebPct: orebPct,
                         drebPct: drebPct
                     };
-                }).sort((a, b) => {
-                    // Put 0-minute lineups at the bottom
-                    if (a.totalSeconds === 0 && b.totalSeconds === 0) return 0;
-                    if (a.totalSeconds === 0) return 1;
-                    if (b.totalSeconds === 0) return -1;
-                    // Otherwise sort by efficiency (pmPerMinute)
-                    return b.pmPerMinute - a.pmPerMinute;
                 });
 
                 setGuardCombos(finalGuardCombos);
@@ -462,13 +490,19 @@
                                         <thead>
                                             <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                                                 <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>+/-</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Efficiency</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Minutes</th>
+                                                <th onClick={() => handleGuardSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
+                                                    +/- {guardSortColumn === 'plusMinus' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                                                </th>
+                                                <th onClick={() => handleGuardSort('pmPerMinute')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'pmPerMinute' ? 'font-bold' : ''}`}>
+                                                    Efficiency {guardSortColumn === 'pmPerMinute' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                                                </th>
+                                                <th onClick={() => handleGuardSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'minutes' ? 'font-bold' : ''}`}>
+                                                    Minutes {guardSortColumn === 'minutes' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                                                </th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {guardCombos.map((combo, idx) => (
+                                            {sortCombos(guardCombos, guardSortColumn, guardSortDirection).map((combo, idx) => (
                                                 <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
                                                     <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
                                                     <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
@@ -498,15 +532,25 @@
                                         <thead>
                                             <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                                                 <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>+/-</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Efficiency</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>OReb%</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>DReb%</th>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Minutes</th>
+                                                <th onClick={() => handleBigSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
+                                                    +/- {bigSortColumn === 'plusMinus' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                                                </th>
+                                                <th onClick={() => handleBigSort('pmPerMinute')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'pmPerMinute' ? 'font-bold' : ''}`}>
+                                                    Efficiency {bigSortColumn === 'pmPerMinute' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                                                </th>
+                                                <th onClick={() => handleBigSort('orebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'orebPct' ? 'font-bold' : ''}`}>
+                                                    OReb% {bigSortColumn === 'orebPct' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                                                </th>
+                                                <th onClick={() => handleBigSort('drebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'drebPct' ? 'font-bold' : ''}`}>
+                                                    DReb% {bigSortColumn === 'drebPct' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                                                </th>
+                                                <th onClick={() => handleBigSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'minutes' ? 'font-bold' : ''}`}>
+                                                    Minutes {bigSortColumn === 'minutes' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                                                </th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {bigCombos.map((combo, idx) => (
+                                            {sortCombos(bigCombos, bigSortColumn, bigSortDirection).map((combo, idx) => (
                                                 <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
                                                     <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
                                                     <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
