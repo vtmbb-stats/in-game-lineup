@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VT Basketball Specific Combos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
+            authDomain: "vtmbb-gameday.firebaseapp.com",
+            databaseURL: "https://vtmbb-gameday-default-rtdb.firebaseio.com",
+            projectId: "vtmbb-gameday",
+            storageBucket: "vtmbb-gameday.firebasestorage.app",
+            messagingSenderId: "1012073356538",
+            appId: "1:1012073356538:web:7a41a93d00920d4d00bd43"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+        
+        window.firebaseDb = {
+            ref: (path) => ref(database, path),
+            onValue: (dbRef, callback) => onValue(dbRef, callback),
+            off: (dbRef, callback) => off(dbRef, callback)
+        };
+        
+        console.log('Firebase initialized successfully');
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const SpecificCombosViewer = () => {
+            const [darkMode, setDarkMode] = useState(true);
+            const [startGame, setStartGame] = useState('2025-10-11');
+            const [endGame, setEndGame] = useState('2025-10-11');
+            const [allGamesData, setAllGamesData] = useState({});
+            const [guardCombos, setGuardCombos] = useState([]);
+            const [bigCombos, setBigCombos] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            const roster = [
+                { id: 0, name: 'Jailen Bedford', position: 'G' },
+                { id: 1, name: 'Tobi Lawal', position: 'F' },
+                { id: 2, name: 'Jaden Schutt', position: 'G' },
+                { id: 3, name: 'Ben Hammond', position: 'G' },
+                { id: 4, name: 'Izaiah Pasha', position: 'G' },
+                { id: 5, name: 'Sin\'Cere Jones', position: 'F' },
+                { id: 7, name: 'Brett Freeman', position: 'G' },
+                { id: 10, name: 'Tyler Johnson', position: 'F' },
+                { id: 13, name: 'Amani Hansberry', position: 'F' },
+                { id: 15, name: 'Snook Peterkin', position: 'G' },
+                { id: 17, name: 'Neo Avdalas', position: 'G' },
+                { id: 22, name: 'Solomon Davis', position: 'C' },
+                { id: 32, name: 'Christian Gurdak', position: 'C' },
+                { id: 77, name: 'Antonio Dorn', position: 'C' }
+            ];
+
+            const gameSchedule = [
+                { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall' },
+                { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne' },
+                { date: '2025-11-03', opponent: 'Charleston Southern', displayName: 'Nov 4 vs Charleston Southern' },
+                { date: '2025-11-08', opponent: 'Providence', displayName: 'Nov 8 vs Providence' },
+                { date: '2025-11-12', opponent: 'Saint Joseph\'s', displayName: 'Nov 12 vs Saint Joseph\'s' },
+                { date: '2025-11-16', opponent: 'Charlotte', displayName: 'Nov 16 vs Charlotte' },
+                { date: '2025-11-19', opponent: 'Bryant', displayName: 'Nov 19 vs Bryant' },
+                { date: '2025-11-26', opponent: 'Colorado State', displayName: 'Nov 26 vs Colorado State' },
+                { date: '2025-12-02', opponent: 'South Carolina', displayName: 'Dec 2 vs South Carolina' },
+                { date: '2025-12-06', opponent: 'George Mason', displayName: 'Dec 6 vs George Mason' },
+                { date: '2025-12-11', opponent: 'Western Carolina', displayName: 'Dec 11 vs Western Carolina' },
+                { date: '2025-12-14', opponent: 'Maryland-Eastern Shore', displayName: 'Dec 14 vs Maryland-Eastern Shore' },
+                { date: '2025-12-20', opponent: 'Elon', displayName: 'Dec 20 vs Elon' }
+            ];
+
+            // Define the specific combinations we're tracking
+            const guardComboDefinitions = [
+                { players: [17, 3], names: 'Neo Avdalas & Ben Hammond' },
+                { players: [17, 4], names: 'Neo Avdalas & Izaiah Pasha' },
+                { players: [17, 0], names: 'Neo Avdalas & Jailen Bedford' },
+                { players: [3, 4], names: 'Ben Hammond & Izaiah Pasha' },
+                { players: [3, 0], names: 'Ben Hammond & Jailen Bedford' },
+                { players: [4, 0], names: 'Izaiah Pasha & Jailen Bedford' }
+            ];
+
+            const bigComboDefinitions = [
+                { players: [13, 1], names: 'Amani Hansberry & Tobi Lawal', tylerRule: false },
+                { players: [13, 77], names: 'Amani Hansberry & Antonio Dorn', tylerRule: false },
+                { players: [13, 32], names: 'Amani Hansberry & Christian Gurdak', tylerRule: false },
+                { players: [13, 10], names: 'Amani Hansberry & Tyler Johnson', tylerRule: true },
+                { players: [13, 5], names: 'Amani Hansberry & Sin\'Cere Jones', tylerRule: false },
+                { players: [1, 77], names: 'Tobi Lawal & Antonio Dorn', tylerRule: false },
+                { players: [1, 32], names: 'Tobi Lawal & Christian Gurdak', tylerRule: false },
+                { players: [1, 10], names: 'Tobi Lawal & Tyler Johnson', tylerRule: true },
+                { players: [1, 5], names: 'Tobi Lawal & Sin\'Cere Jones', tylerRule: false },
+                { players: [77, 10], names: 'Antonio Dorn & Tyler Johnson', tylerRule: true },
+                { players: [77, 5], names: 'Antonio Dorn & Sin\'Cere Jones', tylerRule: false }
+            ];
+
+            // True bigs for Tyler Johnson rule
+            const trueBigs = [1, 13, 5, 77, 32, 22]; // Tobi, Amani, Sin'Cere, Antonio, Christian, Solomon
+
+            useEffect(() => {
+                loadAllGames();
+            }, []);
+
+            useEffect(() => {
+                if (!loading) {
+                    calculateCombos();
+                }
+            }, [startGame, endGame, loading, allGamesData]);
+
+            const loadAllGames = async () => {
+                if (!window.firebaseDb) return;
+                setLoading(true);
+                const gamesData = {};
+                
+                const gameInfoRootRef = window.firebaseDb.ref('game-info');
+                await new Promise((resolve) => {
+                    window.firebaseDb.onValue(gameInfoRootRef, async (snapshot) => {
+                        if (snapshot.exists()) {
+                            const allGames = snapshot.val();
+                            const gameKeys = Object.keys(allGames);
+                            
+                            for (const gameDate of gameKeys) {
+                                const gameInfo = allGames[gameDate];
+                                if (gameInfo.started) {
+                                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${gameDate}`);
+                                    await new Promise((resolveGame) => {
+                                        window.firebaseDb.onValue(lineupChangesRef, (lineupSnapshot) => {
+                                            if (lineupSnapshot.exists()) {
+                                                gamesData[gameDate] = {
+                                                    lineupHistory: Object.values(lineupSnapshot.val()),
+                                                    ended: gameInfo.ended || false
+                                                };
+                                            }
+                                            resolveGame();
+                                        }, { onlyOnce: true });
+                                    });
+                                }
+                            }
+                        }
+                        setAllGamesData(gamesData);
+                        setLoading(false);
+                        resolve();
+                    }, { onlyOnce: true });
+                });
+            };
+
+            const parseGameTime = (timeStr) => {
+                if (!timeStr) return 0;
+                const parts = timeStr.split(' ');
+                const time = parts[0];
+                const period = parts[1];
+                
+                const [minutes, seconds] = time.split(':').map(Number);
+                let totalSeconds = minutes * 60 + seconds;
+                
+                if (period === '2nd') totalSeconds += 1200;
+                else if (period.includes('OT')) {
+                    const otNum = parseInt(period.match(/\d+/)?.[0] || '1');
+                    totalSeconds += 2400 + ((otNum - 1) * 300);
+                }
+                
+                return 2400 - totalSeconds;
+            };
+
+            const formatMinutes = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const calculateCombos = () => {
+                const selectedGames = Object.keys(allGamesData).filter(date => {
+                    return date >= startGame && date <= endGame;
+                });
+
+                // Initialize combo trackers
+                const guardStats = guardComboDefinitions.map(def => ({
+                    ...def,
+                    totalSeconds: 0,
+                    totalPlusMinus: 0,
+                    stints: []
+                }));
+
+                const bigStats = bigComboDefinitions.map(def => ({
+                    ...def,
+                    totalSeconds: 0,
+                    totalPlusMinus: 0,
+                    totalOffRebs: 0,
+                    totalDefRebs: 0,
+                    totalOppOffRebs: 0,
+                    totalOppDefRebs: 0,
+                    stints: []
+                }));
+
+                selectedGames.forEach(gameDate => {
+                    const gameData = allGamesData[gameDate];
+                    if (!gameData || !gameData.lineupHistory) return;
+
+                    const history = gameData.lineupHistory;
+                    
+                    history.forEach((entry, idx) => {
+                        const currentLineup = entry.lineup || [];
+                        const nextEntry = history[idx + 1];
+                        
+                        if (!nextEntry) return;
+                        
+                        const startTime = parseGameTime(entry.gameTime);
+                        const endTime = parseGameTime(nextEntry.gameTime);
+                        const duration = endTime - startTime;
+                        
+                        if (duration <= 0) return;
+                        
+                        const startScore = entry.vtScore - entry.oppScore;
+                        const endScore = nextEntry.vtScore - nextEntry.oppScore;
+                        const plusMinus = endScore - startScore;
+
+                        // Check guard combos
+                        guardComboDefinitions.forEach((def, defIdx) => {
+                            const hasAllPlayers = def.players.every(p => currentLineup.includes(p));
+                            if (hasAllPlayers) {
+                                guardStats[defIdx].totalSeconds += duration;
+                                guardStats[defIdx].totalPlusMinus += plusMinus;
+                                guardStats[defIdx].stints.push({ duration, plusMinus });
+                            }
+                        });
+
+                        // Check big combos with Tyler Johnson rule
+                        bigComboDefinitions.forEach((def, defIdx) => {
+                            let shouldCount = def.players.every(p => currentLineup.includes(p));
+                            
+                            // Apply Tyler Johnson rule if applicable
+                            if (shouldCount && def.tylerRule) {
+                                // Count other true bigs on the floor
+                                const otherBigsOnFloor = trueBigs.filter(big => 
+                                    currentLineup.includes(big) && big !== 10 // Exclude Tyler himself
+                                ).length;
+                                
+                                // Tyler only counts if there's EXACTLY 1 other big
+                                shouldCount = otherBigsOnFloor === 1;
+                            }
+                            
+                            if (shouldCount) {
+                                bigStats[defIdx].totalSeconds += duration;
+                                bigStats[defIdx].totalPlusMinus += plusMinus;
+                                
+                                // Add rebounding stats
+                                const offRebs = nextEntry.vtOffRebs - entry.vtOffRebs;
+                                const defRebs = nextEntry.vtDefRebs - entry.vtDefRebs;
+                                const oppOffRebs = nextEntry.oppOffRebs - entry.oppOffRebs;
+                                const oppDefRebs = nextEntry.oppDefRebs - entry.oppDefRebs;
+                                
+                                bigStats[defIdx].totalOffRebs += offRebs;
+                                bigStats[defIdx].totalDefRebs += defRebs;
+                                bigStats[defIdx].totalOppOffRebs += oppOffRebs;
+                                bigStats[defIdx].totalOppDefRebs += oppDefRebs;
+                                bigStats[defIdx].stints.push({ duration, plusMinus, offRebs, defRebs, oppOffRebs, oppDefRebs });
+                            }
+                        });
+                    });
+                });
+
+                // Calculate final stats for guards
+                const finalGuardCombos = guardStats.map(stat => {
+                    const minutes = stat.totalSeconds / 60;
+                    const pmPerMinute = minutes > 0 ? stat.totalPlusMinus / minutes : 0;
+                    return {
+                        names: stat.names,
+                        minutes: formatMinutes(stat.totalSeconds),
+                        totalSeconds: stat.totalSeconds,
+                        plusMinus: stat.totalPlusMinus,
+                        pmPerMinute: pmPerMinute
+                    };
+                }).sort((a, b) => b.pmPerMinute - a.pmPerMinute);
+
+                // Calculate final stats for bigs
+                const finalBigCombos = bigStats.map(stat => {
+                    const minutes = stat.totalSeconds / 60;
+                    const pmPerMinute = minutes > 0 ? stat.totalPlusMinus / minutes : 0;
+                    
+                    // Calculate rebound percentages
+                    const totalPossibleOffRebs = stat.totalOppDefRebs + stat.totalOffRebs;
+                    const totalPossibleDefRebs = stat.totalOppOffRebs + stat.totalDefRebs;
+                    const orebPct = totalPossibleOffRebs > 0 ? (stat.totalOffRebs / totalPossibleOffRebs) * 100 : 0;
+                    const drebPct = totalPossibleDefRebs > 0 ? (stat.totalDefRebs / totalPossibleDefRebs) * 100 : 0;
+                    
+                    return {
+                        names: stat.names,
+                        minutes: formatMinutes(stat.totalSeconds),
+                        totalSeconds: stat.totalSeconds,
+                        plusMinus: stat.totalPlusMinus,
+                        pmPerMinute: pmPerMinute,
+                        orebPct: orebPct,
+                        drebPct: drebPct
+                    };
+                }).sort((a, b) => b.pmPerMinute - a.pmPerMinute);
+
+                setGuardCombos(finalGuardCombos);
+                setBigCombos(finalBigCombos);
+            };
+
+            return (
+                <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+                    <div className="p-4 border-b border-gray-300 dark:border-gray-700">
+                        <div className="flex justify-between items-center">
+                            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>VT Basketball Specific Combos</h1>
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                    <label className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>From:</label>
+                                    <select value={startGame} onChange={(e) => setStartGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                                        {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <label className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>To:</label>
+                                    <select value={endGame} onChange={(e) => setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                                        {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                                    </select>
+                                </div>
+                                <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {loading ? (
+                        <div className="flex justify-center items-center h-64">
+                            <div className={`text-xl ${darkMode ? 'text-white' : 'text-gray-900'}`}>Loading data...</div>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-6 p-6">
+                            {/* Guard Combos - Left Side */}
+                            <div>
+                                <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Guard Combinations</h2>
+                                <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Minutes</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>+/-</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>+/-/Min</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {guardCombos.map((combo, idx) => (
+                                                <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
+                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
+                                                    <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                        {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
+                                                    </td>
+                                                    <td className={`p-3 font-semibold ${combo.pmPerMinute >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                        {combo.pmPerMinute >= 0 ? '+' : ''}{combo.pmPerMinute.toFixed(2)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    {guardCombos.length === 0 && (
+                                        <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            No data available for selected range
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Big Combos - Right Side */}
+                            <div>
+                                <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Big Combinations</h2>
+                                <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Minutes</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>+/-</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>+/-/Min</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>OReb%</th>
+                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>DReb%</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {bigCombos.map((combo, idx) => (
+                                                <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
+                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
+                                                    <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                        {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
+                                                    </td>
+                                                    <td className={`p-3 font-semibold ${combo.pmPerMinute >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                        {combo.pmPerMinute >= 0 ? '+' : ''}{combo.pmPerMinute.toFixed(2)}
+                                                    </td>
+                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.orebPct.toFixed(1)}%</td>
+                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.drebPct.toFixed(1)}%</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    {bigCombos.length === 0 && (
+                                        <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            No data available for selected range
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SpecificCombosViewer />);
+    </script>
+</body>
+</html>
