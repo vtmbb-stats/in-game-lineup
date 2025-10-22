@@ -121,38 +121,51 @@
             const loadAllGames = async () => {
                 if (!window.firebaseDb) return;
                 setLoading(true);
+                
+                // Set up real-time listeners for game data
+                const unsubscribers = [];
                 const gamesData = {};
                 
-                const gameInfoRootRef = window.firebaseDb.ref('game-info');
-                await new Promise((resolve) => {
-                    window.firebaseDb.onValue(gameInfoRootRef, async (snapshot) => {
+                gameSchedule.forEach(game => {
+                    const gameDate = game.date;
+                    const gameInfoRef = window.firebaseDb.ref(`game-info/${gameDate}`);
+                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${gameDate}`);
+                    
+                    // Listen to game info
+                    const unsubInfo = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
                         if (snapshot.exists()) {
-                            const allGames = snapshot.val();
-                            const gameKeys = Object.keys(allGames);
-                            
-                            for (const gameDate of gameKeys) {
-                                const gameInfo = allGames[gameDate];
-                                if (gameInfo.started) {
-                                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${gameDate}`);
-                                    await new Promise((resolveGame) => {
-                                        window.firebaseDb.onValue(lineupChangesRef, (lineupSnapshot) => {
-                                            if (lineupSnapshot.exists()) {
-                                                gamesData[gameDate] = {
-                                                    lineupHistory: Object.values(lineupSnapshot.val()),
-                                                    ended: gameInfo.ended || false
-                                                };
-                                            }
-                                            resolveGame();
-                                        }, { onlyOnce: true });
-                                    });
-                                }
+                            const gameInfo = snapshot.val();
+                            if (!gamesData[gameDate]) {
+                                gamesData[gameDate] = { ended: false, lineupHistory: [] };
                             }
+                            gamesData[gameDate].ended = gameInfo.ended || false;
+                            setAllGamesData({...gamesData});
                         }
-                        setAllGamesData(gamesData);
-                        setLoading(false);
-                        resolve();
-                    }, { onlyOnce: true });
+                    });
+                    
+                    // Listen to lineup changes
+                    const unsubLineup = window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
+                        if (snapshot.exists()) {
+                            if (!gamesData[gameDate]) {
+                                gamesData[gameDate] = { ended: false, lineupHistory: [] };
+                            }
+                            gamesData[gameDate].lineupHistory = Object.values(snapshot.val());
+                            setAllGamesData({...gamesData});
+                        }
+                    });
+                    
+                    unsubscribers.push(() => {
+                        window.firebaseDb.off(gameInfoRef, unsubInfo);
+                        window.firebaseDb.off(lineupChangesRef, unsubLineup);
+                    });
                 });
+                
+                setLoading(false);
+                
+                // Cleanup function
+                return () => {
+                    unsubscribers.forEach(unsub => unsub());
+                };
             };
 
             const parseGameTime = (timeStr) => {
@@ -179,6 +192,107 @@
                 return `${mins}:${secs.toString().padStart(2, '0')}`;
             };
 
+            const buildSegments = (lineupHistory) => {
+                const segments = [];
+                const sortedHistory = [...lineupHistory].sort((a, b) => {
+                    const parseTime = (t) => {
+                        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                        if (!m) return 0;
+                        const p = m[3] === '1st' ? 0 : m[3] === '2nd' ? 1 : 2;
+                        return p * 100000 + ((20 * 60) - (parseInt(m[1]) * 60 + parseInt(m[2])));
+                    };
+                    return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
+                });
+                
+                const realChanges = sortedHistory.filter(r => r.changes !== 'End of 1st Half');
+                const endOf1stHalf = sortedHistory.find(r => r.changes === 'End of 1st Half');
+                
+                if (realChanges.length === 0) return segments;
+                
+                const firstChange = realChanges[0];
+                const isStartOf2ndHalf = firstChange.changes === 'Start of 2nd Half';
+                
+                // Add first segment before first change
+                if (!isStartOf2ndHalf) {
+                    const firstLineup = firstChange.previousLineup ? 
+                        firstChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
+                    if (firstLineup.length === 5) {
+                        segments.push({
+                            lineup: firstLineup,
+                            startScore: { vt: 0, opp: 0 },
+                            endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore },
+                            startTime: '20:00 1st',
+                            endTime: firstChange.gameTime,
+                            stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} }
+                        });
+                    }
+                }
+                
+                // Add segments between changes
+                for (let i = 1; i < realChanges.length; i++) {
+                    const thisChange = realChanges[i];
+                    const prevChange = realChanges[i - 1];
+                    const segmentLineup = prevChange.newLineup ? 
+                        prevChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
+                    if (segmentLineup.length === 5) {
+                        segments.push({
+                            lineup: segmentLineup,
+                            startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
+                            endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
+                            startTime: prevChange.gameTime,
+                            endTime: thisChange.gameTime,
+                            stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
+                        });
+                    }
+                }
+                
+                // Add last segment to end of 1st half if applicable
+                if (!isStartOf2ndHalf && realChanges.length > 0) {
+                    const lastChange = realChanges[realChanges.length - 1];
+                    const lastLineup = lastChange.newLineup ? 
+                        lastChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
+                    if (lastLineup.length === 5 && endOf1stHalf && lastChange.half === 1) {
+                        segments.push({
+                            lineup: lastLineup,
+                            startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore },
+                            endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore },
+                            startTime: lastChange.gameTime,
+                            endTime: '0:00 1st',
+                            stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} }
+                        });
+                    }
+                }
+                
+                return segments;
+            };
+
+            const calculateMinutesPlayed = (startTime, endTime) => {
+                if (endTime === 'Current') return 0;
+                const parse = (t) => {
+                    const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                    return m ? { 
+                        minutes: parseInt(m[1]), 
+                        seconds: parseInt(m[2]), 
+                        period: m[3], 
+                        totalSeconds: parseInt(m[1]) * 60 + parseInt(m[2]) 
+                    } : null;
+                };
+                const start = parse(startTime);
+                const end = parse(endTime);
+                if (!start || !end) return 0;
+                
+                let playedSeconds;
+                if (start.period !== end.period) {
+                    playedSeconds = start.totalSeconds + ((20 * 60) - end.totalSeconds);
+                } else if (startTime === '20:00 1st') {
+                    playedSeconds = (20 * 60) - end.totalSeconds;
+                } else {
+                    playedSeconds = start.totalSeconds - end.totalSeconds;
+                }
+                
+                return playedSeconds > 0 ? playedSeconds : 0;
+            };
+
             const calculateCombos = () => {
                 const selectedGames = Object.keys(allGamesData).filter(date => {
                     return date >= startGame && date <= endGame;
@@ -188,8 +302,7 @@
                 const guardStats = guardComboDefinitions.map(def => ({
                     ...def,
                     totalSeconds: 0,
-                    totalPlusMinus: 0,
-                    stints: []
+                    totalPlusMinus: 0
                 }));
 
                 const bigStats = bigComboDefinitions.map(def => ({
@@ -199,31 +312,27 @@
                     totalOffRebs: 0,
                     totalDefRebs: 0,
                     totalOppOffRebs: 0,
-                    totalOppDefRebs: 0,
-                    stints: []
+                    totalOppDefRebs: 0
                 }));
 
                 selectedGames.forEach(gameDate => {
                     const gameData = allGamesData[gameDate];
                     if (!gameData || !gameData.lineupHistory) return;
 
-                    const history = gameData.lineupHistory;
+                    const segments = buildSegments(gameData.lineupHistory);
                     
-                    history.forEach((entry, idx) => {
-                        const currentLineup = entry.lineup || [];
-                        const nextEntry = history[idx + 1];
-                        
-                        if (!nextEntry) return;
-                        
-                        const startTime = parseGameTime(entry.gameTime);
-                        const endTime = parseGameTime(nextEntry.gameTime);
-                        const duration = endTime - startTime;
+                    segments.forEach(segment => {
+                        const currentLineup = segment.lineup;
+                        const duration = calculateMinutesPlayed(segment.startTime, segment.endTime);
                         
                         if (duration <= 0) return;
                         
-                        const startScore = entry.vtScore - entry.oppScore;
-                        const endScore = nextEntry.vtScore - nextEntry.oppScore;
-                        const plusMinus = endScore - startScore;
+                        const vtPoints = segment.endScore.vt - segment.startScore.vt;
+                        const oppPoints = segment.endScore.opp - segment.startScore.opp;
+                        const plusMinus = vtPoints - oppPoints;
+
+                        const vtStats = segment.stats.vt || {};
+                        const oppStats = segment.stats.opponent || {};
 
                         // Check guard combos
                         guardComboDefinitions.forEach((def, defIdx) => {
@@ -231,7 +340,6 @@
                             if (hasAllPlayers) {
                                 guardStats[defIdx].totalSeconds += duration;
                                 guardStats[defIdx].totalPlusMinus += plusMinus;
-                                guardStats[defIdx].stints.push({ duration, plusMinus });
                             }
                         });
 
@@ -255,16 +363,10 @@
                                 bigStats[defIdx].totalPlusMinus += plusMinus;
                                 
                                 // Add rebounding stats
-                                const offRebs = nextEntry.vtOffRebs - entry.vtOffRebs;
-                                const defRebs = nextEntry.vtDefRebs - entry.vtDefRebs;
-                                const oppOffRebs = nextEntry.oppOffRebs - entry.oppOffRebs;
-                                const oppDefRebs = nextEntry.oppDefRebs - entry.oppDefRebs;
-                                
-                                bigStats[defIdx].totalOffRebs += offRebs;
-                                bigStats[defIdx].totalDefRebs += defRebs;
-                                bigStats[defIdx].totalOppOffRebs += oppOffRebs;
-                                bigStats[defIdx].totalOppDefRebs += oppDefRebs;
-                                bigStats[defIdx].stints.push({ duration, plusMinus, offRebs, defRebs, oppOffRebs, oppDefRebs });
+                                bigStats[defIdx].totalOffRebs += vtStats.offensiveRebounds || 0;
+                                bigStats[defIdx].totalDefRebs += vtStats.defensiveRebounds || 0;
+                                bigStats[defIdx].totalOppOffRebs += oppStats.offensiveRebounds || 0;
+                                bigStats[defIdx].totalOppDefRebs += oppStats.defensiveRebounds || 0;
                             }
                         });
                     });
