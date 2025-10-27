@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VT Basketball Combo Analysis</title>
+    <title>VT Basketball Lineup Analysis</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .custom-green-100 {
@@ -351,6 +351,9 @@
                         // Skip garbage time segments if toggle is off
                         if (!includeGarbageTime && segment.isGarbageTime) return;
                         
+                        // Skip segments with unavailable players
+                        if (segment.lineup.some(playerId => !playerAvailability[playerId])) return;
+                        
                         const vtPoints = segment.endScore.vt - segment.startScore.vt;
                         const oppPoints = segment.endScore.opp - segment.startScore.opp;
                         const plusMinus = vtPoints - oppPoints;
@@ -391,6 +394,7 @@
                 const processCombos = (comboMap) => {
                     return Array.from(comboMap.values())
                         .filter(c => c.totalSeconds >= minSeconds)
+                        .filter(c => c.players.every(playerId => playerAvailability[playerId])) // Only show combos with available players
                         .map(c => {
                             const totalMins = c.totalSeconds / 60;
                             const pmPerMin = c.totalPlusMinus / totalMins;
