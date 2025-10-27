@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VT Basketball Combo Analysis</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .custom-green-100 {
+            background-color: #00A327;
+        }
+        .custom-green-50 {
+            background-color: rgba(0, 163, 39, 0.5);
+        }
+        .custom-red-50 {
+            background-color: rgba(219, 40, 0, 0.5);
+        }
+        .custom-red-100 {
+            background-color: #DB2800;
+        }
+    </style>
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
@@ -461,12 +475,12 @@
                 const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
                 let colorIntensity = higherIsBetter.includes(column) ? percentile : lowerIsBetter.includes(column) ? 1 - percentile : 0.5;
                 
-                // 5-tier gradient using transparency: 100% green → 50% green → blank → 50% red → 100% red
-                if (colorIntensity >= 0.8) return darkMode ? 'bg-green-500' : 'bg-green-500';           // 100% green (top 20%)
-                if (colorIntensity >= 0.6) return darkMode ? 'bg-green-500/50' : 'bg-green-500/50';     // 50% green
-                if (colorIntensity >= 0.4) return '';                                                    // Blank (middle 20%)
-                if (colorIntensity >= 0.2) return darkMode ? 'bg-red-500/50' : 'bg-red-500/50';         // 50% red
-                return darkMode ? 'bg-red-500' : 'bg-red-500';                                           // 100% red (bottom 20%)
+                // 5-tier gradient: solid green (#00A327) → transparent green → blank → transparent red → solid red (#DB2800)
+                if (colorIntensity >= 0.8) return 'custom-green-100';      // 100% solid green (top 20%)
+                if (colorIntensity >= 0.6) return 'custom-green-50';       // 50% transparent green
+                if (colorIntensity >= 0.4) return '';                       // Blank (middle 20%)
+                if (colorIntensity >= 0.2) return 'custom-red-50';         // 50% transparent red
+                return 'custom-red-100';                                    // 100% solid red (bottom 20%)
             };
 
             const handleSort = (column) => {
