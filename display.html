@@ -193,19 +193,42 @@
                 const parseTime = (timeString) => {
                     if (!timeString) return null;
                     const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                    return match ? parseInt(match[1]) * 60 + parseInt(match[2]) : null;
+                    if (!match) return null;
+                    
+                    const minutes = parseInt(match[1]);
+                    const seconds = parseInt(match[2]);
+                    const period = match[3];
+                    
+                    // Convert to total game seconds (counting down from 40:00)
+                    // 1st half: 20:00 - 0:00 (game seconds 0-1200)
+                    // 2nd half: 20:00 - 0:00 (game seconds 1200-2400)
+                    // OT: 5:00 - 0:00 (game seconds 2400+)
+                    
+                    const timeInPeriod = minutes * 60 + seconds;
+                    
+                    if (period === '1st') {
+                        // Time remaining in 1st half
+                        return (20 * 60) - timeInPeriod; // Convert to elapsed time
+                    } else if (period === '2nd') {
+                        // Time remaining in 2nd half
+                        return (40 * 60) - timeInPeriod; // 1st half (1200s) + elapsed in 2nd
+                    } else if (period === 'OT') {
+                        // Time remaining in OT
+                        return (45 * 60) - timeInPeriod; // Both halves + elapsed in OT
+                    }
+                    
+                    return null;
                 };
                 
-                const start = parseTime(startTime);
-                const end = parseTime(endTime);
+                const startGameSeconds = parseTime(startTime);
+                const endGameSeconds = parseTime(endTime);
                 
-                if (start === null || end === null) return 0;
+                if (startGameSeconds === null || endGameSeconds === null) return 0;
                 
-                if (startTime === '20:00 1st') {
-                    return (20 * 60) - end;
-                }
+                // Calculate elapsed time between start and end
+                const playedSeconds = endGameSeconds - startGameSeconds;
                 
-                const playedSeconds = start - end;
+                // Should always be positive now since we're using elapsed game time
                 return playedSeconds < 0 ? 0 : playedSeconds;
             };
 
@@ -311,17 +334,31 @@
                         lineup.totalOppPoints += oppPoints;
                         lineup.totalMinutesSeconds += calculateMinutesPlayed(segment.startTime, segment.endTime);
                         
-                        const vtStats = segment.stats.vt || {};
-                        const oppStats = segment.stats.opponent || {};
+                        const vtStats = segment.stats?.vt || {};
+                        const oppStats = segment.stats?.opponent || {};
                         
-                        lineup.totalPossessions += vtStats.possessions || 0;
-                        lineup.totalOffReb += vtStats.offensiveRebounds || 0;
-                        lineup.totalDefReb += vtStats.defensiveRebounds || 0;
-                        lineup.totalTurnovers += vtStats.turnovers || 0;
-                        lineup.totalOppPossessions += oppStats.possessions || 0;
-                        lineup.totalOppOffReb += oppStats.offensiveRebounds || 0;
-                        lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
-                        lineup.totalOppTurnovers += oppStats.turnovers || 0;
+                        // Debug logging for multi-game stats
+                        if (gamesToInclude.length > 1) {
+                            console.log('Multi-game segment:', {
+                                game: game.date,
+                                lineup: segment.lineup.join('-'),
+                                vtStats,
+                                oppStats,
+                                currentTotals: {
+                                    poss: lineup.totalPossessions,
+                                    offReb: lineup.totalOffReb
+                                }
+                            });
+                        }
+                        
+                        lineup.totalPossessions += (vtStats.possessions || 0);
+                        lineup.totalOffReb += (vtStats.offensiveRebounds || 0);
+                        lineup.totalDefReb += (vtStats.defensiveRebounds || 0);
+                        lineup.totalTurnovers += (vtStats.turnovers || 0);
+                        lineup.totalOppPossessions += (oppStats.possessions || 0);
+                        lineup.totalOppOffReb += (oppStats.offensiveRebounds || 0);
+                        lineup.totalOppDefReb += (oppStats.defensiveRebounds || 0);
+                        lineup.totalOppTurnovers += (oppStats.turnovers || 0);
                     });
                 });
                 
@@ -343,6 +380,16 @@
                         minutes: minutesDisplay, totalMinutesSeconds: lineup.totalMinutesSeconds
                     };
                 });
+                
+                // Debug: Show final aggregated stats for multi-game
+                if (gamesToInclude.length > 1) {
+                    console.log('Final aggregated lineups:', analytics.map(a => ({
+                        players: a.players,
+                        plusMinus: a.plusMinus,
+                        possessions: lineupMap.get(a.id)?.totalPossessions,
+                        offReb: lineupMap.get(a.id)?.totalOffReb
+                    })));
+                }
                 
                 setLineupAnalytics(analytics);
             };
