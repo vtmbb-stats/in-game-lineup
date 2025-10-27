@@ -51,6 +51,7 @@
             const [guardSortDirection, setGuardSortDirection] = useState('desc');
             const [bigSortColumn, setBigSortColumn] = useState('plusMinus');
             const [bigSortDirection, setBigSortDirection] = useState('desc');
+            const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
 
             const roster = [
                 { id: 0, name: 'Jailen Bedford', position: 'G' },
@@ -122,7 +123,24 @@
                 if (!loading) {
                     calculateCombos();
                 }
-            }, [startGame, endGame, loading, allGamesData]);
+            }, [startGame, endGame, loading, allGamesData, includeGarbageTime]);
+
+            // Set default date range to include all games with data
+            useEffect(() => {
+                if (!loading && Object.keys(allGamesData).length > 0) {
+                    const gamesWithData = Object.keys(allGamesData).filter(date => 
+                        allGamesData[date].lineupHistory && allGamesData[date].lineupHistory.length > 0
+                    ).sort();
+                    
+                    if (gamesWithData.length > 0) {
+                        // Only update if we're still on the initial default values
+                        if (startGame === '2025-10-11' && endGame === '2025-10-11') {
+                            setStartGame(gamesWithData[0]);
+                            setEndGame(gamesWithData[gamesWithData.length - 1]);
+                        }
+                    }
+                }
+            }, [loading, allGamesData]);
 
             const loadAllGames = async () => {
                 if (!window.firebaseDb) return;
@@ -355,7 +373,39 @@
                     }
                 }
                 
+                // Mark garbage time segments
+                const garbageTimeStart = sortedHistory.find(r => r.garbageTime === true);
+                if (garbageTimeStart) {
+                    const garbageTimeValue = parseGameTimeValue(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
+                    segments.forEach(segment => {
+                        const segmentStartValue = parseGameTimeValue(segment.startTime);
+                        if (segmentStartValue >= garbageTimeValue) {
+                            segment.isGarbageTime = true;
+                        }
+                    });
+                }
+                
                 return segments;
+            };
+            
+            // Helper to convert game time to comparable number
+            const parseGameTimeValue = (timeString) => {
+                if (!timeString) return 0;
+                const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                if (!match) return 0;
+                const minutes = parseInt(match[1]);
+                const seconds = parseInt(match[2]);
+                const period = match[3];
+                const timeInPeriod = minutes * 60 + seconds;
+                
+                if (period === '1st') {
+                    return (20 * 60) - timeInPeriod;
+                } else if (period === '2nd') {
+                    return (40 * 60) - timeInPeriod;
+                } else if (period === 'OT') {
+                    return (45 * 60) - timeInPeriod;
+                }
+                return 0;
             };
 
             const calculateMinutesPlayed = (startTime, endTime) => {
@@ -423,6 +473,9 @@
                     const segments = buildSegments(gameData.lineupHistory);
                     
                     segments.forEach(segment => {
+                        // Skip garbage time segments if toggle is off
+                        if (!includeGarbageTime && segment.isGarbageTime) return;
+                        
                         const currentLineup = segment.lineup;
                         const duration = calculateMinutesPlayed(segment.startTime, segment.endTime);
                         
@@ -529,6 +582,15 @@
                                     <select value={endGame} onChange={(e) => setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
                                         {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
                                     </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Garbage Time:</label>
+                                    <button 
+                                        onClick={() => setIncludeGarbageTime(!includeGarbageTime)} 
+                                        className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
+                                    >
+                                        {includeGarbageTime ? 'Included' : 'Excluded'}
+                                    </button>
                                 </div>
                                 <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
                             </div>
