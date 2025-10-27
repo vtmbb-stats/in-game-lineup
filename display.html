@@ -573,7 +573,7 @@
                                         onClick={() => setIncludeGarbageTime(!includeGarbageTime)} 
                                         className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
                                     >
-                                        {includeGarbageTime ? 'Include' : 'Exclude'}
+                                        {includeGarbageTime ? 'Included' : 'Excluded'}
                                     </button>
                                 </div>
                                 <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
