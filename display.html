@@ -337,19 +337,20 @@
                         const vtStats = segment.stats?.vt || {};
                         const oppStats = segment.stats?.opponent || {};
                         
-                        // Debug logging for multi-game stats
-                        if (gamesToInclude.length > 1) {
-                            console.log('Multi-game segment:', {
-                                game: game.date,
-                                lineup: segment.lineup.join('-'),
-                                vtStats,
-                                oppStats,
-                                currentTotals: {
-                                    poss: lineup.totalPossessions,
-                                    offReb: lineup.totalOffReb
-                                }
-                            });
-                        }
+                        // Debug logging - log ALL segments showing what stats are read
+                        const lineupNames = segment.lineup.map(id => roster.find(p => p.id === id)?.name || id).join(', ');
+                        console.log('Processing segment:', {
+                            game: game.date,
+                            lineup: lineupNames,
+                            startTime: segment.startTime,
+                            endTime: segment.endTime,
+                            startScore: segment.startScore,
+                            endScore: segment.endScore,
+                            vtStats,
+                            oppStats,
+                            vtPoss: vtStats.possessions || 0,
+                            oppPoss: oppStats.possessions || 0
+                        });
                         
                         lineup.totalPossessions += (vtStats.possessions || 0);
                         lineup.totalOffReb += (vtStats.offensiveRebounds || 0);
