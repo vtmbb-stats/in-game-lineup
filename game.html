@@ -49,6 +49,7 @@
             const [lineupAnalytics, setLineupAnalytics] = useState([]);
             const [sortedAnalytics, setSortedAnalytics] = useState([]);
             const [gameEnded, setGameEnded] = useState(null);
+            const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
 
             const roster = [
                 { id: 0, name: 'Jailen Bedford', position: 'G' },
@@ -103,7 +104,7 @@
                 return () => { window.firebaseDb.off(gameInfoRef, u1); window.firebaseDb.off(lineupChangesRef, u2); };
             }, [selectedGame]);
 
-            useEffect(() => { calculateAnalytics(); }, [lineupHistory, playerAvailability]);
+            useEffect(() => { calculateAnalytics(); }, [lineupHistory, playerAvailability, includeGarbageTime]);
             useEffect(() => {
                 const sorted = [...lineupAnalytics].sort((a, b) => {
                     let aVal = a[sortColumn], bVal = b[sortColumn];
@@ -124,8 +125,9 @@
                     };
                     return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
                 });
-                const realChanges = sortedHistory.filter(r => r.changes !== 'End of 1st Half');
+                const realChanges = sortedHistory.filter(r => r.changes !== 'End of 1st Half' && r.changes !== 'Start of 2nd Half');
                 const endOf1stHalf = sortedHistory.find(r => r.changes === 'End of 1st Half');
+                const startOf2ndHalf = sortedHistory.find(r => r.changes === 'Start of 2nd Half');
                 if (realChanges.length === 0) return segments;
                 const firstChange = realChanges[0];
                 const isStartOf2ndHalf = firstChange.changes === 'Start of 2nd Half';
@@ -135,13 +137,62 @@
                         segments.push({ lineup: firstLineup, startScore: { vt: 0, opp: 0 }, endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore }, startTime: '20:00 1st', endTime: firstChange.gameTime, stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} } });
                     }
                 }
+                
+                // Build segments between substitutions
                 for (let i = 1; i < realChanges.length; i++) {
                     const thisChange = realChanges[i], prevChange = realChanges[i - 1];
                     const segmentLineup = prevChange.newLineup ? prevChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
                     if (segmentLineup.length === 5) {
-                        segments.push({ lineup: segmentLineup, startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, startTime: prevChange.gameTime, endTime: thisChange.gameTime, stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } });
+                        // Check if this segment crosses halftime
+                        const prevIsInFirstHalf = prevChange.half === 1;
+                        const thisIsInSecondHalf = thisChange.half === 2;
+                        
+                        if (prevIsInFirstHalf && thisIsInSecondHalf && endOf1stHalf) {
+                            // Check if lineup continued from 1st to 2nd half (no sub at halftime)
+                            const lineupContinued = endOf1stHalf.newLineup === prevChange.newLineup;
+                            
+                            // Always create segment ending 1st half
+                            segments.push({ 
+                                lineup: segmentLineup, 
+                                startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, 
+                                endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore }, 
+                                startTime: prevChange.gameTime, 
+                                endTime: '0:00 1st', 
+                                stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} } 
+                            });
+                            
+                            // Only create 2nd half continuation if lineup didn't change
+                            if (lineupContinued && startOf2ndHalf) {
+                                segments.push({ 
+                                    lineup: segmentLineup, 
+                                    startScore: { vt: startOf2ndHalf.vtScore || endOf1stHalf.vtScore, opp: startOf2ndHalf.oppScore || endOf1stHalf.oppScore }, 
+                                    endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, 
+                                    startTime: '20:00 2nd', 
+                                    endTime: thisChange.gameTime, 
+                                    stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } 
+                                });
+                            } else if (!lineupContinued) {
+                                // Lineup changed at halftime - create segment for NEW lineup starting 2nd half
+                                const newLineup = thisChange.previousLineup ? thisChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
+                                if (newLineup.length === 5) {
+                                    segments.push({ 
+                                        lineup: newLineup, 
+                                        startScore: { vt: startOf2ndHalf?.vtScore || endOf1stHalf.vtScore, opp: startOf2ndHalf?.oppScore || endOf1stHalf.oppScore }, 
+                                        endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, 
+                                        startTime: '20:00 2nd', 
+                                        endTime: thisChange.gameTime, 
+                                        stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } 
+                                    });
+                                }
+                            }
+                        } else {
+                            // Normal segment within same half
+                            segments.push({ lineup: segmentLineup, startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, startTime: prevChange.gameTime, endTime: thisChange.gameTime, stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } });
+                        }
                     }
                 }
+                
+                // Handle segment to end of 1st half if needed
                 if (!isStartOf2ndHalf && realChanges.length > 0) {
                     const lastChange = realChanges[realChanges.length - 1];
                     const lastLineup = lastChange.newLineup ? lastChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
@@ -149,26 +200,77 @@
                         segments.push({ lineup: lastLineup, startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore }, endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore }, startTime: lastChange.gameTime, endTime: '0:00 1st', stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} } });
                     }
                 }
+                
+                // Mark garbage time segments
+                const garbageTimeStart = sortedHistory.find(r => r.garbageTime === true);
+                if (garbageTimeStart) {
+                    const garbageTimeValue = parseGameTime(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
+                    segments.forEach(segment => {
+                        const segmentStartValue = parseGameTime(segment.startTime);
+                        if (segmentStartValue >= garbageTimeValue) {
+                            segment.isGarbageTime = true;
+                        }
+                    });
+                }
+                
                 return segments;
+            };
+            
+            // Helper to convert game time to comparable number
+            const parseGameTime = (timeString) => {
+                if (!timeString) return 0;
+                const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                if (!match) return 0;
+                const minutes = parseInt(match[1]);
+                const seconds = parseInt(match[2]);
+                const period = match[3];
+                const timeInPeriod = minutes * 60 + seconds;
+                
+                if (period === '1st') {
+                    return (20 * 60) - timeInPeriod;
+                } else if (period === '2nd') {
+                    return (40 * 60) - timeInPeriod;
+                } else if (period === 'OT') {
+                    return (45 * 60) - timeInPeriod;
+                }
+                return 0;
             };
 
             const calculateMinutesPlayed = (startTime, endTime) => {
                 if (endTime === 'Current') return '--:--';
-                const parse = (t) => {
-                    const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                    return m ? { minutes: parseInt(m[1]), seconds: parseInt(m[2]), period: m[3], totalSeconds: parseInt(m[1]) * 60 + parseInt(m[2]) } : null;
+                
+                const parseTime = (timeString) => {
+                    if (!timeString) return null;
+                    const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                    if (!match) return null;
+                    
+                    const minutes = parseInt(match[1]);
+                    const seconds = parseInt(match[2]);
+                    const period = match[3];
+                    
+                    // Convert to total game seconds (counting down from 40:00)
+                    const timeInPeriod = minutes * 60 + seconds;
+                    
+                    if (period === '1st') {
+                        return (20 * 60) - timeInPeriod;
+                    } else if (period === '2nd') {
+                        return (40 * 60) - timeInPeriod;
+                    } else if (period === 'OT') {
+                        return (45 * 60) - timeInPeriod;
+                    }
+                    
+                    return null;
                 };
-                const start = parse(startTime), end = parse(endTime);
-                if (!start || !end) return '--:--';
-                let playedSeconds;
-                if (start.period !== end.period) {
-                    playedSeconds = start.totalSeconds + ((20 * 60) - end.totalSeconds);
-                } else if (startTime === '20:00 1st') {
-                    playedSeconds = (20 * 60) - end.totalSeconds;
-                } else {
-                    playedSeconds = start.totalSeconds - end.totalSeconds;
-                }
+                
+                const startGameSeconds = parseTime(startTime);
+                const endGameSeconds = parseTime(endTime);
+                
+                if (startGameSeconds === null || endGameSeconds === null) return '--:--';
+                
+                const playedSeconds = endGameSeconds - startGameSeconds;
+                
                 if (playedSeconds < 0) return '--:--';
+                
                 return `${Math.floor(playedSeconds / 60)}:${(playedSeconds % 60).toString().padStart(2, '0')}`;
             };
 
@@ -178,6 +280,10 @@
                 segments.forEach(segment => {
                     const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
                     if (segment.lineup.some(pid => !playerAvailability[pid])) return;
+                    
+                    // Skip garbage time segments if toggle is off
+                    if (!includeGarbageTime && segment.isGarbageTime) return;
+                    
                     if (!lineupMap.has(lineupKey)) {
                         lineupMap.set(lineupKey, { players: segment.lineup, segments: [], totalMinutesSeconds: 0, totalPlusMinus: 0, totalPossessions: 0, totalOffReb: 0, totalDefReb: 0, totalTurnovers: 0, totalOppPossessions: 0, totalOppOffReb: 0, totalOppDefReb: 0, totalOppTurnovers: 0, totalPoints: 0, totalOppPoints: 0 });
                     }
@@ -267,6 +373,15 @@
                                 <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
                                     {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
                                 </select>
+                                <div className="flex items-center gap-2">
+                                    <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Garbage Time:</label>
+                                    <button 
+                                        onClick={() => setIncludeGarbageTime(!includeGarbageTime)} 
+                                        className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
+                                    >
+                                        {includeGarbageTime ? 'Included' : 'Excluded'}
+                                    </button>
+                                </div>
                                 <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
                             </div>
                         </div>
