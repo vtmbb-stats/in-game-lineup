@@ -460,11 +460,13 @@
                 const higherIsBetter = ['plusMinus', 'pointsPerPossession', 'offRebRate', 'defRebRate', 'defTurnoverRate'];
                 const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
                 let colorIntensity = higherIsBetter.includes(column) ? percentile : lowerIsBetter.includes(column) ? 1 - percentile : 0.5;
-                if (colorIntensity >= 0.8) return darkMode ? 'bg-green-800' : 'bg-green-200';
-                if (colorIntensity >= 0.6) return darkMode ? 'bg-green-900' : 'bg-green-100';
-                if (colorIntensity >= 0.4) return '';
-                if (colorIntensity >= 0.2) return darkMode ? 'bg-red-900' : 'bg-red-100';
-                return darkMode ? 'bg-red-800' : 'bg-red-200';
+                
+                // 5-tier gradient: vibrant green → dull light green → blank → dull light red → vibrant red
+                if (colorIntensity >= 0.8) return darkMode ? 'bg-green-600' : 'bg-green-400';      // Vibrant green (top 20%)
+                if (colorIntensity >= 0.6) return darkMode ? 'bg-green-900' : 'bg-green-100';      // Dull light green
+                if (colorIntensity >= 0.4) return '';                                               // Blank (middle 20%)
+                if (colorIntensity >= 0.2) return darkMode ? 'bg-red-900' : 'bg-red-100';          // Dull light red
+                return darkMode ? 'bg-red-600' : 'bg-red-400';                                      // Vibrant red (bottom 20%)
             };
 
             const handleSort = (column) => {
