@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VT Basketball Game Viewer</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .custom-green-100 {
+            background-color: #00A327;
+        }
+        .custom-green-50 {
+            background-color: #66C47E;  /* Slightly darker, less bright green */
+        }
+        .custom-red-50 {
+            background-color: #E06060;  /* Slightly darker, less bright red */
+        }
+        .custom-red-100 {
+            background-color: #DB2800;
+        }
+    </style>
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
@@ -346,11 +360,13 @@
                 const higherIsBetter = ['plusMinus', 'pointsPerPossession', 'offRebRate', 'defRebRate', 'defTurnoverRate'];
                 const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
                 let colorIntensity = higherIsBetter.includes(column) ? percentile : lowerIsBetter.includes(column) ? 1 - percentile : 0.5;
-                if (colorIntensity >= 0.8) return darkMode ? 'bg-green-800' : 'bg-green-200';
-                if (colorIntensity >= 0.6) return darkMode ? 'bg-green-900' : 'bg-green-100';
-                if (colorIntensity >= 0.4) return '';
-                if (colorIntensity >= 0.2) return darkMode ? 'bg-red-900' : 'bg-red-100';
-                return darkMode ? 'bg-red-800' : 'bg-red-200';
+                
+                // 5-tier gradient: solid green → muted light green → blank → muted light red → solid red
+                if (colorIntensity >= 0.8) return 'custom-green-100';      // Solid dark green (top 20%)
+                if (colorIntensity >= 0.6) return 'custom-green-50';       // Muted light green
+                if (colorIntensity >= 0.4) return '';                       // Blank (middle 20%)
+                if (colorIntensity >= 0.2) return 'custom-red-50';         // Muted light red
+                return 'custom-red-100';                                    // Solid dark red (bottom 20%)
             };
 
             const handleSort = (column) => {
