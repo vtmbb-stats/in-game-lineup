@@ -1,729 +1,662 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VT Basketball Lineup Analysis</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .custom-green-100 {
-            background-color: #00A327;
-        }
-        .custom-green-50 {
-            background-color: #66C47E;  /* Slightly darker, less bright green */
-        }
-        .custom-red-50 {
-            background-color: #E06060;  /* Slightly darker, less bright red */
-        }
-        .custom-red-100 {
-            background-color: #DB2800;
-        }
-    </style>
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
-        
-        const firebaseConfig = {
-            apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
-            authDomain: "vtmbb-gameday.firebaseapp.com",
-            databaseURL: "https://vtmbb-gameday-default-rtdb.firebaseio.com",
-            projectId: "vtmbb-gameday",
-            storageBucket: "vtmbb-gameday.firebasestorage.app",
-            messagingSenderId: "1012073356538",
-            appId: "1:1012073356538:web:7a41a93d00920d4d00bd43"
-        };
-        
-        const app = initializeApp(firebaseConfig);
-        const database = getDatabase(app);
-        
-        window.firebaseDb = {
-            ref: (path) => ref(database, path),
-            onValue: (dbRef, callback) => onValue(dbRef, callback)
-        };
-        
-        console.log('Firebase initialized successfully');
-    </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VT Basketball Lineup Analysis</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .custom-green-100 { background-color: #00A327; }
+    .custom-green-50 { background-color: #66C47E; }
+    .custom-red-50 { background-color: #E06060; }
+    .custom-red-100 { background-color: #DB2800; }
+  </style>
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
+      authDomain: "vtmbb-gameday.firebaseapp.com",
+      databaseURL: "https://vtmbb-gameday-default-rtdb.firebaseio.com",
+      projectId: "vtmbb-gameday",
+      storageBucket: "vtmbb-gameday.firebasestorage.app",
+      messagingSenderId: "1012073356538",
+      appId: "1:1012073356538:web:7a41a93d00920d4d00bd43"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+
+    window.firebaseDb = {
+      ref: (path) => ref(database, path),
+      onValue: (dbRef, callback) => onValue(dbRef, callback)
+    };
+  </script>
 </head>
 <body>
-    <div id="root"></div>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
 
-        const ComboAnalysisViewer = () => {
-            const [darkMode, setDarkMode] = useState(true);
-            const [startGame, setStartGame] = useState('2024-11-03');
-            const [endGame, setEndGame] = useState('2024-11-03');
-            const [loading, setLoading] = useState(true);
-            const [allGamesData, setAllGamesData] = useState({});
-            const [gamesWithData, setGamesWithData] = useState([]);
-            const [twoCombos, setTwoCombos] = useState([]);
-            const [threeCombos, setThreeCombos] = useState([]);
-            const [playerAvailability, setPlayerAvailability] = useState({});
-            const [lineupAnalytics, setLineupAnalytics] = useState([]);
-            const [sortedAnalytics, setSortedAnalytics] = useState([]);
-            const [sortColumn, setSortColumn] = useState('plusMinus');
-            const [sortDirection, setSortDirection] = useState('desc');
-            const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
+    const ComboAnalysisViewer = () => {
+      const [darkMode, setDarkMode] = useState(true);
+      const [startGame, setStartGame] = useState('2024-11-03');
+      const [endGame, setEndGame] = useState('2024-11-03');
+      const [loading, setLoading] = useState(true);
+      const [allGamesData, setAllGamesData] = useState({});
+      const [gamesWithData, setGamesWithData] = useState([]);
+      const [twoCombos, setTwoCombos] = useState([]);
+      const [threeCombos, setThreeCombos] = useState([]);
+      const [playerAvailability, setPlayerAvailability] = useState({});
+      const [lineupAnalytics, setLineupAnalytics] = useState([]);
+      const [sortedAnalytics, setSortedAnalytics] = useState([]);
+      const [sortColumn, setSortColumn] = useState('plusMinus');
+      const [sortDirection, setSortDirection] = useState('desc');
+      const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
 
-            const roster = [
-                { id: 0, name: 'Jailen Bedford', position: 'G' },
-                { id: 1, name: 'Tobi Lawal', position: 'F' },
-                { id: 2, name: 'Jaden Schutt', position: 'G' },
-                { id: 3, name: 'Ben Hammond', position: 'G' },
-                { id: 4, name: 'Izaiah Pasha', position: 'G' },
-                { id: 5, name: 'Sin\'Cere Jones', position: 'F' },
-                { id: 7, name: 'Brett Freeman', position: 'G' },
-                { id: 10, name: 'Tyler Johnson', position: 'F' },
-                { id: 13, name: 'Amani Hansberry', position: 'F' },
-                { id: 15, name: 'Snook Peterkin', position: 'G' },
-                { id: 17, name: 'Neo Avdalas', position: 'G' },
-                { id: 22, name: 'Solomon Davis', position: 'C' },
-                { id: 32, name: 'Christian Gurdak', position: 'C' },
-                { id: 77, name: 'Antonio Dorn', position: 'C' }
-            ];
+      const roster = [
+        { id: 0, name: 'Jailen Bedford', position: 'G' },
+        { id: 1, name: 'Tobi Lawal', position: 'F' },
+        { id: 2, name: 'Jaden Schutt', position: 'G' },
+        { id: 3, name: 'Ben Hammond', position: 'G' },
+        { id: 4, name: 'Izaiah Pasha', position: 'G' },
+        { id: 5, name: 'Sin\'Cere Jones', position: 'F' },
+        { id: 7, name: 'Brett Freeman', position: 'G' },
+        { id: 10, name: 'Tyler Johnson', position: 'F' },
+        { id: 13, name: 'Amani Hansberry', position: 'F' },
+        { id: 15, name: 'Snook Peterkin', position: 'G' },
+        { id: 17, name: 'Neo Avdalas', position: 'G' },
+        { id: 22, name: 'Solomon Davis', position: 'C' },
+        { id: 32, name: 'Christian Gurdak', position: 'C' },
+        { id: 77, name: 'Antonio Dorn', position: 'C' }
+      ];
 
-            const gameSchedule = [
-                { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall' },
-                { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne' },
-                { date: '2024-11-03', opponent: 'Charleston Southern', displayName: 'Nov 3 vs Charleston Southern' }
-            ];
+      const gameSchedule = [
+        { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall' },
+        { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne' },
+        { date: '2024-11-03', opponent: 'Charleston Southern', displayName: 'Nov 3 vs Charleston Southern' }
+      ];
 
-            useEffect(() => { loadAllGames(); }, []);
-            useEffect(() => {
-                const availability = {};
-                roster.forEach(player => { availability[player.id] = true; });
-                setPlayerAvailability(availability);
-            }, []);
-            useEffect(() => {
-                if (!loading) { calculateCombos(); calculateLineupAnalytics(); }
-            }, [startGame, endGame, loading, playerAvailability, includeGarbageTime]);
-            useEffect(() => {
-                const sorted = [...lineupAnalytics].sort((a, b) => {
-                    let aVal = a[sortColumn], bVal = b[sortColumn];
-                    if (sortColumn === 'minutes') { aVal = a.totalMinutesSeconds; bVal = b.totalMinutesSeconds; }
-                    return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
-                });
-                setSortedAnalytics(sorted);
-            }, [lineupAnalytics, sortColumn, sortDirection]);
+      useEffect(() => { loadAllGames(); }, []);
+      useEffect(() => {
+        const availability = {};
+        roster.forEach(player => { availability[player.id] = true; });
+        setPlayerAvailability(availability);
+      }, []);
+      useEffect(() => {
+        if (!loading) { calculateCombos(); calculateLineupAnalytics(); }
+      }, [startGame, endGame, loading, playerAvailability, includeGarbageTime]);
+      useEffect(() => {
+        const sorted = [...lineupAnalytics].sort((a, b) => {
+          let aVal = a[sortColumn], bVal = b[sortColumn];
+          if (sortColumn === 'minutes') { aVal = a.totalMinutesSeconds; bVal = b.totalMinutesSeconds; }
+          return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
+        });
+        setSortedAnalytics(sorted);
+      }, [lineupAnalytics, sortColumn, sortDirection]);
 
-            const loadAllGames = async () => {
-                if (!window.firebaseDb) return;
-                setLoading(true);
-                const gamesData = {}, gamesFound = [];
-                
-                // Scan Firebase for all available games by checking the game-info node
-                const gameInfoRootRef = window.firebaseDb.ref('game-info');
-                await new Promise((resolve) => {
-                    window.firebaseDb.onValue(gameInfoRootRef, async (snapshot) => {
-                        if (snapshot.exists()) {
-                            const allGames = snapshot.val();
-                            const gameKeys = Object.keys(allGames);
-                            
-                            // Load lineup data for each game that exists
-                            for (const gameDate of gameKeys) {
-                                const gameInfo = allGames[gameDate];
-                                if (gameInfo.started) {
-                                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${gameDate}`);
-                                    await new Promise((resolveLineup) => {
-                                        window.firebaseDb.onValue(lineupChangesRef, (lineupSnapshot) => {
-                                            if (lineupSnapshot.exists()) {
-                                                gamesData[gameDate] = Object.values(lineupSnapshot.val());
-                                                gamesFound.push({
-                                                    date: gameDate,
-                                                    opponent: gameInfo.opponent || 'Unknown',
-                                                    displayName: `${gameDate} vs ${gameInfo.opponent || 'Unknown'}`
-                                                });
-                                            }
-                                            resolveLineup();
-                                        }, { onlyOnce: true });
-                                    });
-                                }
-                            }
-                        }
-                        resolve();
-                    }, { onlyOnce: true });
-                });
-                
-                // Sort games by date
-                gamesFound.sort((a, b) => a.date.localeCompare(b.date));
-                
-                setAllGamesData(gamesData);
-                setGamesWithData(gamesFound.map(g => g.date));
-                
-                // Store the game schedule dynamically
-                window.dynamicGameSchedule = gamesFound;
-                
-                if (gamesFound.length > 0) {
-                    setStartGame(gamesFound[0].date);
-                    setEndGame(gamesFound[gamesFound.length - 1].date);
-                }
-                setLoading(false);
-            };
+      const loadAllGames = async () => {
+        if (!window.firebaseDb) return;
+        setLoading(true);
+        const gamesData = {}, gamesFound = [];
 
-            const buildSegments = (lineupHistory) => {
-                const segments = [];
-                const sortedHistory = [...lineupHistory].sort((a, b) => {
-                    const parseTime = (t) => {
-                        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                        if (!m) return 0;
-                        const p = m[3] === '1st' ? 0 : m[3] === '2nd' ? 1 : 2;
-                        return p * 100000 + ((20 * 60) - (parseInt(m[1]) * 60 + parseInt(m[2])));
-                    };
-                    return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
-                });
-                const realChanges = sortedHistory.filter(r => r.changes !== 'End of 1st Half' && r.changes !== 'Start of 2nd Half');
-                const endOf1stHalf = sortedHistory.find(r => r.changes === 'End of 1st Half');
-                const startOf2ndHalf = sortedHistory.find(r => r.changes === 'Start of 2nd Half');
-                if (realChanges.length === 0) return segments;
-                const firstChange = realChanges[0];
-                const isStartOf2ndHalf = firstChange.changes === 'Start of 2nd Half';
-                if (!isStartOf2ndHalf) {
-                    const firstLineup = firstChange.previousLineup ? firstChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    if (firstLineup.length === 5) {
-                        segments.push({ lineup: firstLineup, startScore: { vt: 0, opp: 0 }, endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore }, startTime: '20:00 1st', endTime: firstChange.gameTime, stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} } });
-                    }
-                }
-                
-                // Build segments between substitutions
-                for (let i = 1; i < realChanges.length; i++) {
-                    const thisChange = realChanges[i], prevChange = realChanges[i - 1];
-                    const segmentLineup = prevChange.newLineup ? prevChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    if (segmentLineup.length === 5) {
-                        // Check if this segment crosses halftime
-                        const prevIsInFirstHalf = prevChange.half === 1;
-                        const thisIsInSecondHalf = thisChange.half === 2;
-                        
-                        if (prevIsInFirstHalf && thisIsInSecondHalf && endOf1stHalf) {
-                            // Check if lineup continued from 1st to 2nd half (no sub at halftime)
-                            const lineupContinued = endOf1stHalf.newLineup === prevChange.newLineup;
-                            
-                            // Always create segment ending 1st half
-                            segments.push({ 
-                                lineup: segmentLineup, 
-                                startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, 
-                                endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore }, 
-                                startTime: prevChange.gameTime, 
-                                endTime: '0:00 1st', 
-                                stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} } 
-                            });
-                            
-                            // Only create 2nd half continuation if lineup didn't change
-                            if (lineupContinued && startOf2ndHalf) {
-                                segments.push({ 
-                                    lineup: segmentLineup, 
-                                    startScore: { vt: startOf2ndHalf.vtScore || endOf1stHalf.vtScore, opp: startOf2ndHalf.oppScore || endOf1stHalf.oppScore }, 
-                                    endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, 
-                                    startTime: '20:00 2nd', 
-                                    endTime: thisChange.gameTime, 
-                                    stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } 
-                                });
-                            } else if (!lineupContinued) {
-                                // Lineup changed at halftime - create segment for NEW lineup starting 2nd half
-                                const newLineup = thisChange.previousLineup ? thisChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                                if (newLineup.length === 5) {
-                                    segments.push({ 
-                                        lineup: newLineup, 
-                                        startScore: { vt: startOf2ndHalf?.vtScore || endOf1stHalf.vtScore, opp: startOf2ndHalf?.oppScore || endOf1stHalf.oppScore }, 
-                                        endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, 
-                                        startTime: '20:00 2nd', 
-                                        endTime: thisChange.gameTime, 
-                                        stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } 
-                                    });
-                                }
-                            }
-                        } else {
-                            // Normal segment within same half
-                            segments.push({ lineup: segmentLineup, startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, startTime: prevChange.gameTime, endTime: thisChange.gameTime, stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } });
-                        }
-                    }
-                }
-                
-                // Handle segment to end of 1st half if needed
-                if (!isStartOf2ndHalf && realChanges.length > 0) {
-                    const lastChange = realChanges[realChanges.length - 1];
-                    const lastLineup = lastChange.newLineup ? lastChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    if (lastLineup.length === 5 && endOf1stHalf && lastChange.half === 1) {
-                        segments.push({ lineup: lastLineup, startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore }, endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore }, startTime: lastChange.gameTime, endTime: '0:00 1st', stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} } });
-                    }
-                }
-                
-                // Mark garbage time segments
-                const garbageTimeStart = sortedHistory.find(r => r.garbageTime === true);
-                if (garbageTimeStart) {
-                    const garbageTimeValue = parseGameTime(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
-                    segments.forEach(segment => {
-                        const segmentStartValue = parseGameTime(segment.startTime);
-                        if (segmentStartValue >= garbageTimeValue) {
-                            segment.isGarbageTime = true;
-                        }
-                    });
-                }
-                
-                return segments;
-            };
-            
-            // Helper to convert game time to comparable number
-            const parseGameTime = (timeString) => {
-                if (!timeString) return 0;
-                const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                if (!match) return 0;
-                const minutes = parseInt(match[1]);
-                const seconds = parseInt(match[2]);
-                const period = match[3];
-                const timeInPeriod = minutes * 60 + seconds;
-                
-                if (period === '1st') {
-                    return (20 * 60) - timeInPeriod;
-                } else if (period === '2nd') {
-                    return (40 * 60) - timeInPeriod;
-                } else if (period === 'OT') {
-                    return (45 * 60) - timeInPeriod;
-                }
-                return 0;
-            };
+        const gameInfoRootRef = window.firebaseDb.ref('game-info');
+        await new Promise((resolve) => {
+          window.firebaseDb.onValue(gameInfoRootRef, async (snapshot) => {
+            if (snapshot.exists()) {
+              const allGames = snapshot.val();
+              const gameKeys = Object.keys(allGames);
 
-            const calculateMinutesPlayed = (startTime, endTime) => {
-                if (endTime === 'Current') return 0;
-                
-                const parseTime = (timeString) => {
-                    if (!timeString) return null;
-                    const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                    if (!match) return null;
-                    
-                    const minutes = parseInt(match[1]);
-                    const seconds = parseInt(match[2]);
-                    const period = match[3];
-                    
-                    // Convert to total game seconds (counting down from 40:00)
-                    // 1st half: 20:00 - 0:00 (game seconds 0-1200)
-                    // 2nd half: 20:00 - 0:00 (game seconds 1200-2400)
-                    // OT: 5:00 - 0:00 (game seconds 2400+)
-                    
-                    const timeInPeriod = minutes * 60 + seconds;
-                    
-                    if (period === '1st') {
-                        // Time remaining in 1st half
-                        return (20 * 60) - timeInPeriod; // Convert to elapsed time
-                    } else if (period === '2nd') {
-                        // Time remaining in 2nd half
-                        return (40 * 60) - timeInPeriod; // 1st half (1200s) + elapsed in 2nd
-                    } else if (period === 'OT') {
-                        // Time remaining in OT
-                        return (45 * 60) - timeInPeriod; // Both halves + elapsed in OT
-                    }
-                    
-                    return null;
-                };
-                
-                const startGameSeconds = parseTime(startTime);
-                const endGameSeconds = parseTime(endTime);
-                
-                if (startGameSeconds === null || endGameSeconds === null) return 0;
-                
-                // Calculate elapsed time between start and end
-                const playedSeconds = endGameSeconds - startGameSeconds;
-                
-                // Should always be positive now since we're using elapsed game time
-                return playedSeconds < 0 ? 0 : playedSeconds;
-            };
-
-            const calculateCombos = () => {
-                const startIdx = gameSchedule.findIndex(g => g.date === startGame);
-                const endIdx = gameSchedule.findIndex(g => g.date === endGame);
-                if (startIdx === -1 || endIdx === -1 || startIdx > endIdx) {
-                    setTwoCombos([]);
-                    setThreeCombos([]);
-                    return;
-                }
-                const gamesToInclude = gameSchedule.slice(startIdx, endIdx + 1);
-                const twoPlayerMap = new Map();
-                const threePlayerMap = new Map();
-
-                gamesToInclude.forEach(game => {
-                    const gameHistory = allGamesData[game.date];
-                    if (!gameHistory) return;
-                    const segments = buildSegments(gameHistory);
-                    
-                    segments.forEach(segment => {
-                        // Skip garbage time segments if toggle is off
-                        if (!includeGarbageTime && segment.isGarbageTime) return;
-                        
-                        // Skip segments with unavailable players
-                        if (segment.lineup.some(playerId => !playerAvailability[playerId])) return;
-                        
-                        const vtPoints = segment.endScore.vt - segment.startScore.vt;
-                        const oppPoints = segment.endScore.opp - segment.startScore.opp;
-                        const plusMinus = vtPoints - oppPoints;
-                        const minutesSeconds = calculateMinutesPlayed(segment.startTime, segment.endTime);
-                        
-                        const lineup = segment.lineup;
-                        for (let i = 0; i < lineup.length; i++) {
-                            for (let j = i + 1; j < lineup.length; j++) {
-                                const pair = [lineup[i], lineup[j]].sort((a, b) => a - b);
-                                const key = pair.join('-');
-                                if (!twoPlayerMap.has(key)) {
-                                    twoPlayerMap.set(key, { players: pair, totalPlusMinus: 0, totalSeconds: 0 });
-                                }
-                                const combo = twoPlayerMap.get(key);
-                                combo.totalPlusMinus += plusMinus;
-                                combo.totalSeconds += minutesSeconds;
-                            }
-                        }
-                        
-                        for (let i = 0; i < lineup.length; i++) {
-                            for (let j = i + 1; j < lineup.length; j++) {
-                                for (let k = j + 1; k < lineup.length; k++) {
-                                    const trio = [lineup[i], lineup[j], lineup[k]].sort((a, b) => a - b);
-                                    const key = trio.join('-');
-                                    if (!threePlayerMap.has(key)) {
-                                        threePlayerMap.set(key, { players: trio, totalPlusMinus: 0, totalSeconds: 0 });
-                                    }
-                                    const combo = threePlayerMap.get(key);
-                                    combo.totalPlusMinus += plusMinus;
-                                    combo.totalSeconds += minutesSeconds;
-                                }
-                            }
-                        }
-                    });
-                });
-
-                const minSeconds = 5 * 60;
-                const processCombos = (comboMap) => {
-                    return Array.from(comboMap.values())
-                        .filter(c => c.totalSeconds >= minSeconds)
-                        .filter(c => c.players.every(playerId => playerAvailability[playerId])) // Only show combos with available players
-                        .map(c => {
-                            const totalMins = c.totalSeconds / 60;
-                            const pmPerMin = c.totalPlusMinus / totalMins;
-                            const names = c.players.map(id => roster.find(p => p.id === id)?.name || '').join(', ');
-                            return { names, totalPlusMinus: c.totalPlusMinus, totalMinutes: totalMins, pmPerMinute: pmPerMin };
-                        })
-                        .sort((a, b) => b.pmPerMinute - a.pmPerMinute);
-                };
-
-                setTwoCombos(processCombos(twoPlayerMap));
-                setThreeCombos(processCombos(threePlayerMap));
-            };
-
-            const calculateLineupAnalytics = () => {
-                const startIdx = gameSchedule.findIndex(g => g.date === startGame);
-                const endIdx = gameSchedule.findIndex(g => g.date === endGame);
-                if (startIdx === -1 || endIdx === -1 || startIdx > endIdx) {
-                    setLineupAnalytics([]);
-                    return;
-                }
-                const gamesToInclude = gameSchedule.slice(startIdx, endIdx + 1);
-                const lineupMap = new Map();
-                
-                gamesToInclude.forEach(game => {
-                    const gameHistory = allGamesData[game.date];
-                    if (!gameHistory) return;
-                    const segments = buildSegments(gameHistory);
-                    
-                    segments.forEach(segment => {
-                        const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
-                        if (segment.lineup.some(playerId => !playerAvailability[playerId])) return;
-                        
-                        // Skip garbage time segments if toggle is off
-                        if (!includeGarbageTime && segment.isGarbageTime) return;
-                        
-                        if (!lineupMap.has(lineupKey)) {
-                            lineupMap.set(lineupKey, { players: segment.lineup, totalMinutesSeconds: 0, totalPlusMinus: 0, totalPossessions: 0, totalOffReb: 0, totalDefReb: 0, totalTurnovers: 0, totalOppPossessions: 0, totalOppOffReb: 0, totalOppDefReb: 0, totalOppTurnovers: 0, totalPoints: 0, totalOppPoints: 0 });
-                        }
-                        
-                        const lineup = lineupMap.get(lineupKey);
-                        const vtPoints = segment.endScore.vt - segment.startScore.vt;
-                        const oppPoints = segment.endScore.opp - segment.startScore.opp;
-                        lineup.totalPlusMinus += vtPoints - oppPoints;
-                        lineup.totalPoints += vtPoints;
-                        lineup.totalOppPoints += oppPoints;
-                        lineup.totalMinutesSeconds += calculateMinutesPlayed(segment.startTime, segment.endTime);
-                        
-                        const vtStats = segment.stats?.vt || {};
-                        const oppStats = segment.stats?.opponent || {};
-                        
-                        // Debug logging - log ALL segments showing what stats are read
-                        const lineupNames = segment.lineup.map(id => roster.find(p => p.id === id)?.name || id).join(', ');
-                        console.log('Processing segment:', {
-                            game: game.date,
-                            lineup: lineupNames,
-                            startTime: segment.startTime,
-                            endTime: segment.endTime,
-                            startScore: segment.startScore,
-                            endScore: segment.endScore,
-                            vtStats,
-                            oppStats,
-                            vtPoss: vtStats.possessions || 0,
-                            oppPoss: oppStats.possessions || 0
+              for (const gameDate of gameKeys) {
+                const gameInfo = allGames[gameDate];
+                if (gameInfo.started) {
+                  const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${gameDate}`);
+                  await new Promise((resolveLineup) => {
+                    window.firebaseDb.onValue(lineupChangesRef, (lineupSnapshot) => {
+                      if (lineupSnapshot.exists()) {
+                        gamesData[gameDate] = Object.values(lineupSnapshot.val());
+                        gamesFound.push({
+                          date: gameDate,
+                          opponent: gameInfo.opponent || 'Unknown',
+                          displayName: `${gameDate} vs ${gameInfo.opponent || 'Unknown'}`
                         });
-                        
-                        lineup.totalPossessions += (vtStats.possessions || 0);
-                        lineup.totalOffReb += (vtStats.offensiveRebounds || 0);
-                        lineup.totalDefReb += (vtStats.defensiveRebounds || 0);
-                        lineup.totalTurnovers += (vtStats.turnovers || 0);
-                        lineup.totalOppPossessions += (oppStats.possessions || 0);
-                        lineup.totalOppOffReb += (oppStats.offensiveRebounds || 0);
-                        lineup.totalOppDefReb += (oppStats.defensiveRebounds || 0);
-                        lineup.totalOppTurnovers += (oppStats.turnovers || 0);
-                    });
-                });
-                
-                const analytics = Array.from(lineupMap.values()).map(lineup => {
-                    const playerNames = lineup.players.map(id => roster.find(p => p.id === id)?.name.split(' ').pop() || '').join(', ');
-                    const offPoss = lineup.totalPossessions || 1, defPoss = lineup.totalOppPossessions || 1;
-                    const availOffReb = lineup.totalOffReb + lineup.totalOppDefReb, availDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
-                    const totalMins = Math.floor(lineup.totalMinutesSeconds / 60), totalSecs = lineup.totalMinutesSeconds % 60;
-                    const minutesDisplay = `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
-                    
-                    return {
-                        id: lineup.players.sort((a, b) => a - b).join('-'), players: playerNames, playerIds: lineup.players,
-                        plusMinus: lineup.totalPlusMinus, pointsPerPossession: lineup.totalPoints / offPoss,
-                        defPointsPerPossession: lineup.totalOppPoints / defPoss,
-                        offRebRate: availOffReb > 0 ? (lineup.totalOffReb / availOffReb) * 100 : 0,
-                        defRebRate: availDefReb > 0 ? (lineup.totalDefReb / availDefReb) * 100 : 0,
-                        turnoverRate: offPoss > 0 ? (lineup.totalTurnovers / offPoss) * 100 : 0,
-                        defTurnoverRate: defPoss > 0 ? (lineup.totalOppTurnovers / defPoss) * 100 : 0,
-                        minutes: minutesDisplay, totalMinutesSeconds: lineup.totalMinutesSeconds
-                    };
-                });
-                
-                // Debug: Show final aggregated stats for multi-game
-                if (gamesToInclude.length > 1) {
-                    console.log('Final aggregated lineups:', analytics.map(a => ({
-                        players: a.players,
-                        plusMinus: a.plusMinus,
-                        possessions: lineupMap.get(a.id)?.totalPossessions,
-                        offReb: lineupMap.get(a.id)?.totalOffReb
-                    })));
+                      }
+                      resolveLineup();
+                    }, { onlyOnce: true });
+                  });
                 }
-                
-                setLineupAnalytics(analytics);
-            };
+              }
+            }
+            resolve();
+          }, { onlyOnce: true });
+        });
 
-            const getPlayerPlusMinus = (playerId) => {
-                return lineupAnalytics.reduce((sum, lineup) => sum + (lineup.playerIds.includes(playerId) ? lineup.plusMinus : 0), 0);
-            };
+        gamesFound.sort((a, b) => a.date.localeCompare(b.date));
 
-            const getColorClass = (value, column, analytics) => {
-                if (analytics.length < 2) return '';
-                const values = analytics.map(item => item[column]).filter(v => !isNaN(v));
-                if (values.length < 2) return '';
-                values.sort((a, b) => a - b);
-                const min = values[0], max = values[values.length - 1], range = max - min;
-                if (range === 0) return '';
-                const percentile = (value - min) / range;
-                const higherIsBetter = ['plusMinus', 'pointsPerPossession', 'offRebRate', 'defRebRate', 'defTurnoverRate'];
-                const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
-                let colorIntensity = higherIsBetter.includes(column) ? percentile : lowerIsBetter.includes(column) ? 1 - percentile : 0.5;
-                
-                // 5-tier gradient: solid green (#00A327) → transparent green → blank → transparent red → solid red (#DB2800)
-                if (colorIntensity >= 0.8) return 'custom-green-100';      // 100% solid green (top 20%)
-                if (colorIntensity >= 0.6) return 'custom-green-50';       // 50% transparent green
-                if (colorIntensity >= 0.4) return '';                       // Blank (middle 20%)
-                if (colorIntensity >= 0.2) return 'custom-red-50';         // 50% transparent red
-                return 'custom-red-100';                                    // 100% solid red (bottom 20%)
-            };
+        setAllGamesData(gamesData);
+        setGamesWithData(gamesFound.map(g => g.date));
+        window.dynamicGameSchedule = gamesFound;
 
-            const handleSort = (column) => {
-                if (sortColumn === column) { setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc'); }
-                else { setSortColumn(column); setSortDirection('desc'); }
-            };
+        if (gamesFound.length > 0) {
+          setStartGame(gamesFound[0].date);
+          setEndGame(gamesFound[gamesFound.length - 1].date);
+        }
+        setLoading(false);
+      };
 
-            const togglePlayerAvailability = (playerId) => {
-                setPlayerAvailability(prev => ({ ...prev, [playerId]: !prev[playerId] }));
-            };
+      // === Unified game-time parsing used across apps ===
+      const parseGameTimeValue = (timeString) => {
+        if (!timeString) return 0;
+        const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+        if (!match) return 0;
+        const minutes = parseInt(match[1], 10);
+        const seconds = parseInt(match[2], 10);
+        const period = match[3];
+        const timeInPeriod = minutes * 60 + seconds;
 
-            if (loading) {
-                return (
-                    <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                        <div className={`text-xl ${darkMode ? 'text-white' : 'text-gray-900'}`}>Loading season data...</div>
-                    </div>
-                );
+        if (period === '1st') return (20 * 60) - timeInPeriod;
+        if (period === '2nd') return (40 * 60) - timeInPeriod;
+        // OT assumed first OT 5:00 added
+        return (45 * 60) - timeInPeriod;
+      };
+
+      const calculateMinutesPlayed = (startTime, endTime) => {
+        if (endTime === 'Current') return 0;
+        const startGameSeconds = parseGameTimeValue(startTime);
+        const endGameSeconds = parseGameTimeValue(endTime);
+        const playedSeconds = endGameSeconds - startGameSeconds;
+        return playedSeconds > 0 ? playedSeconds : 0;
+      };
+
+      // === REPLACED: buildSegments to match the other app exactly ===
+      const buildSegments = (lineupHistory) => {
+        if (!lineupHistory || lineupHistory.length === 0) return [];
+
+        const segments = [];
+
+        const sorted = [...lineupHistory].sort((a, b) => {
+          const timeA = parseGameTimeValue(a.timestamp || a.gameTime || '');
+          const timeB = parseGameTimeValue(b.timestamp || b.gameTime || '');
+          return timeA - timeB;
+        });
+
+        let nextSegmentLineup = null;
+
+        for (let i = 0; i < sorted.length; i++) {
+          const curr = sorted[i];
+
+          let segmentLineup;
+
+          if (curr.changes === 'Start of 2nd Half') {
+            nextSegmentLineup = curr.newLineup;
+            continue;
+          } else if (i === 0) {
+            segmentLineup = curr.previousLineup;
+            nextSegmentLineup = curr.newLineup;
+          } else if (curr.changes === 'End of 1st Half' || curr.changes === 'End of Game') {
+            segmentLineup = nextSegmentLineup || curr.previousLineup;
+          } else {
+            segmentLineup = curr.previousLineup;
+            nextSegmentLineup = curr.newLineup;
+          }
+
+          if (!segmentLineup) continue;
+
+          let startTime, startScore, endTime, endScore, stats;
+
+          if (i === 0) {
+            startTime = '20:00 1st';
+            startScore = { vt: 0, opp: 0 };
+            endTime = curr.gameTime;
+            endScore = { vt: curr.vtScore, opp: curr.oppScore };
+            stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
+          } else {
+            const prev = sorted[i - 1];
+            if (prev.changes === 'Start of 2nd Half') {
+              startTime = '20:00 2nd';
+              startScore = { vt: prev.vtScore, opp: prev.oppScore };
+            } else {
+              startTime = prev.gameTime;
+              startScore = { vt: prev.vtScore, opp: prev.oppScore };
+            }
+            endTime = curr.gameTime;
+            endScore = { vt: curr.vtScore, opp: curr.oppScore };
+            stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
+          }
+
+          if (startTime === endTime) continue;
+
+          const lineupIds = segmentLineup.split(', ')
+            .map(name => roster.find(p => p.name === name)?.id)
+            .filter(id => id !== undefined);
+
+          if (lineupIds.length === 5) {
+            segments.push({
+              lineup: lineupIds,
+              startTime,
+              endTime,
+              startScore,
+              endScore,
+              stats
+            });
+          }
+        }
+
+        // Add a final segment to End of Game if needed
+        const endOfGame = sorted.find(r => r.changes === 'End of Game');
+        if (endOfGame) {
+          const prev = sorted[sorted.length - 1];
+          const startTime = prev?.changes === 'Start of 2nd Half' ? '20:00 2nd' : (prev?.gameTime || '20:00 1st');
+          const startScore = { vt: prev?.vtScore ?? 0, opp: prev?.oppScore ?? 0 };
+          const endTime = endOfGame.gameTime || '0:00 2nd';
+          const endScore = { vt: endOfGame.vtScore ?? startScore.vt, opp: endOfGame.oppScore ?? startScore.opp };
+          const chosen = nextSegmentLineup || prev?.previousLineup || prev?.newLineup;
+          if (chosen) {
+            const ids = chosen.split(', ')
+              .map(name => roster.find(p => p.name === name)?.id)
+              .filter(id => id !== undefined);
+            if (ids.length === 5 && startTime !== endTime) {
+              segments.push({
+                lineup: ids,
+                startTime,
+                endTime,
+                startScore,
+                endScore,
+                stats: endOfGame.completedSegmentStats || { vt: {}, opponent: {} }
+              });
+            }
+          }
+        }
+
+        // Mark garbage time
+        const garbageTimeStart = sorted.find(r => r.garbageTime === true);
+        if (garbageTimeStart) {
+          const garbageTimeValue = parseGameTimeValue(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
+          segments.forEach(segment => {
+            const segmentStartValue = parseGameTimeValue(segment.startTime);
+            if (segmentStartValue >= garbageTimeValue) segment.isGarbageTime = true;
+          });
+        }
+
+        return segments;
+      };
+
+      const calculateCombos = () => {
+        const startIdx = gameSchedule.findIndex(g => g.date === startGame);
+        const endIdx = gameSchedule.findIndex(g => g.date === endGame);
+        if (startIdx === -1 || endIdx === -1 || startIdx > endIdx) {
+          setTwoCombos([]);
+          setThreeCombos([]);
+          return;
+        }
+        const gamesToInclude = gameSchedule.slice(startIdx, endIdx + 1);
+        const twoPlayerMap = new Map();
+        const threePlayerMap = new Map();
+
+        gamesToInclude.forEach(game => {
+          const gameHistory = allGamesData[game.date];
+          if (!gameHistory) return;
+          const segments = buildSegments(gameHistory);
+
+          segments.forEach(segment => {
+            if (!includeGarbageTime && segment.isGarbageTime) return;
+            if (segment.lineup.some(playerId => !playerAvailability[playerId])) return;
+
+            const vtPoints = segment.endScore.vt - segment.startScore.vt;
+            const oppPoints = segment.endScore.opp - segment.startScore.opp;
+            const plusMinus = vtPoints - oppPoints;
+            const minutesSeconds = calculateMinutesPlayed(segment.startTime, segment.endTime);
+
+            const lineup = segment.lineup;
+            for (let i = 0; i < lineup.length; i++) {
+              for (let j = i + 1; j < lineup.length; j++) {
+                const pair = [lineup[i], lineup[j]].sort((a, b) => a - b);
+                const key = pair.join('-');
+                if (!twoPlayerMap.has(key)) {
+                  twoPlayerMap.set(key, { players: pair, totalPlusMinus: 0, totalSeconds: 0 });
+                }
+                const combo = twoPlayerMap.get(key);
+                combo.totalPlusMinus += plusMinus;
+                combo.totalSeconds += minutesSeconds;
+              }
             }
 
-            const top5Twos = twoCombos.slice(0, 5);
-            const bottom5Twos = twoCombos.slice(-5).reverse();
-            const top5Threes = threeCombos.slice(0, 5);
-            const bottom5Threes = threeCombos.slice(-5).reverse();
+            for (let i = 0; i < lineup.length; i++) {
+              for (let j = i + 1; j < lineup.length; j++) {
+                for (let k = j + 1; k < lineup.length; k++) {
+                  const trio = [lineup[i], lineup[j], lineup[k]].sort((a, b) => a - b);
+                  const key = trio.join('-');
+                  if (!threePlayerMap.has(key)) {
+                    threePlayerMap.set(key, { players: trio, totalPlusMinus: 0, totalSeconds: 0 });
+                  }
+                  const combo = threePlayerMap.get(key);
+                  combo.totalPlusMinus += plusMinus;
+                  combo.totalSeconds += minutesSeconds;
+                }
+              }
+            }
+          });
+        });
 
-            return (
-                <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                    <div className="p-4 border-b border-gray-300 dark:border-gray-700">
-                        <div className="flex justify-between items-center">
-                            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>VT Basketball Combo Analysis</h1>
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>From:</label>
-                                    <select value={startGame} onChange={(e) => setStartGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-                                        {(window.dynamicGameSchedule || []).map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
-                                    </select>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>To:</label>
-                                    <select value={endGame} onChange={(e) => setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-                                        {(window.dynamicGameSchedule || []).map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
-                                    </select>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Garbage Time:</label>
-                                    <button 
-                                        onClick={() => setIncludeGarbageTime(!includeGarbageTime)} 
-                                        className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
-                                    >
-                                        {includeGarbageTime ? 'Included' : 'Excluded'}
-                                    </button>
-                                </div>
-                                <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="flex">
-                        <div className={`w-64 p-4 border-r border-gray-300 dark:border-gray-700 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Players</h3>
-                            <div className="space-y-2">
-                                {roster.map(player => {
-                                    const plusMinus = getPlayerPlusMinus(player.id);
-                                    const isAvailable = playerAvailability[player.id];
-                                    return (
-                                        <div key={player.id} className={`p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} ${!isAvailable ? 'opacity-50' : ''}`}>
-                                            <div className="flex justify-between items-center">
-                                                <div>
-                                                    <div className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{player.name}</div>
-                                                    <div className={`text-sm ${plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>{plusMinus >= 0 ? '+' : ''}{plusMinus}</div>
-                                                </div>
-                                                <input type="checkbox" checked={isAvailable ?? true} onChange={() => togglePlayerAvailability(player.id)} className="ml-2" />
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        <div className="flex-1 p-4">
-                            <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'} mb-6`}>
-                                <div className="p-4">
-                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Lineup Analytics</h3>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full">
-                                            <thead>
-                                                <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                                    <th className={`text-left p-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Lineup</th>
-                                                    {[{ key: 'plusMinus', label: '+/-' }, { key: 'pointsPerPossession', label: 'PPP' }, { key: 'defPointsPerPossession', label: 'Def PPP' }, { key: 'offRebRate', label: 'OReb%' }, { key: 'defRebRate', label: 'DReb%' }, { key: 'turnoverRate', label: 'TO%' }, { key: 'defTurnoverRate', label: 'Def TO%' }, { key: 'minutes', label: 'Min' }].map(col => (
-                                                        <th key={col.key} onClick={() => handleSort(col.key)} className={`text-left p-2 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${sortColumn === col.key ? 'font-bold' : ''}`}>
-                                                            {col.label}{sortColumn === col.key && (<span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>)}
-                                                        </th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {sortedAnalytics.map(lineup => (
-                                                    <tr key={lineup.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                                        <td className={`p-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.players}</td>
-                                                        <td className={`p-2 ${getColorClass(lineup.plusMinus, 'plusMinus', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.plusMinus >= 0 ? '+' : ''}{lineup.plusMinus}</td>
-                                                        <td className={`p-2 ${getColorClass(lineup.pointsPerPossession, 'pointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.pointsPerPossession.toFixed(2)}</td>
-                                                        <td className={`p-2 ${getColorClass(lineup.defPointsPerPossession, 'defPointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defPointsPerPossession.toFixed(2)}</td>
-                                                        <td className={`p-2 ${getColorClass(lineup.offRebRate, 'offRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.offRebRate.toFixed(1)}%</td>
-                                                        <td className={`p-2 ${getColorClass(lineup.defRebRate, 'defRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defRebRate.toFixed(1)}%</td>
-                                                        <td className={`p-2 ${getColorClass(lineup.turnoverRate, 'turnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.turnoverRate.toFixed(1)}%</td>
-                                                        <td className={`p-2 ${getColorClass(lineup.defTurnoverRate, 'defTurnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defTurnoverRate.toFixed(1)}%</td>
-                                                        <td className={`p-2 ${getColorClass(lineup.minutes, 'minutes', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.minutes}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                        {lineupAnalytics.length === 0 && (<div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No lineup data available for selected range</div>)}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="p-6 space-y-8">
-                        <div>
-                            <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>2-Player Combos</h2>
-                            <div className="grid grid-cols-2 gap-6">
-                                <div>
-                                    <h3 className={`text-xl font-semibold mb-3 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>Top 5 2s</h3>
-                                    <div className="space-y-3">
-                                        {top5Twos.map((combo, idx) => (
-                                            <div key={idx} className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
-                                                <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</div>
-                                                <div className="flex justify-between mt-2">
-                                                    <span className={`text-green-500 font-semibold`}>+{combo.totalPlusMinus} ({combo.pmPerMinute.toFixed(2)}/min)</span>
-                                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{combo.totalMinutes.toFixed(1)} min</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div>
-                                    <h3 className={`text-xl font-semibold mb-3 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>Bottom 5 2s</h3>
-                                    <div className="space-y-3">
-                                        {bottom5Twos.map((combo, idx) => (
-                                            <div key={idx} className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
-                                                <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</div>
-                                                <div className="flex justify-between mt-2">
-                                                    <span className={`text-red-500 font-semibold`}>{combo.totalPlusMinus} ({combo.pmPerMinute.toFixed(2)}/min)</span>
-                                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{combo.totalMinutes.toFixed(1)} min</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>3-Player Combos</h2>
-                            <div className="grid grid-cols-2 gap-6">
-                                <div>
-                                    <h3 className={`text-xl font-semibold mb-3 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>Top 5 3s</h3>
-                                    <div className="space-y-3">
-                                        {top5Threes.map((combo, idx) => (
-                                            <div key={idx} className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
-                                                <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</div>
-                                                <div className="flex justify-between mt-2">
-                                                    <span className={`text-green-500 font-semibold`}>+{combo.totalPlusMinus} ({combo.pmPerMinute.toFixed(2)}/min)</span>
-                                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{combo.totalMinutes.toFixed(1)} min</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div>
-                                    <h3 className={`text-xl font-semibold mb-3 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>Bottom 5 3s</h3>
-                                    <div className="space-y-3">
-                                        {bottom5Threes.map((combo, idx) => (
-                                            <div key={idx} className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
-                                                <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</div>
-                                                <div className="flex justify-between mt-2">
-                                                    <span className={`text-red-500 font-semibold`}>{combo.totalPlusMinus} ({combo.pmPerMinute.toFixed(2)}/min)</span>
-                                                    <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{combo.totalMinutes.toFixed(1)} min</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className={`rounded-lg shadow p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Opponent-Weighted Lineup Scores</h2>
-                            <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'} text-lg`}>
-                                Opponent strengths not available yet
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
+        const minSeconds = 5 * 60;
+        const processCombos = (comboMap) => {
+          return Array.from(comboMap.values())
+            .filter(c => c.totalSeconds >= minSeconds)
+            .filter(c => c.players.every(playerId => playerAvailability[playerId]))
+            .map(c => {
+              const totalMins = c.totalSeconds / 60;
+              const pmPerMin = c.totalPlusMinus / (totalMins || 1);
+              const names = c.players.map(id => roster.find(p => p.id === id)?.name || '').join(', ');
+              return { names, totalPlusMinus: c.totalPlusMinus, totalMinutes: totalMins, pmPerMinute: pmPerMin };
+            })
+            .sort((a, b) => b.pmPerMinute - a.pmPerMinute);
         };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<ComboAnalysisViewer />);
-    </script>
+        setTwoCombos(processCombos(twoPlayerMap));
+        setThreeCombos(processCombos(threePlayerMap));
+      };
+
+      const calculateLineupAnalytics = () => {
+        const startIdx = gameSchedule.findIndex(g => g.date === startGame);
+        const endIdx = gameSchedule.findIndex(g => g.date === endGame);
+        if (startIdx === -1 || endIdx === -1 || startIdx > endIdx) {
+          setLineupAnalytics([]);
+          return;
+        }
+        const gamesToInclude = gameSchedule.slice(startIdx, endIdx + 1);
+        const lineupMap = new Map();
+
+        gamesToInclude.forEach(game => {
+          const gameHistory = allGamesData[game.date];
+          if (!gameHistory) return;
+          const segments = buildSegments(gameHistory);
+
+          segments.forEach(segment => {
+            const lineupKey = segment.lineup.slice().sort((a, b) => a - b).join('-');
+            if (segment.lineup.some(playerId => !playerAvailability[playerId])) return;
+            if (!includeGarbageTime && segment.isGarbageTime) return;
+
+            if (!lineupMap.has(lineupKey)) {
+              lineupMap.set(lineupKey, {
+                players: segment.lineup, totalMinutesSeconds: 0, totalPlusMinus: 0,
+                totalPossessions: 0, totalOffReb: 0, totalDefReb: 0, totalTurnovers: 0,
+                totalOppPossessions: 0, totalOppOffReb: 0, totalOppDefReb: 0, totalOppTurnovers: 0,
+                totalPoints: 0, totalOppPoints: 0
+              });
+            }
+
+            const lineup = lineupMap.get(lineupKey);
+            const vtPoints = segment.endScore.vt - segment.startScore.vt;
+            const oppPoints = segment.endScore.opp - segment.startScore.opp;
+            lineup.totalPlusMinus += vtPoints - oppPoints;
+            lineup.totalPoints += vtPoints;
+            lineup.totalOppPoints += oppPoints;
+            lineup.totalMinutesSeconds += calculateMinutesPlayed(segment.startTime, segment.endTime);
+
+            const vtStats = segment.stats?.vt || {};
+            const oppStats = segment.stats?.opponent || {};
+
+            lineup.totalPossessions += (vtStats.possessions || 0);
+            lineup.totalOffReb += (vtStats.offensiveRebounds || 0);
+            lineup.totalDefReb += (vtStats.defensiveRebounds || 0);
+            lineup.totalTurnovers += (vtStats.turnovers || 0);
+            lineup.totalOppPossessions += (oppStats.possessions || 0);
+            lineup.totalOppOffReb += (oppStats.offensiveRebounds || 0);
+            lineup.totalOppDefReb += (oppStats.defensiveRebounds || 0);
+            lineup.totalOppTurnovers += (oppStats.turnovers || 0);
+          });
+        });
+
+        const analytics = Array.from(lineupMap.values()).map(lineup => {
+          const playerNames = lineup.players.map(id => roster.find(p => p.id === id)?.name.split(' ').pop() || '').join(', ');
+          const offPoss = lineup.totalPossessions || 1, defPoss = lineup.totalOppPossessions || 1;
+          const availOffReb = lineup.totalOffReb + lineup.totalOppDefReb, availDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
+          const totalMins = Math.floor(lineup.totalMinutesSeconds / 60), totalSecs = lineup.totalMinutesSeconds % 60;
+          const minutesDisplay = `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
+
+          return {
+            id: lineup.players.slice().sort((a, b) => a - b).join('-'),
+            players: playerNames,
+            playerIds: lineup.players,
+            plusMinus: lineup.totalPlusMinus,
+            pointsPerPossession: lineup.totalPoints / offPoss,
+            defPointsPerPossession: lineup.totalOppPoints / defPoss,
+            offRebRate: availOffReb > 0 ? (lineup.totalOffReb / availOffReb) * 100 : 0,
+            defRebRate: availDefReb > 0 ? (lineup.totalDefReb / availDefReb) * 100 : 0,
+            turnoverRate: offPoss > 0 ? (lineup.totalTurnovers / offPoss) * 100 : 0,
+            defTurnoverRate: defPoss > 0 ? (lineup.totalOppTurnovers / defPoss) * 100 : 0,
+            minutes: minutesDisplay,
+            totalMinutesSeconds: lineup.totalMinutesSeconds
+          };
+        });
+
+        setLineupAnalytics(analytics);
+      };
+
+      const getPlayerPlusMinus = (playerId) => {
+        return lineupAnalytics.reduce((sum, lineup) => sum + (lineup.playerIds.includes(playerId) ? lineup.plusMinus : 0), 0);
+      };
+
+      const getColorClass = (value, column, analytics) => {
+        if (analytics.length < 2) return '';
+        const values = analytics.map(item => item[column]).filter(v => !isNaN(v));
+        if (values.length < 2) return '';
+        values.sort((a, b) => a - b);
+        const min = values[0], max = values[values.length - 1], range = max - min;
+        if (range === 0) return '';
+        const percentile = (value - min) / range;
+        const higherIsBetter = ['plusMinus', 'pointsPerPossession', 'offRebRate', 'defRebRate', 'defTurnoverRate'];
+        const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
+        let colorIntensity = higherIsBetter.includes(column) ? percentile : lowerIsBetter.includes(column) ? 1 - percentile : 0.5;
+
+        if (colorIntensity >= 0.8) return 'custom-green-100';
+        if (colorIntensity >= 0.6) return 'custom-green-50';
+        if (colorIntensity >= 0.4) return '';
+        if (colorIntensity >= 0.2) return 'custom-red-50';
+        return 'custom-red-100';
+      };
+
+      const handleSort = (column) => {
+        if (sortColumn === column) { setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc'); }
+        else { setSortColumn(column); setSortDirection('desc'); }
+      };
+
+      const togglePlayerAvailability = (playerId) => {
+        setPlayerAvailability(prev => ({ ...prev, [playerId]: !prev[playerId] }));
+      };
+
+      if (loading) {
+        return (
+          <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+            <div className={`text-xl ${darkMode ? 'text-white' : 'text-gray-900'}`}>Loading season data...</div>
+          </div>
+        );
+      }
+
+      const top5Twos = twoCombos.slice(0, 5);
+      const bottom5Twos = twoCombos.slice(-5).reverse();
+      const top5Threes = threeCombos.slice(0, 5);
+      const bottom5Threes = threeCombos.slice(-5).reverse();
+
+      return (
+        <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+          <div className="p-4 border-b border-gray-300 dark:border-gray-700">
+            <div className="flex justify-between items-center">
+              <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>VT Basketball Combo Analysis</h1>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>From:</label>
+                  <select value={startGame} onChange={(e) => setStartGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                    {(window.dynamicGameSchedule || []).map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>To:</label>
+                  <select value={endGame} onChange={(e) => setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                    {(window.dynamicGameSchedule || []).map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Garbage Time:</label>
+                  <button
+                    onClick={() => setIncludeGarbageTime(!includeGarbageTime)}
+                    className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
+                  >
+                    {includeGarbageTime ? 'Included' : 'Excluded'}
+                  </button>
+                </div>
+                <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex">
+            <div className={`w-64 p-4 border-r border-gray-300 dark:border-gray-700 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+              <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Players</h3>
+              <div className="space-y-2">
+                {roster.map(player => {
+                  const plusMinus = getPlayerPlusMinus(player.id);
+                  const isAvailable = playerAvailability[player.id];
+                  return (
+                    <div key={player.id} className={`p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} ${!isAvailable ? 'opacity-50' : ''}`}>
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{player.name}</div>
+                          <div className={`text-sm ${plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>{plusMinus >= 0 ? '+' : ''}{plusMinus}</div>
+                        </div>
+                        <input type="checkbox" checked={isAvailable ?? true} onChange={() => togglePlayerAvailability(player.id)} className="ml-2" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex-1 p-4">
+              <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'} mb-6`}>
+                <div className="p-4">
+                  <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Lineup Analytics</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                          <th className={`text-left p-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Lineup</th>
+                          {[{ key: 'plusMinus', label: '+/-' }, { key: 'pointsPerPossession', label: 'PPP' }, { key: 'defPointsPerPossession', label: 'Def PPP' }, { key: 'offRebRate', label: 'OReb%' }, { key: 'defRebRate', label: 'DReb%' }, { key: 'turnoverRate', label: 'TO%' }, { key: 'defTurnoverRate', label: 'Def TO%' }, { key: 'minutes', label: 'Min' }].map(col => (
+                            <th key={col.key} onClick={() => handleSort(col.key)} className={`text-left p-2 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${sortColumn === col.key ? 'font-bold' : ''}`}>
+                              {col.label}{sortColumn === col.key && (<span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>)}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedAnalytics.map(lineup => (
+                          <tr key={lineup.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                            <td className={`p-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.players}</td>
+                            <td className={`p-2 ${getColorClass(lineup.plusMinus, 'plusMinus', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.plusMinus >= 0 ? '+' : ''}{lineup.plusMinus}</td>
+                            <td className={`p-2 ${getColorClass(lineup.pointsPerPossession, 'pointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.pointsPerPossession.toFixed(2)}</td>
+                            <td className={`p-2 ${getColorClass(lineup.defPointsPerPossession, 'defPointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defPointsPerPossession.toFixed(2)}</td>
+                            <td className={`p-2 ${getColorClass(lineup.offRebRate, 'offRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.offRebRate.toFixed(1)}%</td>
+                            <td className={`p-2 ${getColorClass(lineup.defRebRate, 'defRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defRebRate.toFixed(1)}%</td>
+                            <td className={`p-2 ${getColorClass(lineup.turnoverRate, 'turnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.turnoverRate.toFixed(1)}%</td>
+                            <td className={`p-2 ${getColorClass(lineup.defTurnoverRate, 'defTurnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defTurnoverRate.toFixed(1)}%</td>
+                            <td className={`p-2 ${getColorClass(lineup.minutes, 'minutes', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.minutes}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {lineupAnalytics.length === 0 && (<div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No lineup data available for selected range</div>)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-8">
+            <div>
+              <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>2-Player Combos</h2>
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <h3 className={`text-xl font-semibold mb-3 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>Top 5 2s</h3>
+                  <div className="space-y-3">
+                    {top5Twos.map((combo, idx) => (
+                      <div key={idx} className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
+                        <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</div>
+                        <div className="flex justify-between mt-2">
+                          <span className={`text-green-500 font-semibold`}>+{combo.totalPlusMinus} ({combo.pmPerMinute.toFixed(2)}/min)</span>
+                          <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{combo.totalMinutes.toFixed(1)} min</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h3 className={`text-xl font-semibold mb-3 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>Bottom 5 2s</h3>
+                  <div className="space-y-3">
+                    {bottom5Twos.map((combo, idx) => (
+                      <div key={idx} className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
+                        <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</div>
+                        <div className="flex justify-between mt-2">
+                          <span className={`text-red-500 font-semibold`}>{combo.totalPlusMinus} ({combo.pmPerMinute.toFixed(2)}/min)</span>
+                          <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{combo.totalMinutes.toFixed(1)} min</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>3-Player Combos</h2>
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <h3 className={`text-xl font-semibold mb-3 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>Top 5 3s</h3>
+                  <div className="space-y-3">
+                    {top5Threes.map((combo, idx) => (
+                      <div key={idx} className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
+                        <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</div>
+                        <div className="flex justify-between mt-2">
+                          <span className={`text-green-500 font-semibold`}>+{combo.totalPlusMinus} ({combo.pmPerMinute.toFixed(2)}/min)</span>
+                          <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{combo.totalMinutes.toFixed(1)} min</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h3 className={`text-xl font-semibold mb-3 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>Bottom 5 3s</h3>
+                  <div className="space-y-3">
+                    {bottom5Threes.map((combo, idx) => (
+                      <div key={idx} className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
+                        <div className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</div>
+                        <div className="flex justify-between mt-2">
+                          <span className={`text-red-500 font-semibold`}>{combo.totalPlusMinus} ({combo.pmPerMinute.toFixed(2)}/min)</span>
+                          <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{combo.totalMinutes.toFixed(1)} min</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className={`rounded-lg shadow p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+              <h2 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Opponent-Weighted Lineup Scores</h2>
+              <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'} text-lg`}>
+                Opponent strengths not available yet
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<ComboAnalysisViewer />);
+  </script>
 </body>
 </html>
