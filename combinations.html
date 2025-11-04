@@ -1,699 +1,544 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VT Basketball Specific Combos</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
-        
-        const firebaseConfig = {
-            apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
-            authDomain: "vtmbb-gameday.firebaseapp.com",
-            databaseURL: "https://vtmbb-gameday-default-rtdb.firebaseio.com",
-            projectId: "vtmbb-gameday",
-            storageBucket: "vtmbb-gameday.firebasestorage.app",
-            messagingSenderId: "1012073356538",
-            appId: "1:1012073356538:web:7a41a93d00920d4d00bd43"
-        };
-        
-        const app = initializeApp(firebaseConfig);
-        const database = getDatabase(app);
-        
-        window.firebaseDb = {
-            ref: (path) => ref(database, path),
-            onValue: (dbRef, callback) => onValue(dbRef, callback),
-            off: (dbRef, callback) => off(dbRef, callback)
-        };
-        
-        console.log('Firebase initialized successfully');
-    </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VT Basketball Specific Combos</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
+      authDomain: "vtmbb-gameday.firebaseapp.com",
+      databaseURL: "https://vtmbb-gameday-default-rtdb.firebaseio.com",
+      projectId: "vtmbb-gameday",
+      storageBucket: "vtmbb-gameday.firebasestorage.app",
+      messagingSenderId: "1012073356538",
+      appId: "1:1012073356538:web:7a41a93d00920d4d00bd43"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+
+    window.firebaseDb = {
+      ref: (path) => ref(database, path),
+      onValue: (dbRef, callback) => onValue(dbRef, callback),
+      off: (dbRef, callback) => off(dbRef, callback)
+    };
+  </script>
 </head>
 <body>
-    <div id="root"></div>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
 
-        const SpecificCombosViewer = () => {
-            const [darkMode, setDarkMode] = useState(true);
-            const [startGame, setStartGame] = useState('2025-10-11');
-            const [endGame, setEndGame] = useState('2025-10-11');
-            const [allGamesData, setAllGamesData] = useState({});
-            const [guardCombos, setGuardCombos] = useState([]);
-            const [bigCombos, setBigCombos] = useState([]);
-            const [loading, setLoading] = useState(true);
-            const [guardSortColumn, setGuardSortColumn] = useState('plusMinus');
-            const [guardSortDirection, setGuardSortDirection] = useState('desc');
-            const [bigSortColumn, setBigSortColumn] = useState('plusMinus');
-            const [bigSortDirection, setBigSortDirection] = useState('desc');
-            const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
+    const SpecificCombosViewer = () => {
+      const [darkMode, setDarkMode] = useState(true);
+      const [startGame, setStartGame] = useState('2025-10-11');
+      const [endGame, setEndGame] = useState('2025-10-11');
+      const [allGamesData, setAllGamesData] = useState({});
+      const [guardCombos, setGuardCombos] = useState([]);
+      const [bigCombos, setBigCombos] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [guardSortColumn, setGuardSortColumn] = useState('plusMinus');
+      const [guardSortDirection, setGuardSortDirection] = useState('desc');
+      const [bigSortColumn, setBigSortColumn] = useState('plusMinus');
+      const [bigSortDirection, setBigSortDirection] = useState('desc');
+      const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
 
-            const roster = [
-                { id: 0, name: 'Jailen Bedford', position: 'G' },
-                { id: 1, name: 'Tobi Lawal', position: 'F' },
-                { id: 2, name: 'Jaden Schutt', position: 'G' },
-                { id: 3, name: 'Ben Hammond', position: 'G' },
-                { id: 4, name: 'Izaiah Pasha', position: 'G' },
-                { id: 5, name: 'Sin\'Cere Jones', position: 'F' },
-                { id: 7, name: 'Brett Freeman', position: 'G' },
-                { id: 10, name: 'Tyler Johnson', position: 'F' },
-                { id: 13, name: 'Amani Hansberry', position: 'F' },
-                { id: 15, name: 'Snook Peterkin', position: 'G' },
-                { id: 17, name: 'Neo Avdalas', position: 'G' },
-                { id: 22, name: 'Solomon Davis', position: 'C' },
-                { id: 32, name: 'Christian Gurdak', position: 'C' },
-                { id: 77, name: 'Antonio Dorn', position: 'C' }
-            ];
+      const roster = [
+        { id: 0, name: 'Jailen Bedford', position: 'G' },
+        { id: 1, name: 'Tobi Lawal', position: 'F' },
+        { id: 2, name: 'Jaden Schutt', position: 'G' },
+        { id: 3, name: 'Ben Hammond', position: 'G' },
+        { id: 4, name: 'Izaiah Pasha', position: 'G' },
+        { id: 5, name: 'Sin\'Cere Jones', position: 'F' },
+        { id: 7, name: 'Brett Freeman', position: 'G' },
+        { id: 10, name: 'Tyler Johnson', position: 'F' },
+        { id: 13, name: 'Amani Hansberry', position: 'F' },
+        { id: 15, name: 'Snook Peterkin', position: 'G' },
+        { id: 17, name: 'Neo Avdalas', position: 'G' },
+        { id: 22, name: 'Solomon Davis', position: 'C' },
+        { id: 32, name: 'Christian Gurdak', position: 'C' },
+        { id: 77, name: 'Antonio Dorn', position: 'C' }
+      ];
 
-            const gameSchedule = [
-                { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall' },
-                { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne' },
-                { date: '2025-11-03', opponent: 'Charleston Southern', displayName: 'Nov 4 vs Charleston Southern' },
-                { date: '2025-11-08', opponent: 'Providence', displayName: 'Nov 8 vs Providence' },
-                { date: '2025-11-12', opponent: 'Saint Joseph\'s', displayName: 'Nov 12 vs Saint Joseph\'s' },
-                { date: '2025-11-16', opponent: 'Charlotte', displayName: 'Nov 16 vs Charlotte' },
-                { date: '2025-11-19', opponent: 'Bryant', displayName: 'Nov 19 vs Bryant' },
-                { date: '2025-11-26', opponent: 'Colorado State', displayName: 'Nov 26 vs Colorado State' },
-                { date: '2025-12-02', opponent: 'South Carolina', displayName: 'Dec 2 vs South Carolina' },
-                { date: '2025-12-06', opponent: 'George Mason', displayName: 'Dec 6 vs George Mason' },
-                { date: '2025-12-11', opponent: 'Western Carolina', displayName: 'Dec 11 vs Western Carolina' },
-                { date: '2025-12-14', opponent: 'Maryland-Eastern Shore', displayName: 'Dec 14 vs Maryland-Eastern Shore' },
-                { date: '2025-12-20', opponent: 'Elon', displayName: 'Dec 20 vs Elon' }
-            ];
+      const gameSchedule = [
+        { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall' },
+        { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne' },
+        { date: '2025-11-03', opponent: 'Charleston Southern', displayName: 'Nov 4 vs Charleston Southern' },
+        { date: '2025-11-08', opponent: 'Providence', displayName: 'Nov 8 vs Providence' },
+        { date: '2025-11-12', opponent: 'Saint Joseph\'s', displayName: 'Nov 12 vs Saint Joseph\'s' },
+        { date: '2025-11-16', opponent: 'Charlotte', displayName: 'Nov 16 vs Charlotte' },
+        { date: '2025-11-19', opponent: 'Bryant', displayName: 'Nov 19 vs Bryant' },
+        { date: '2025-11-26', opponent: 'Colorado State', displayName: 'Nov 26 vs Colorado State' },
+        { date: '2025-12-02', opponent: 'South Carolina', displayName: 'Dec 2 vs South Carolina' },
+        { date: '2025-12-06', opponent: 'George Mason', displayName: 'Dec 6 vs George Mason' },
+        { date: '2025-12-11', opponent: 'Western Carolina', displayName: 'Dec 11 vs Western Carolina' },
+        { date: '2025-12-14', opponent: 'Maryland-Eastern Shore', displayName: 'Dec 14 vs Maryland-Eastern Shore' },
+        { date: '2025-12-20', opponent: 'Elon', displayName: 'Dec 20 vs Elon' }
+      ];
 
-            // Define the specific combinations we're tracking
-            const guardComboDefinitions = [
-                { players: [17, 3], names: 'Neo Avdalas & Ben Hammond' },
-                { players: [17, 4], names: 'Neo Avdalas & Izaiah Pasha' },
-                { players: [17, 0], names: 'Neo Avdalas & Jailen Bedford' },
-                { players: [3, 4], names: 'Ben Hammond & Izaiah Pasha' },
-                { players: [3, 0], names: 'Ben Hammond & Jailen Bedford' },
-                { players: [4, 0], names: 'Izaiah Pasha & Jailen Bedford' }
-            ];
+      const guardComboDefinitions = [
+        { players: [17, 3], names: 'Neo Avdalas & Ben Hammond' },
+        { players: [17, 4], names: 'Neo Avdalas & Izaiah Pasha' },
+        { players: [17, 0], names: 'Neo Avdalas & Jailen Bedford' },
+        { players: [3, 4], names: 'Ben Hammond & Izaiah Pasha' },
+        { players: [3, 0], names: 'Ben Hammond & Jailen Bedford' },
+        { players: [4, 0], names: 'Izaiah Pasha & Jailen Bedford' }
+      ];
 
-            const bigComboDefinitions = [
-                { players: [13, 1], names: 'Amani Hansberry & Tobi Lawal', tylerRule: false },
-                { players: [13, 77], names: 'Amani Hansberry & Antonio Dorn', tylerRule: false },
-                { players: [13, 32], names: 'Amani Hansberry & Christian Gurdak', tylerRule: false },
-                { players: [13, 10], names: 'Amani Hansberry & Tyler Johnson', tylerRule: true },
-                { players: [13, 5], names: 'Amani Hansberry & Sin\'Cere Jones', tylerRule: false },
-                { players: [1, 77], names: 'Tobi Lawal & Antonio Dorn', tylerRule: false },
-                { players: [1, 32], names: 'Tobi Lawal & Christian Gurdak', tylerRule: false },
-                { players: [1, 10], names: 'Tobi Lawal & Tyler Johnson', tylerRule: true },
-                { players: [1, 5], names: 'Tobi Lawal & Sin\'Cere Jones', tylerRule: false },
-                { players: [77, 10], names: 'Antonio Dorn & Tyler Johnson', tylerRule: true },
-                { players: [77, 5], names: 'Antonio Dorn & Sin\'Cere Jones', tylerRule: false },
-                { players: [32, 10], names: 'Christian Gurdak & Tyler Johnson', tylerRule: true },
-                { players: [32, 5], names: 'Christian Gurdak & Sin\'Cere Jones', tylerRule: false }
-            ];
+      const bigComboDefinitions = [
+        { players: [13, 1], names: 'Amani Hansberry & Tobi Lawal', tylerRule: false },
+        { players: [13, 77], names: 'Amani Hansberry & Antonio Dorn', tylerRule: false },
+        { players: [13, 32], names: 'Amani Hansberry & Christian Gurdak', tylerRule: false },
+        { players: [13, 10], names: 'Amani Hansberry & Tyler Johnson', tylerRule: true },
+        { players: [13, 5], names: 'Amani Hansberry & Sin\'Cere Jones', tylerRule: false },
+        { players: [1, 77], names: 'Tobi Lawal & Antonio Dorn', tylerRule: false },
+        { players: [1, 32], names: 'Tobi Lawal & Christian Gurdak', tylerRule: false },
+        { players: [1, 10], names: 'Tobi Lawal & Tyler Johnson', tylerRule: true },
+        { players: [1, 5], names: 'Tobi Lawal & Sin\'Cere Jones', tylerRule: false },
+        { players: [77, 10], names: 'Antonio Dorn & Tyler Johnson', tylerRule: true },
+        { players: [77, 5], names: 'Antonio Dorn & Sin\'Cere Jones', tylerRule: false },
+        { players: [32, 10], names: 'Christian Gurdak & Tyler Johnson', tylerRule: true },
+        { players: [32, 5], names: 'Christian Gurdak & Sin\'Cere Jones', tylerRule: false }
+      ];
 
-            // True bigs for Tyler Johnson rule
-            const trueBigs = [1, 13, 5, 77, 32, 22]; // Tobi, Amani, Sin'Cere, Antonio, Christian, Solomon
+      const trueBigs = [1, 13, 5, 77, 32, 22];
 
-            useEffect(() => {
-                loadAllGames();
-            }, []);
+      useEffect(() => { loadAllGames(); }, []);
 
-            useEffect(() => {
-                if (!loading) {
-                    calculateCombos();
-                }
-            }, [startGame, endGame, loading, allGamesData, includeGarbageTime]);
+      useEffect(() => {
+        if (!loading) calculateCombos();
+      }, [startGame, endGame, loading, allGamesData, includeGarbageTime]);
 
-            // Set default date range to include all games with data
-            useEffect(() => {
-                if (!loading && Object.keys(allGamesData).length > 0) {
-                    const gamesWithData = Object.keys(allGamesData).filter(date => 
-                        allGamesData[date].lineupHistory && allGamesData[date].lineupHistory.length > 0
-                    ).sort();
-                    
-                    if (gamesWithData.length > 0) {
-                        // Only update if we're still on the initial default values
-                        if (startGame === '2025-10-11' && endGame === '2025-10-11') {
-                            setStartGame(gamesWithData[0]);
-                            setEndGame(gamesWithData[gamesWithData.length - 1]);
-                        }
-                    }
-                }
-            }, [loading, allGamesData]);
+      useEffect(() => {
+        if (!loading && Object.keys(allGamesData).length > 0) {
+          const gamesWithData = Object.keys(allGamesData).filter(d => allGamesData[d].lineupHistory && allGamesData[d].lineupHistory.length > 0).sort();
+          if (gamesWithData.length > 0) {
+            if (startGame === '2025-10-11' && endGame === '2025-10-11') {
+              setStartGame(gamesWithData[0]);
+              setEndGame(gamesWithData[gamesWithData.length - 1]);
+            }
+          }
+        }
+      }, [loading, allGamesData]);
 
-            const loadAllGames = async () => {
-                if (!window.firebaseDb) return;
-                setLoading(true);
-                
-                // Set up real-time listeners for game data
-                const unsubscribers = [];
-                const gamesData = {};
-                
-                gameSchedule.forEach(game => {
-                    const gameDate = game.date;
-                    const gameInfoRef = window.firebaseDb.ref(`game-info/${gameDate}`);
-                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${gameDate}`);
-                    
-                    // Listen to game info
-                    const unsubInfo = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
-                        if (snapshot.exists()) {
-                            const gameInfo = snapshot.val();
-                            if (!gamesData[gameDate]) {
-                                gamesData[gameDate] = { ended: false, lineupHistory: [] };
-                            }
-                            gamesData[gameDate].ended = gameInfo.ended || false;
-                            setAllGamesData({...gamesData});
-                        }
-                    });
-                    
-                    // Listen to lineup changes
-                    const unsubLineup = window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
-                        if (snapshot.exists()) {
-                            if (!gamesData[gameDate]) {
-                                gamesData[gameDate] = { ended: false, lineupHistory: [] };
-                            }
-                            gamesData[gameDate].lineupHistory = Object.values(snapshot.val());
-                            setAllGamesData({...gamesData});
-                        }
-                    });
-                    
-                    unsubscribers.push(() => {
-                        window.firebaseDb.off(gameInfoRef, unsubInfo);
-                        window.firebaseDb.off(lineupChangesRef, unsubLineup);
-                    });
-                });
-                
-                setLoading(false);
-                
-                // Cleanup function
-                return () => {
-                    unsubscribers.forEach(unsub => unsub());
-                };
-            };
+      const loadAllGames = async () => {
+        if (!window.firebaseDb) return;
+        setLoading(true);
+        const unsubscribers = [];
+        const gamesData = {};
 
-            const parseGameTime = (timeStr) => {
-                if (!timeStr) return 0;
-                const parts = timeStr.split(' ');
-                const time = parts[0];
-                const period = parts[1];
-                
-                const [minutes, seconds] = time.split(':').map(Number);
-                let totalSeconds = minutes * 60 + seconds;
-                
-                if (period === '2nd') totalSeconds += 1200;
-                else if (period.includes('OT')) {
-                    const otNum = parseInt(period.match(/\d+/)?.[0] || '1');
-                    totalSeconds += 2400 + ((otNum - 1) * 300);
-                }
-                
-                return 2400 - totalSeconds;
-            };
+        gameSchedule.forEach(game => {
+          const gameDate = game.date;
+          const gameInfoRef = window.firebaseDb.ref(`game-info/${gameDate}`);
+          const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${gameDate}`);
 
-            const formatMinutes = (seconds) => {
-                const mins = Math.floor(seconds / 60);
-                const secs = Math.floor(seconds % 60);
-                return `${mins}:${secs.toString().padStart(2, '0')}`;
-            };
+          const unsubInfo = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
+            if (snapshot.exists()) {
+              const gameInfo = snapshot.val();
+              if (!gamesData[gameDate]) gamesData[gameDate] = { ended: false, lineupHistory: [] };
+              gamesData[gameDate].ended = gameInfo.ended || false;
+              setAllGamesData({ ...gamesData });
+            }
+          });
 
-            const handleGuardSort = (column) => {
-                if (guardSortColumn === column) {
-                    setGuardSortDirection(guardSortDirection === 'desc' ? 'asc' : 'desc');
-                } else {
-                    setGuardSortColumn(column);
-                    setGuardSortDirection('desc');
-                }
-            };
+          const unsubLineup = window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
+            if (snapshot.exists()) {
+              if (!gamesData[gameDate]) gamesData[gameDate] = { ended: false, lineupHistory: [] };
+              gamesData[gameDate].lineupHistory = Object.values(snapshot.val());
+              setAllGamesData({ ...gamesData });
+            }
+          });
 
-            const handleBigSort = (column) => {
-                if (bigSortColumn === column) {
-                    setBigSortDirection(bigSortDirection === 'desc' ? 'asc' : 'desc');
-                } else {
-                    setBigSortColumn(column);
-                    setBigSortDirection('desc');
-                }
-            };
+          unsubscribers.push(() => {
+            window.firebaseDb.off(gameInfoRef, unsubInfo);
+            window.firebaseDb.off(lineupChangesRef, unsubLineup);
+          });
+        });
 
-            const sortCombos = (combos, sortColumn, sortDirection) => {
-                return [...combos].sort((a, b) => {
-                    // Always put 0-minute lineups at the bottom
-                    if (a.totalSeconds === 0 && b.totalSeconds === 0) return 0;
-                    if (a.totalSeconds === 0) return 1;
-                    if (b.totalSeconds === 0) return -1;
-                    
-                    let aVal = a[sortColumn];
-                    let bVal = b[sortColumn];
-                    
-                    // Handle minutes sorting by totalSeconds
-                    if (sortColumn === 'minutes') {
-                        aVal = a.totalSeconds;
-                        bVal = b.totalSeconds;
-                    }
-                    
-                    return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
-                });
-            };
+        setLoading(false);
+        return () => { unsubscribers.forEach(unsub => unsub()); };
+      };
 
-            const buildSegments = (lineupHistory) => {
-                const segments = [];
-                const sortedHistory = [...lineupHistory].sort((a, b) => {
-                    const parseTime = (t) => {
-                        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                        if (!m) return 0;
-                        const p = m[3] === '1st' ? 0 : m[3] === '2nd' ? 1 : 2;
-                        return p * 100000 + ((20 * 60) - (parseInt(m[1]) * 60 + parseInt(m[2])));
-                    };
-                    return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
-                });
-                
-                const realChanges = sortedHistory.filter(r => r.changes !== 'End of 1st Half' && r.changes !== 'Start of 2nd Half');
-                const endOf1stHalf = sortedHistory.find(r => r.changes === 'End of 1st Half');
-                const startOf2ndHalf = sortedHistory.find(r => r.changes === 'Start of 2nd Half');
-                
-                if (realChanges.length === 0) return segments;
-                
-                const firstChange = realChanges[0];
-                const isStartOf2ndHalf = firstChange.changes === 'Start of 2nd Half';
-                
-                // Add first segment before first change
-                if (!isStartOf2ndHalf) {
-                    const firstLineup = firstChange.previousLineup ? 
-                        firstChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    if (firstLineup.length === 5) {
-                        segments.push({
-                            lineup: firstLineup,
-                            startScore: { vt: 0, opp: 0 },
-                            endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore },
-                            startTime: '20:00 1st',
-                            endTime: firstChange.gameTime,
-                            stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} }
-                        });
-                    }
-                }
-                
-                // Build segments between substitutions
-                for (let i = 1; i < realChanges.length; i++) {
-                    const thisChange = realChanges[i];
-                    const prevChange = realChanges[i - 1];
-                    const segmentLineup = prevChange.newLineup ? 
-                        prevChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    
-                    if (segmentLineup.length === 5) {
-                        // Check if this segment crosses halftime
-                        const prevIsInFirstHalf = prevChange.half === 1;
-                        const thisIsInSecondHalf = thisChange.half === 2;
-                        
-                        if (prevIsInFirstHalf && thisIsInSecondHalf && endOf1stHalf) {
-                            // Check if lineup continued from 1st to 2nd half (no sub at halftime)
-                            const lineupContinued = endOf1stHalf.newLineup === prevChange.newLineup;
-                            
-                            // Always create segment ending 1st half
-                            segments.push({
-                                lineup: segmentLineup,
-                                startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
-                                endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore },
-                                startTime: prevChange.gameTime,
-                                endTime: '0:00 1st',
-                                stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} }
-                            });
-                            
-                            // Only create 2nd half continuation if lineup didn't change
-                            if (lineupContinued && startOf2ndHalf) {
-                                segments.push({
-                                    lineup: segmentLineup,
-                                    startScore: { vt: startOf2ndHalf.vtScore || endOf1stHalf.vtScore, opp: startOf2ndHalf.oppScore || endOf1stHalf.oppScore },
-                                    endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
-                                    startTime: '20:00 2nd',
-                                    endTime: thisChange.gameTime,
-                                    stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
-                                });
-                            } else if (!lineupContinued) {
-                                // Lineup changed at halftime - create segment for NEW lineup starting 2nd half
-                                const newLineup = thisChange.previousLineup ? 
-                                    thisChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                                if (newLineup.length === 5) {
-                                    segments.push({
-                                        lineup: newLineup,
-                                        startScore: { vt: startOf2ndHalf?.vtScore || endOf1stHalf.vtScore, opp: startOf2ndHalf?.oppScore || endOf1stHalf.oppScore },
-                                        endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
-                                        startTime: '20:00 2nd',
-                                        endTime: thisChange.gameTime,
-                                        stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
-                                    });
-                                }
-                            }
-                        } else {
-                            // Normal segment within same half
-                            segments.push({
-                                lineup: segmentLineup,
-                                startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
-                                endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
-                                startTime: prevChange.gameTime,
-                                endTime: thisChange.gameTime,
-                                stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
-                            });
-                        }
-                    }
-                }
-                
-                // Add last segment to end of 1st half if applicable
-                if (!isStartOf2ndHalf && realChanges.length > 0) {
-                    const lastChange = realChanges[realChanges.length - 1];
-                    const lastLineup = lastChange.newLineup ? 
-                        lastChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    if (lastLineup.length === 5 && endOf1stHalf && lastChange.half === 1) {
-                        segments.push({
-                            lineup: lastLineup,
-                            startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore },
-                            endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore },
-                            startTime: lastChange.gameTime,
-                            endTime: '0:00 1st',
-                            stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} }
-                        });
-                    }
-                }
-                
-                // Mark garbage time segments
-                const garbageTimeStart = sortedHistory.find(r => r.garbageTime === true);
-                if (garbageTimeStart) {
-                    const garbageTimeValue = parseGameTimeValue(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
-                    segments.forEach(segment => {
-                        const segmentStartValue = parseGameTimeValue(segment.startTime);
-                        if (segmentStartValue >= garbageTimeValue) {
-                            segment.isGarbageTime = true;
-                        }
-                    });
-                }
-                
-                return segments;
-            };
-            
-            // Helper to convert game time to comparable number
-            const parseGameTimeValue = (timeString) => {
-                if (!timeString) return 0;
-                const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                if (!match) return 0;
-                const minutes = parseInt(match[1]);
-                const seconds = parseInt(match[2]);
-                const period = match[3];
-                const timeInPeriod = minutes * 60 + seconds;
-                
-                if (period === '1st') {
-                    return (20 * 60) - timeInPeriod;
-                } else if (period === '2nd') {
-                    return (40 * 60) - timeInPeriod;
-                } else if (period === 'OT') {
-                    return (45 * 60) - timeInPeriod;
-                }
-                return 0;
-            };
+      const parseGameTimeValue = (t) => {
+        if (!t) return 0;
+        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+        if (!m) return 0;
+        const mm = parseInt(m[1], 10), ss = parseInt(m[2], 10), per = m[3];
+        const inPer = mm * 60 + ss;
+        if (per === '1st') return (20 * 60) - inPer;
+        if (per === '2nd') return (40 * 60) - inPer;
+        return (45 * 60) - inPer;
+      };
 
-            const calculateMinutesPlayed = (startTime, endTime) => {
-                if (endTime === 'Current') return 0;
-                
-                const parseTime = (timeString) => {
-                    if (!timeString) return null;
-                    const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                    if (!match) return null;
-                    
-                    const minutes = parseInt(match[1]);
-                    const seconds = parseInt(match[2]);
-                    const period = match[3];
-                    
-                    // Convert to total game seconds (elapsed time from game start)
-                    const timeInPeriod = minutes * 60 + seconds;
-                    
-                    if (period === '1st') {
-                        return (20 * 60) - timeInPeriod;
-                    } else if (period === '2nd') {
-                        return (40 * 60) - timeInPeriod;
-                    } else if (period === 'OT') {
-                        return (45 * 60) - timeInPeriod;
-                    }
-                    
-                    return null;
-                };
-                
-                const startGameSeconds = parseTime(startTime);
-                const endGameSeconds = parseTime(endTime);
-                
-                if (startGameSeconds === null || endGameSeconds === null) return 0;
-                
-                const playedSeconds = endGameSeconds - startGameSeconds;
-                
-                return playedSeconds > 0 ? playedSeconds : 0;
-            };
+      const calculateMinutesPlayed = (startTime, endTime) => {
+        if (!startTime || !endTime || endTime === 'Current') return 0;
+        const s = parseGameTimeValue(startTime);
+        const e = parseGameTimeValue(endTime);
+        const d = e - s;
+        return d > 0 ? d : 0;
+      };
 
-            const calculateCombos = () => {
-                const selectedGames = Object.keys(allGamesData).filter(date => {
-                    return date >= startGame && date <= endGame;
-                });
+      const formatMinutes = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+      };
 
-                // Initialize combo trackers
-                const guardStats = guardComboDefinitions.map(def => ({
-                    ...def,
-                    totalSeconds: 0,
-                    totalPlusMinus: 0
-                }));
+      const buildSegments = (lineupHistory) => {
+        if (!lineupHistory || lineupHistory.length === 0) return [];
+        const segments = [];
+        const sorted = [...lineupHistory].sort((a, b) => {
+          const parseTime = (t) => {
+            const m = t?.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+            if (!m) return 0;
+            const p = m[3] === '1st' ? 0 : m[3] === '2nd' ? 1 : 2;
+            return p * 100000 + ((20 * 60) - (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)));
+          };
+          return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
+        });
 
-                const bigStats = bigComboDefinitions.map(def => ({
-                    ...def,
-                    totalSeconds: 0,
-                    totalPlusMinus: 0,
-                    totalOffRebs: 0,
-                    totalDefRebs: 0,
-                    totalOppOffRebs: 0,
-                    totalOppDefRebs: 0
-                }));
+        let nextSegmentLineup = null;
 
-                selectedGames.forEach(gameDate => {
-                    const gameData = allGamesData[gameDate];
-                    if (!gameData || !gameData.lineupHistory) return;
+        for (let i = 0; i < sorted.length; i++) {
+          const curr = sorted[i];
+          let segmentLineup;
 
-                    const segments = buildSegments(gameData.lineupHistory);
-                    
-                    segments.forEach(segment => {
-                        // Skip garbage time segments if toggle is off
-                        if (!includeGarbageTime && segment.isGarbageTime) return;
-                        
-                        const currentLineup = segment.lineup;
-                        const duration = calculateMinutesPlayed(segment.startTime, segment.endTime);
-                        
-                        if (duration <= 0) return;
-                        
-                        const vtPoints = segment.endScore.vt - segment.startScore.vt;
-                        const oppPoints = segment.endScore.opp - segment.startScore.opp;
-                        const plusMinus = vtPoints - oppPoints;
+          if (curr.changes === 'Start of 2nd Half') {
+            nextSegmentLineup = curr.newLineup;
+            continue;
+          } else if (i === 0) {
+            segmentLineup = curr.previousLineup;
+            nextSegmentLineup = curr.newLineup;
+          } else if (curr.changes === 'End of 1st Half' || curr.changes === 'End of Game') {
+            segmentLineup = nextSegmentLineup || curr.previousLineup;
+          } else {
+            segmentLineup = curr.previousLineup;
+            nextSegmentLineup = curr.newLineup;
+          }
 
-                        const vtStats = segment.stats.vt || {};
-                        const oppStats = segment.stats.opponent || {};
+          if (!segmentLineup) continue;
 
-                        // Check guard combos
-                        guardComboDefinitions.forEach((def, defIdx) => {
-                            const hasAllPlayers = def.players.every(p => currentLineup.includes(p));
-                            if (hasAllPlayers) {
-                                guardStats[defIdx].totalSeconds += duration;
-                                guardStats[defIdx].totalPlusMinus += plusMinus;
-                            }
-                        });
+          let startTime, startScore, endTime, endScore, stats;
 
-                        // Check big combos with Tyler Johnson rule
-                        bigComboDefinitions.forEach((def, defIdx) => {
-                            let shouldCount = def.players.every(p => currentLineup.includes(p));
-                            
-                            // Apply Tyler Johnson rule if applicable
-                            if (shouldCount && def.tylerRule) {
-                                // Count other true bigs on the floor
-                                const otherBigsOnFloor = trueBigs.filter(big => 
-                                    currentLineup.includes(big) && big !== 10 // Exclude Tyler himself
-                                ).length;
-                                
-                                // Tyler only counts if there's EXACTLY 1 other big
-                                shouldCount = otherBigsOnFloor === 1;
-                            }
-                            
-                            if (shouldCount) {
-                                bigStats[defIdx].totalSeconds += duration;
-                                bigStats[defIdx].totalPlusMinus += plusMinus;
-                                
-                                // Add rebounding stats
-                                bigStats[defIdx].totalOffRebs += vtStats.offensiveRebounds || 0;
-                                bigStats[defIdx].totalDefRebs += vtStats.defensiveRebounds || 0;
-                                bigStats[defIdx].totalOppOffRebs += oppStats.offensiveRebounds || 0;
-                                bigStats[defIdx].totalOppDefRebs += oppStats.defensiveRebounds || 0;
-                            }
-                        });
-                    });
-                });
+          if (i === 0) {
+            startTime = '20:00 1st';
+            startScore = { vt: 0, opp: 0 };
+            endTime = curr.gameTime;
+            endScore = { vt: curr.vtScore, opp: curr.oppScore };
+            stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
+          } else {
+            const prev = sorted[i - 1];
+            if (prev.changes === 'Start of 2nd Half') {
+              startTime = '20:00 2nd';
+              startScore = { vt: prev.vtScore, opp: prev.oppScore };
+            } else {
+              startTime = prev.gameTime;
+              startScore = { vt: prev.vtScore, opp: prev.oppScore };
+            }
+            endTime = curr.gameTime;
+            endScore = { vt: curr.vtScore, opp: curr.oppScore };
+            stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
+          }
 
-                // Calculate final stats for guards
-                const finalGuardCombos = guardStats.map(stat => {
-                    const minutes = stat.totalSeconds / 60;
-                    const pmPerMinute = minutes > 0 ? stat.totalPlusMinus / minutes : 0;
-                    return {
-                        names: stat.names,
-                        minutes: formatMinutes(stat.totalSeconds),
-                        totalSeconds: stat.totalSeconds,
-                        plusMinus: stat.totalPlusMinus,
-                        pmPerMinute: pmPerMinute
-                    };
-                });
+          if (startTime === endTime) continue;
 
-                // Calculate final stats for bigs
-                const finalBigCombos = bigStats.map(stat => {
-                    const minutes = stat.totalSeconds / 60;
-                    const pmPerMinute = minutes > 0 ? stat.totalPlusMinus / minutes : 0;
-                    
-                    // Calculate rebound percentages
-                    const totalPossibleOffRebs = stat.totalOppDefRebs + stat.totalOffRebs;
-                    const totalPossibleDefRebs = stat.totalOppOffRebs + stat.totalDefRebs;
-                    const orebPct = totalPossibleOffRebs > 0 ? (stat.totalOffRebs / totalPossibleOffRebs) * 100 : 0;
-                    const drebPct = totalPossibleDefRebs > 0 ? (stat.totalDefRebs / totalPossibleDefRebs) * 100 : 0;
-                    
-                    return {
-                        names: stat.names,
-                        minutes: formatMinutes(stat.totalSeconds),
-                        totalSeconds: stat.totalSeconds,
-                        plusMinus: stat.totalPlusMinus,
-                        pmPerMinute: pmPerMinute,
-                        orebPct: orebPct,
-                        drebPct: drebPct
-                    };
-                });
+          const lineupIds = segmentLineup.split(', ')
+            .map(name => roster.find(p => p.name === name)?.id)
+            .filter(id => id !== undefined);
 
-                setGuardCombos(finalGuardCombos);
-                setBigCombos(finalBigCombos);
-            };
+          if (lineupIds.length === 5) {
+            segments.push({
+              lineup: lineupIds,
+              startTime,
+              endTime,
+              startScore,
+              endScore,
+              stats
+            });
+          }
+        }
 
-            return (
-                <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                    <div className="p-4 border-b border-gray-300 dark:border-gray-700">
-                        <div className="flex justify-between items-center">
-                            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>VT Basketball Specific Combos</h1>
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <label className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>From:</label>
-                                    <select value={startGame} onChange={(e) => setStartGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-                                        {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
-                                    </select>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <label className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>To:</label>
-                                    <select value={endGame} onChange={(e) => setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-                                        {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
-                                    </select>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Garbage Time:</label>
-                                    <button 
-                                        onClick={() => setIncludeGarbageTime(!includeGarbageTime)} 
-                                        className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
-                                    >
-                                        {includeGarbageTime ? 'Included' : 'Excluded'}
-                                    </button>
-                                </div>
-                                <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
-                            </div>
-                        </div>
-                    </div>
+        const endOfGame = sorted.find(r => r.changes === 'End of Game');
+        if (endOfGame) {
+          const prev = sorted[sorted.length - 1];
+          const startTime = prev?.changes === 'Start of 2nd Half' ? '20:00 2nd' : (prev?.gameTime || '20:00 1st');
+          const startScore = { vt: prev?.vtScore ?? 0, opp: prev?.oppScore ?? 0 };
+          const endTime = endOfGame.gameTime || '0:00 2nd';
+          const endScore = { vt: endOfGame.vtScore ?? startScore.vt, opp: endOfGame.oppScore ?? startScore.opp };
+          const chosen = nextSegmentLineup || prev?.previousLineup || prev?.newLineup;
+          if (chosen) {
+            const ids = chosen.split(', ')
+              .map(name => roster.find(p => p.name === name)?.id)
+              .filter(id => id !== undefined);
+            if (ids.length === 5 && startTime !== endTime) {
+              segments.push({
+                lineup: ids,
+                startTime,
+                endTime,
+                startScore,
+                endScore,
+                stats: endOfGame.completedSegmentStats || { vt: {}, opponent: {} }
+              });
+            }
+          }
+        }
 
-                    {loading ? (
-                        <div className="flex justify-center items-center h-64">
-                            <div className={`text-xl ${darkMode ? 'text-white' : 'text-gray-900'}`}>Loading data...</div>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 gap-6 p-6">
-                            {/* Guard Combos - Left Side */}
-                            <div>
-                                <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Guard Combinations</h2>
-                                <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <table className="w-full">
-                                        <thead>
-                                            <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
-                                                <th onClick={() => handleGuardSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
-                                                    +/- {guardSortColumn === 'plusMinus' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
-                                                </th>
-                                                <th onClick={() => handleGuardSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'minutes' ? 'font-bold' : ''}`}>
-                                                    Minutes {guardSortColumn === 'minutes' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {sortCombos(guardCombos, guardSortColumn, guardSortDirection).map((combo, idx) => (
-                                                <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
-                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
-                                                    <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                        {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
-                                                    </td>
-                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                    {guardCombos.length === 0 && (
-                                        <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                            No data available for selected range
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+        const garbageTimeStart = sorted.find(r => r.garbageTime === true);
+        if (garbageTimeStart) {
+          const gVal = parseGameTimeValue(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
+          segments.forEach(s => {
+            const sv = parseGameTimeValue(s.startTime);
+            if (sv >= gVal) s.isGarbageTime = true;
+          });
+        }
 
-                            {/* Big Combos - Right Side */}
-                            <div>
-                                <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Big Combinations</h2>
-                                <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <table className="w-full">
-                                        <thead>
-                                            <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                                <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
-                                                <th onClick={() => handleBigSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
-                                                    +/- {bigSortColumn === 'plusMinus' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
-                                                </th>
-                                                <th onClick={() => handleBigSort('orebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'orebPct' ? 'font-bold' : ''}`}>
-                                                    OReb% {bigSortColumn === 'orebPct' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
-                                                </th>
-                                                <th onClick={() => handleBigSort('drebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'drebPct' ? 'font-bold' : ''}`}>
-                                                    DReb% {bigSortColumn === 'drebPct' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
-                                                </th>
-                                                <th onClick={() => handleBigSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'minutes' ? 'font-bold' : ''}`}>
-                                                    Minutes {bigSortColumn === 'minutes' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {sortCombos(bigCombos, bigSortColumn, bigSortDirection).map((combo, idx) => (
-                                                <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
-                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
-                                                    <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                        {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
-                                                    </td>
-                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {combo.totalSeconds > 0 ? combo.orebPct.toFixed(1) + '%' : '-'}
-                                                    </td>
-                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {combo.totalSeconds > 0 ? combo.drebPct.toFixed(1) + '%' : '-'}
-                                                    </td>
-                                                    <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                    {bigCombos.length === 0 && (
-                                        <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                            No data available for selected range
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
+        return segments;
+      };
+
+      const handleGuardSort = (column) => {
+        if (guardSortColumn === column) setGuardSortDirection(guardSortDirection === 'desc' ? 'asc' : 'desc');
+        else { setGuardSortColumn(column); setGuardSortDirection('desc'); }
+      };
+
+      const handleBigSort = (column) => {
+        if (bigSortColumn === column) setBigSortDirection(bigSortDirection === 'desc' ? 'asc' : 'desc');
+        else { setBigSortColumn(column); setBigSortDirection('desc'); }
+      };
+
+      const sortCombos = (combos, sortColumn, sortDirection) => {
+        return [...combos].sort((a, b) => {
+          if (a.totalSeconds === 0 && b.totalSeconds === 0) return 0;
+          if (a.totalSeconds === 0) return 1;
+          if (b.totalSeconds === 0) return -1;
+          let aVal = a[sortColumn];
+          let bVal = b[sortColumn];
+          if (sortColumn === 'minutes') { aVal = a.totalSeconds; bVal = b.totalSeconds; }
+          return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
+        });
+      };
+
+      const calculateCombos = () => {
+        const selectedGames = Object.keys(allGamesData).filter(date => date >= startGame && date <= endGame);
+
+        const guardStats = guardComboDefinitions.map(def => ({ ...def, totalSeconds: 0, totalPlusMinus: 0 }));
+        const bigStats = bigComboDefinitions.map(def => ({
+          ...def, totalSeconds: 0, totalPlusMinus: 0, totalOffRebs: 0, totalDefRebs: 0, totalOppOffRebs: 0, totalOppDefRebs: 0
+        }));
+
+        selectedGames.forEach(gameDate => {
+          const gameData = allGamesData[gameDate];
+          if (!gameData || !gameData.lineupHistory) return;
+
+          const segments = buildSegments(gameData.lineupHistory);
+
+          segments.forEach(segment => {
+            if (!includeGarbageTime && segment.isGarbageTime) return;
+            const currentLineup = segment.lineup;
+            const duration = calculateMinutesPlayed(segment.startTime, segment.endTime);
+            if (duration <= 0) return;
+
+            const vtPoints = segment.endScore.vt - segment.startScore.vt;
+            const oppPoints = segment.endScore.opp - segment.startScore.opp;
+            const plusMinus = vtPoints - oppPoints;
+
+            const vtStats = segment.stats.vt || {};
+            const oppStats = segment.stats.opponent || {};
+
+            guardComboDefinitions.forEach((def, idx) => {
+              const hasAll = def.players.every(p => currentLineup.includes(p));
+              if (hasAll) {
+                guardStats[idx].totalSeconds += duration;
+                guardStats[idx].totalPlusMinus += plusMinus;
+              }
+            });
+
+            bigComboDefinitions.forEach((def, idx) => {
+              let ok = def.players.every(p => currentLineup.includes(p));
+              if (ok && def.tylerRule) {
+                const otherBigs = trueBigs.filter(b => currentLineup.includes(b) && b !== 10).length;
+                ok = otherBigs === 1;
+              }
+              if (ok) {
+                bigStats[idx].totalSeconds += duration;
+                bigStats[idx].totalPlusMinus += plusMinus;
+                bigStats[idx].totalOffRebs += vtStats.offensiveRebounds || 0;
+                bigStats[idx].totalDefRebs += vtStats.defensiveRebounds || 0;
+                bigStats[idx].totalOppOffRebs += oppStats.offensiveRebounds || 0;
+                bigStats[idx].totalOppDefRebs += oppStats.defensiveRebounds || 0;
+              }
+            });
+          });
+        });
+
+        const finalGuardCombos = guardStats.map(stat => {
+          const minutes = stat.totalSeconds / 60;
+          const pmPerMinute = minutes > 0 ? stat.totalPlusMinus / minutes : 0;
+          return {
+            names: stat.names,
+            minutes: formatMinutes(stat.totalSeconds),
+            totalSeconds: stat.totalSeconds,
+            plusMinus: stat.totalPlusMinus,
+            pmPerMinute
+          };
+        });
+
+        const finalBigCombos = bigStats.map(stat => {
+          const minutes = stat.totalSeconds / 60;
+          const pmPerMinute = minutes > 0 ? stat.totalPlusMinus / minutes : 0;
+          const totalPossibleOffRebs = stat.totalOppDefRebs + stat.totalOffRebs;
+          const totalPossibleDefRebs = stat.totalOppOffRebs + stat.totalDefRebs;
+          const orebPct = totalPossibleOffRebs > 0 ? (stat.totalOffRebs / totalPossibleOffRebs) * 100 : 0;
+          const drebPct = totalPossibleDefRebs > 0 ? (stat.totalDefRebs / totalPossibleDefRebs) * 100 : 0;
+          return {
+            names: stat.names,
+            minutes: formatMinutes(stat.totalSeconds),
+            totalSeconds: stat.totalSeconds,
+            plusMinus: stat.totalPlusMinus,
+            pmPerMinute,
+            orebPct,
+            drebPct
+          };
+        });
+
+        setGuardCombos(finalGuardCombos);
+        setBigCombos(finalBigCombos);
+      };
+
+      return (
+        <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+          <div className="p-4 border-b border-gray-300 dark:border-gray-700">
+            <div className="flex justify-between items-center">
+              <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>VT Basketball Specific Combos</h1>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>From:</label>
+                  <select value={startGame} onChange={(e) => setStartGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                    {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                  </select>
                 </div>
-            );
-        };
+                <div className="flex items-center gap-2">
+                  <label className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>To:</label>
+                  <select value={endGame} onChange={(e) => setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                    {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Garbage Time:</label>
+                  <button
+                    onClick={() => setIncludeGarbageTime(!includeGarbageTime)}
+                    className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
+                  >
+                    {includeGarbageTime ? 'Included' : 'Excluded'}
+                  </button>
+                </div>
+                <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
+              </div>
+            </div>
+          </div>
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<SpecificCombosViewer />);
-    </script>
+          {loading ? (
+            <div className="flex justify-center items-center h-64">
+              <div className={`text-xl ${darkMode ? 'text-white' : 'text-gray-900'}`}>Loading data...</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-6 p-6">
+              <div>
+                <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Guard Combinations</h2>
+                <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                  <table className="w-full">
+                    <thead>
+                      <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
+                        <th onClick={() => handleGuardSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
+                          +/- {guardSortColumn === 'plusMinus' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        </th>
+                        <th onClick={() => handleGuardSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'minutes' ? 'font-bold' : ''}`}>
+                          Minutes {guardSortColumn === 'minutes' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortCombos(guardCombos, guardSortColumn, guardSortDirection).map((combo, idx) => (
+                        <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
+                          <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
+                          <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
+                          </td>
+                          <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {guardCombos.length === 0 && (
+                    <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      No data available for selected range
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Big Combinations</h2>
+                <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                  <table className="w-full">
+                    <thead>
+                      <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
+                        <th onClick={() => handleBigSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
+                          +/- {bigSortColumn === 'plusMinus' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        </th>
+                        <th onClick={() => handleBigSort('orebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'orebPct' ? 'font-bold' : ''}`}>
+                          OReb% {bigSortColumn === 'orebPct' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        </th>
+                        <th onClick={() => handleBigSort('drebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'drebPct' ? 'font-bold' : ''}`}>
+                          DReb% {bigSortColumn === 'drebPct' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        </th>
+                        <th onClick={() => handleBigSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'minutes' ? 'font-bold' : ''}`}>
+                          Minutes {bigSortColumn === 'minutes' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortCombos(bigCombos, bigSortColumn, bigSortDirection).map((combo, idx) => (
+                        <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
+                          <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
+                          <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
+                          </td>
+                          <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {combo.totalSeconds > 0 ? combo.orebPct.toFixed(1) + '%' : '-'}
+                          </td>
+                          <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {combo.totalSeconds > 0 ? combo.drebPct.toFixed(1) + '%' : '-'}
+                          </td>
+                          <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {bigCombos.length === 0 && (
+                    <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      No data available for selected range
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<SpecificCombosViewer />);
+  </script>
 </body>
 </html>
