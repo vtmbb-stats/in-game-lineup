@@ -3,21 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VT Basketball Game Viewer</title>
+    <title>VT Basketball Game Viewer - FIXED</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .custom-green-100 {
-            background-color: #00A327;
-        }
-        .custom-green-50 {
-            background-color: #66C47E;  /* Slightly darker, less bright green */
-        }
-        .custom-red-50 {
-            background-color: #E06060;  /* Slightly darker, less bright red */
-        }
-        .custom-red-100 {
-            background-color: #DB2800;
-        }
+        .custom-green-100 { background-color: #00A327; }
+        .custom-green-50 { background-color: #66C47E; }
+        .custom-red-50 { background-color: #E06060; }
+        .custom-red-100 { background-color: #DB2800; }
     </style>
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -55,7 +47,7 @@
 
         const SingleGameViewer = () => {
             const [darkMode, setDarkMode] = useState(true);
-            const [selectedGame, setSelectedGame] = useState('2025-10-11');
+            const [selectedGame, setSelectedGame] = useState('2025-11-03');
             const [sortColumn, setSortColumn] = useState('plusMinus');
             const [sortDirection, setSortDirection] = useState('desc');
             const [lineupHistory, setLineupHistory] = useState([]);
@@ -128,9 +120,14 @@
                 setSortedAnalytics(sorted);
             }, [lineupAnalytics, sortColumn, sortDirection]);
 
+            // COMPLETELY REWRITTEN buildSegments function
             const buildSegments = (lineupHistory) => {
+                if (!lineupHistory || lineupHistory.length === 0) return [];
+                
                 const segments = [];
-                const sortedHistory = [...lineupHistory].sort((a, b) => {
+                
+                // Sort all records by time
+                const sorted = [...lineupHistory].sort((a, b) => {
                     const parseTime = (t) => {
                         const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
                         if (!m) return 0;
@@ -139,84 +136,81 @@
                     };
                     return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
                 });
-                const realChanges = sortedHistory.filter(r => r.changes !== 'End of 1st Half' && r.changes !== 'Start of 2nd Half');
-                const endOf1stHalf = sortedHistory.find(r => r.changes === 'End of 1st Half');
-                const startOf2ndHalf = sortedHistory.find(r => r.changes === 'Start of 2nd Half');
-                if (realChanges.length === 0) return segments;
-                const firstChange = realChanges[0];
-                const isStartOf2ndHalf = firstChange.changes === 'Start of 2nd Half';
-                if (!isStartOf2ndHalf) {
-                    const firstLineup = firstChange.previousLineup ? firstChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    if (firstLineup.length === 5) {
-                        segments.push({ lineup: firstLineup, startScore: { vt: 0, opp: 0 }, endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore }, startTime: '20:00 1st', endTime: firstChange.gameTime, stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} } });
-                    }
-                }
                 
-                // Build segments between substitutions
-                for (let i = 1; i < realChanges.length; i++) {
-                    const thisChange = realChanges[i], prevChange = realChanges[i - 1];
-                    const segmentLineup = prevChange.newLineup ? prevChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    if (segmentLineup.length === 5) {
-                        // Check if this segment crosses halftime
-                        const prevIsInFirstHalf = prevChange.half === 1;
-                        const thisIsInSecondHalf = thisChange.half === 2;
-                        
-                        if (prevIsInFirstHalf && thisIsInSecondHalf && endOf1stHalf) {
-                            // Check if lineup continued from 1st to 2nd half (no sub at halftime)
-                            const lineupContinued = endOf1stHalf.newLineup === prevChange.newLineup;
-                            
-                            // Always create segment ending 1st half
-                            segments.push({ 
-                                lineup: segmentLineup, 
-                                startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, 
-                                endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore }, 
-                                startTime: prevChange.gameTime, 
-                                endTime: '0:00 1st', 
-                                stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} } 
-                            });
-                            
-                            // Only create 2nd half continuation if lineup didn't change
-                            if (lineupContinued && startOf2ndHalf) {
-                                segments.push({ 
-                                    lineup: segmentLineup, 
-                                    startScore: { vt: startOf2ndHalf.vtScore || endOf1stHalf.vtScore, opp: startOf2ndHalf.oppScore || endOf1stHalf.oppScore }, 
-                                    endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, 
-                                    startTime: '20:00 2nd', 
-                                    endTime: thisChange.gameTime, 
-                                    stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } 
-                                });
-                            } else if (!lineupContinued) {
-                                // Lineup changed at halftime - create segment for NEW lineup starting 2nd half
-                                const newLineup = thisChange.previousLineup ? thisChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                                if (newLineup.length === 5) {
-                                    segments.push({ 
-                                        lineup: newLineup, 
-                                        startScore: { vt: startOf2ndHalf?.vtScore || endOf1stHalf.vtScore, opp: startOf2ndHalf?.oppScore || endOf1stHalf.oppScore }, 
-                                        endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, 
-                                        startTime: '20:00 2nd', 
-                                        endTime: thisChange.gameTime, 
-                                        stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } 
-                                    });
-                                }
-                            }
+                // Build segments by looking at consecutive pairs
+                for (let i = 0; i < sorted.length; i++) {
+                    const curr = sorted[i];
+                    const next = sorted[i + 1];
+                    
+                    // Skip marker-only records
+                    if (curr.changes === 'Start of 2nd Half' || curr.changes === 'End of Game') {
+                        continue;
+                    }
+                    
+                    // Determine which lineup was on court during this segment
+                    let segmentLineup;
+                    if (curr.changes === 'End of 1st Half') {
+                        // For End of 1st Half, use the lineup that finished the half
+                        segmentLineup = curr.newLineup || curr.previousLineup;
+                    } else if (i === 0) {
+                        // First segment: use previousLineup (starting lineup)
+                        segmentLineup = curr.previousLineup;
+                    } else {
+                        // Normal segment: use newLineup from previous change
+                        const prev = sorted[i - 1];
+                        if (prev.changes === 'Start of 2nd Half') {
+                            segmentLineup = prev.newLineup;
                         } else {
-                            // Normal segment within same half
-                            segments.push({ lineup: segmentLineup, startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, startTime: prevChange.gameTime, endTime: thisChange.gameTime, stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } });
+                            segmentLineup = prev.newLineup;
                         }
                     }
-                }
-                
-                // Handle segment to end of 1st half if needed
-                if (!isStartOf2ndHalf && realChanges.length > 0) {
-                    const lastChange = realChanges[realChanges.length - 1];
-                    const lastLineup = lastChange.newLineup ? lastChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
-                    if (lastLineup.length === 5 && endOf1stHalf && lastChange.half === 1) {
-                        segments.push({ lineup: lastLineup, startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore }, endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore }, startTime: lastChange.gameTime, endTime: '0:00 1st', stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} } });
+                    
+                    if (!segmentLineup) continue;
+                    
+                    // Determine start and end times/scores
+                    let startTime, startScore, endTime, endScore, stats;
+                    
+                    if (i === 0) {
+                        // First segment
+                        startTime = '20:00 1st';
+                        startScore = { vt: 0, opp: 0 };
+                        endTime = curr.gameTime;
+                        endScore = { vt: curr.vtScore, opp: curr.oppScore };
+                        stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
+                    } else {
+                        const prev = sorted[i - 1];
+                        startTime = prev.gameTime;
+                        startScore = { vt: prev.vtScore, opp: prev.oppScore };
+                        endTime = curr.gameTime;
+                        endScore = { vt: curr.vtScore, opp: curr.oppScore };
+                        stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
+                    }
+                    
+                    // Skip 0:00 segments (simultaneous subs)
+                    if (startTime === endTime) {
+                        console.log(`Skipping 0:00 segment at ${startTime}`);
+                        continue;
+                    }
+                    
+                    // Convert lineup string to IDs
+                    const lineupIds = segmentLineup.split(', ')
+                        .map(name => roster.find(p => p.name === name)?.id)
+                        .filter(id => id !== undefined);
+                    
+                    if (lineupIds.length === 5) {
+                        segments.push({
+                            lineup: lineupIds,
+                            startTime,
+                            endTime,
+                            startScore,
+                            endScore,
+                            stats
+                        });
                     }
                 }
                 
-                // Mark garbage time segments
-                const garbageTimeStart = sortedHistory.find(r => r.garbageTime === true);
+                // Mark garbage time
+                const garbageTimeStart = sorted.find(r => r.garbageTime === true);
                 if (garbageTimeStart) {
                     const garbageTimeValue = parseGameTime(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
                     segments.forEach(segment => {
@@ -230,7 +224,6 @@
                 return segments;
             };
             
-            // Helper to convert game time to comparable number
             const parseGameTime = (timeString) => {
                 if (!timeString) return 0;
                 const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
@@ -261,8 +254,6 @@
                     const minutes = parseInt(match[1]);
                     const seconds = parseInt(match[2]);
                     const period = match[3];
-                    
-                    // Convert to total game seconds (counting down from 40:00)
                     const timeInPeriod = minutes * 60 + seconds;
                     
                     if (period === '1st') {
@@ -290,32 +281,57 @@
 
             const calculateAnalytics = () => {
                 const segments = buildSegments(lineupHistory);
+                console.log(`Built ${segments.length} segments`);
+                
                 const lineupMap = new Map();
+                let totalMinutes = 0;
+                
                 segments.forEach(segment => {
                     const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
                     if (segment.lineup.some(pid => !playerAvailability[pid])) return;
-                    
-                    // Skip garbage time segments if toggle is off
                     if (!includeGarbageTime && segment.isGarbageTime) return;
                     
                     if (!lineupMap.has(lineupKey)) {
-                        lineupMap.set(lineupKey, { players: segment.lineup, segments: [], totalMinutesSeconds: 0, totalPlusMinus: 0, totalPossessions: 0, totalOffReb: 0, totalDefReb: 0, totalTurnovers: 0, totalOppPossessions: 0, totalOppOffReb: 0, totalOppDefReb: 0, totalOppTurnovers: 0, totalPoints: 0, totalOppPoints: 0 });
+                        lineupMap.set(lineupKey, { 
+                            players: segment.lineup, 
+                            segments: [], 
+                            totalMinutesSeconds: 0, 
+                            totalPlusMinus: 0, 
+                            totalPossessions: 0, 
+                            totalOffReb: 0, 
+                            totalDefReb: 0, 
+                            totalTurnovers: 0, 
+                            totalOppPossessions: 0, 
+                            totalOppOffReb: 0, 
+                            totalOppDefReb: 0, 
+                            totalOppTurnovers: 0, 
+                            totalPoints: 0, 
+                            totalOppPoints: 0 
+                        });
                     }
+                    
                     const lineup = lineupMap.get(lineupKey);
                     lineup.segments.push(segment);
+                    
                     const vtPoints = segment.endScore.vt - segment.startScore.vt;
                     const oppPoints = segment.endScore.opp - segment.startScore.opp;
                     lineup.totalPlusMinus += vtPoints - oppPoints;
+                    
                     if (segment.endTime !== 'Current') {
                         const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
                         if (minutesStr !== '--:--') {
                             const [mins, secs] = minutesStr.split(':').map(Number);
-                            lineup.totalMinutesSeconds += (mins * 60 + secs);
+                            const seconds = mins * 60 + secs;
+                            lineup.totalMinutesSeconds += seconds;
+                            totalMinutes += seconds;
                         }
                     }
+                    
                     lineup.totalPoints += vtPoints;
                     lineup.totalOppPoints += oppPoints;
-                    const vtStats = segment.stats.vt || {}, oppStats = segment.stats.opponent || {};
+                    
+                    const vtStats = segment.stats.vt || {};
+                    const oppStats = segment.stats.opponent || {};
                     lineup.totalPossessions += vtStats.possessions || 0;
                     lineup.totalOffReb += vtStats.offensiveRebounds || 0;
                     lineup.totalDefReb += vtStats.defensiveRebounds || 0;
@@ -325,23 +341,34 @@
                     lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
                     lineup.totalOppTurnovers += oppStats.turnovers || 0;
                 });
+                
+                console.log(`Total minutes: ${(totalMinutes / 60).toFixed(2)}`);
+                
                 const analytics = Array.from(lineupMap.values()).map(lineup => {
                     const playerNames = lineup.players.map(id => roster.find(p => p.id === id)?.name.split(' ').pop() || '').join(', ');
-                    const offPoss = lineup.totalPossessions || 1, defPoss = lineup.totalOppPossessions || 1;
-                    const availOffReb = lineup.totalOffReb + lineup.totalOppDefReb, availDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
+                    const offPoss = lineup.totalPossessions || 1;
+                    const defPoss = lineup.totalOppPossessions || 1;
+                    const availOffReb = lineup.totalOffReb + lineup.totalOppDefReb;
+                    const availDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
                     const hasCurrent = lineup.segments.length > 0 && lineup.segments[lineup.segments.length - 1]?.endTime === 'Current';
                     const minutesDisplay = hasCurrent ? '--:--' : `${Math.floor(lineup.totalMinutesSeconds / 60)}:${(lineup.totalMinutesSeconds % 60).toString().padStart(2, '0')}`;
+                    
                     return {
-                        id: lineup.players.sort((a, b) => a - b).join('-'), players: playerNames, playerIds: lineup.players,
-                        plusMinus: lineup.totalPlusMinus, pointsPerPossession: lineup.totalPoints / offPoss,
+                        id: lineup.players.sort((a, b) => a - b).join('-'),
+                        players: playerNames,
+                        playerIds: lineup.players,
+                        plusMinus: lineup.totalPlusMinus,
+                        pointsPerPossession: lineup.totalPoints / offPoss,
                         defPointsPerPossession: lineup.totalOppPoints / defPoss,
                         offRebRate: availOffReb > 0 ? (lineup.totalOffReb / availOffReb) * 100 : 0,
                         defRebRate: availDefReb > 0 ? (lineup.totalDefReb / availDefReb) * 100 : 0,
                         turnoverRate: offPoss > 0 ? (lineup.totalTurnovers / offPoss) * 100 : 0,
                         defTurnoverRate: defPoss > 0 ? (lineup.totalOppTurnovers / defPoss) * 100 : 0,
-                        minutes: minutesDisplay, totalMinutesSeconds: lineup.totalMinutesSeconds
+                        minutes: minutesDisplay,
+                        totalMinutesSeconds: lineup.totalMinutesSeconds
                     };
                 });
+                
                 setLineupAnalytics(analytics);
             };
 
@@ -361,12 +388,11 @@
                 const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
                 let colorIntensity = higherIsBetter.includes(column) ? percentile : lowerIsBetter.includes(column) ? 1 - percentile : 0.5;
                 
-                // 5-tier gradient: solid green → muted light green → blank → muted light red → solid red
-                if (colorIntensity >= 0.8) return 'custom-green-100';      // Solid dark green (top 20%)
-                if (colorIntensity >= 0.6) return 'custom-green-50';       // Muted light green
-                if (colorIntensity >= 0.4) return '';                       // Blank (middle 20%)
-                if (colorIntensity >= 0.2) return 'custom-red-50';         // Muted light red
-                return 'custom-red-100';                                    // Solid dark red (bottom 20%)
+                if (colorIntensity >= 0.8) return 'custom-green-100';
+                if (colorIntensity >= 0.6) return 'custom-green-50';
+                if (colorIntensity >= 0.4) return '';
+                if (colorIntensity >= 0.2) return 'custom-red-50';
+                return 'custom-red-100';
             };
 
             const handleSort = (column) => {
