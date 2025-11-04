@@ -137,26 +137,35 @@
                     return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
                 });
                 
-                // Track current lineup as we go
-                let currentLineup = null;
+                // Track lineup for NEXT segment as we go
+                let nextSegmentLineup = null;
                 
                 for (let i = 0; i < sorted.length; i++) {
                     const curr = sorted[i];
-                    const next = sorted[i + 1];
                     
-                    // Update current lineup
+                    // The lineup that PLAYED during the segment ENDING at curr.gameTime
+                    // is curr.previousLineup (the lineup before this substitution)
+                    let segmentLineup;
+                    
                     if (curr.changes === 'Start of 2nd Half') {
-                        currentLineup = curr.newLineup;
-                        continue; // Don't create a segment, just update lineup
+                        // Start of 2nd half: use previousLineup for the segment that's starting
+                        nextSegmentLineup = curr.newLineup;
+                        continue; // Don't create a segment, just update for next iteration
                     } else if (i === 0) {
-                        currentLineup = curr.previousLineup; // Starting lineup
-                    } else if (curr.changes !== 'End of 1st Half' && curr.changes !== 'End of Game') {
-                        currentLineup = curr.newLineup; // Normal sub
+                        // First record: the segment from game start to here used previousLineup
+                        segmentLineup = curr.previousLineup;
+                        nextSegmentLineup = curr.newLineup;
+                    } else if (curr.changes === 'End of 1st Half' || curr.changes === 'End of Game') {
+                        // End markers: use the lineup that was playing (which we tracked)
+                        segmentLineup = nextSegmentLineup || curr.previousLineup;
+                        // Don't update nextSegmentLineup, it stays the same
+                    } else {
+                        // Normal substitution: segment used the lineup before this sub
+                        segmentLineup = curr.previousLineup;
+                        nextSegmentLineup = curr.newLineup;
                     }
-                    // For End of 1st Half and End of Game, keep the current lineup
                     
-                    if (!currentLineup) continue;
-                    if (!next && curr.changes !== 'End of 1st Half' && curr.changes !== 'End of Game') continue;
+                    if (!segmentLineup) continue;
                     
                     // Determine segment times/scores
                     let startTime, startScore, endTime, endScore, stats;
@@ -190,7 +199,7 @@
                     }
                     
                     // Convert lineup string to IDs
-                    const lineupIds = currentLineup.split(', ')
+                    const lineupIds = segmentLineup.split(', ')
                         .map(name => roster.find(p => p.name === name)?.id)
                         .filter(id => id !== undefined);
                     
@@ -277,6 +286,13 @@
             };
 
             const calculateAnalytics = () => {
+                // Don't calculate if we don't have data yet
+                if (!lineupHistory || lineupHistory.length === 0) {
+                    console.log('No lineup history yet, skipping analytics calculation');
+                    setLineupAnalytics([]);
+                    return;
+                }
+                
                 const segments = buildSegments(lineupHistory);
                 console.log(`Built ${segments.length} segments`);
                 
