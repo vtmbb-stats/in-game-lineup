@@ -137,37 +137,28 @@
                     return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
                 });
                 
-                // Build segments by looking at consecutive pairs
+                // Track current lineup as we go
+                let currentLineup = null;
+                
                 for (let i = 0; i < sorted.length; i++) {
                     const curr = sorted[i];
                     const next = sorted[i + 1];
                     
-                    // Skip marker-only records
-                    if (curr.changes === 'Start of 2nd Half' || curr.changes === 'End of Game') {
-                        continue;
-                    }
-                    
-                    // Determine which lineup was on court during this segment
-                    let segmentLineup;
-                    if (curr.changes === 'End of 1st Half') {
-                        // For End of 1st Half, use the lineup that finished the half
-                        segmentLineup = curr.newLineup || curr.previousLineup;
+                    // Update current lineup
+                    if (curr.changes === 'Start of 2nd Half') {
+                        currentLineup = curr.newLineup;
+                        continue; // Don't create a segment, just update lineup
                     } else if (i === 0) {
-                        // First segment: use previousLineup (starting lineup)
-                        segmentLineup = curr.previousLineup;
-                    } else {
-                        // Normal segment: use newLineup from previous change
-                        const prev = sorted[i - 1];
-                        if (prev.changes === 'Start of 2nd Half') {
-                            segmentLineup = prev.newLineup;
-                        } else {
-                            segmentLineup = prev.newLineup;
-                        }
+                        currentLineup = curr.previousLineup; // Starting lineup
+                    } else if (curr.changes !== 'End of 1st Half' && curr.changes !== 'End of Game') {
+                        currentLineup = curr.newLineup; // Normal sub
                     }
+                    // For End of 1st Half and End of Game, keep the current lineup
                     
-                    if (!segmentLineup) continue;
+                    if (!currentLineup) continue;
+                    if (!next && curr.changes !== 'End of 1st Half' && curr.changes !== 'End of Game') continue;
                     
-                    // Determine start and end times/scores
+                    // Determine segment times/scores
                     let startTime, startScore, endTime, endScore, stats;
                     
                     if (i === 0) {
@@ -179,8 +170,14 @@
                         stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
                     } else {
                         const prev = sorted[i - 1];
-                        startTime = prev.gameTime;
-                        startScore = { vt: prev.vtScore, opp: prev.oppScore };
+                        // Skip if previous was Start of 2nd Half (already handled)
+                        if (prev.changes === 'Start of 2nd Half') {
+                            startTime = '20:00 2nd';
+                            startScore = { vt: prev.vtScore, opp: prev.oppScore };
+                        } else {
+                            startTime = prev.gameTime;
+                            startScore = { vt: prev.vtScore, opp: prev.oppScore };
+                        }
                         endTime = curr.gameTime;
                         endScore = { vt: curr.vtScore, opp: curr.oppScore };
                         stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
@@ -193,7 +190,7 @@
                     }
                     
                     // Convert lineup string to IDs
-                    const lineupIds = segmentLineup.split(', ')
+                    const lineupIds = currentLineup.split(', ')
                         .map(name => roster.find(p => p.name === name)?.id)
                         .filter(id => id !== undefined);
                     
