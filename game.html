@@ -10,10 +10,10 @@
             background-color: #00A327;
         }
         .custom-green-50 {
-            background-color: #66C47E;  /* Slightly darker, less bright green */
+            background-color: #66C47E;
         }
         .custom-red-50 {
-            background-color: #E06060;  /* Slightly darker, less bright red */
+            background-color: #E06060;
         }
         .custom-red-100 {
             background-color: #DB2800;
@@ -55,7 +55,7 @@
 
         const SingleGameViewer = () => {
             const [darkMode, setDarkMode] = useState(true);
-            const [selectedGame, setSelectedGame] = useState('2025-10-11');
+            const [selectedGame, setSelectedGame] = useState('2025-11-03');
             const [sortColumn, setSortColumn] = useState('plusMinus');
             const [sortDirection, setSortDirection] = useState('desc');
             const [lineupHistory, setLineupHistory] = useState([]);
@@ -143,6 +143,7 @@
                 const endOf1stHalf = sortedHistory.find(r => r.changes === 'End of 1st Half');
                 const startOf2ndHalf = sortedHistory.find(r => r.changes === 'Start of 2nd Half');
                 if (realChanges.length === 0) return segments;
+                
                 const firstChange = realChanges[0];
                 const isStartOf2ndHalf = firstChange.changes === 'Start of 2nd Half';
                 if (!isStartOf2ndHalf) {
@@ -153,19 +154,24 @@
                 }
                 
                 // Build segments between substitutions
+                // CRITICAL FIX: Skip segments where startTime === endTime (simultaneous subs)
                 for (let i = 1; i < realChanges.length; i++) {
                     const thisChange = realChanges[i], prevChange = realChanges[i - 1];
+                    
+                    // SKIP if this sub happened at same time as previous sub
+                    if (prevChange.gameTime === thisChange.gameTime) {
+                        console.log(`Skipping 0:00 segment at ${thisChange.gameTime} (simultaneous substitutions)`);
+                        continue;
+                    }
+                    
                     const segmentLineup = prevChange.newLineup ? prevChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
                     if (segmentLineup.length === 5) {
-                        // Check if this segment crosses halftime
                         const prevIsInFirstHalf = prevChange.half === 1;
                         const thisIsInSecondHalf = thisChange.half === 2;
                         
                         if (prevIsInFirstHalf && thisIsInSecondHalf && endOf1stHalf) {
-                            // Check if lineup continued from 1st to 2nd half (no sub at halftime)
                             const lineupContinued = endOf1stHalf.newLineup === prevChange.newLineup;
                             
-                            // Always create segment ending 1st half
                             segments.push({ 
                                 lineup: segmentLineup, 
                                 startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, 
@@ -175,7 +181,6 @@
                                 stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} } 
                             });
                             
-                            // Only create 2nd half continuation if lineup didn't change
                             if (lineupContinued && startOf2ndHalf) {
                                 segments.push({ 
                                     lineup: segmentLineup, 
@@ -186,7 +191,6 @@
                                     stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } 
                                 });
                             } else if (!lineupContinued) {
-                                // Lineup changed at halftime - create segment for NEW lineup starting 2nd half
                                 const newLineup = thisChange.previousLineup ? thisChange.previousLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
                                 if (newLineup.length === 5) {
                                     segments.push({ 
@@ -200,13 +204,11 @@
                                 }
                             }
                         } else {
-                            // Normal segment within same half
                             segments.push({ lineup: segmentLineup, startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore }, endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore }, startTime: prevChange.gameTime, endTime: thisChange.gameTime, stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} } });
                         }
                     }
                 }
                 
-                // Handle segment to end of 1st half if needed
                 if (!isStartOf2ndHalf && realChanges.length > 0) {
                     const lastChange = realChanges[realChanges.length - 1];
                     const lastLineup = lastChange.newLineup ? lastChange.newLineup.split(', ').map(n => roster.find(p => p.name === n)?.id).filter(id => id !== undefined) : [];
@@ -215,7 +217,6 @@
                     }
                 }
                 
-                // Mark garbage time segments
                 const garbageTimeStart = sortedHistory.find(r => r.garbageTime === true);
                 if (garbageTimeStart) {
                     const garbageTimeValue = parseGameTime(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
@@ -230,7 +231,6 @@
                 return segments;
             };
             
-            // Helper to convert game time to comparable number
             const parseGameTime = (timeString) => {
                 if (!timeString) return 0;
                 const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
@@ -261,8 +261,6 @@
                     const minutes = parseInt(match[1]);
                     const seconds = parseInt(match[2]);
                     const period = match[3];
-                    
-                    // Convert to total game seconds (counting down from 40:00)
                     const timeInPeriod = minutes * 60 + seconds;
                     
                     if (period === '1st') {
@@ -295,7 +293,6 @@
                     const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
                     if (segment.lineup.some(pid => !playerAvailability[pid])) return;
                     
-                    // Skip garbage time segments if toggle is off
                     if (!includeGarbageTime && segment.isGarbageTime) return;
                     
                     if (!lineupMap.has(lineupKey)) {
@@ -332,7 +329,7 @@
                     const hasCurrent = lineup.segments.length > 0 && lineup.segments[lineup.segments.length - 1]?.endTime === 'Current';
                     const minutesDisplay = hasCurrent ? '--:--' : `${Math.floor(lineup.totalMinutesSeconds / 60)}:${(lineup.totalMinutesSeconds % 60).toString().padStart(2, '0')}`;
                     return {
-                        id: lineup.players.sort((a, b) => a - b).join('-'), players: playerNames, playerIds: lineup.players,
+                        id: lineup.players.sort((a, b) => a - b).join('-'),  players: playerNames, playerIds: lineup.players,
                         plusMinus: lineup.totalPlusMinus, pointsPerPossession: lineup.totalPoints / offPoss,
                         defPointsPerPossession: lineup.totalOppPoints / defPoss,
                         offRebRate: availOffReb > 0 ? (lineup.totalOffReb / availOffReb) * 100 : 0,
@@ -361,12 +358,11 @@
                 const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
                 let colorIntensity = higherIsBetter.includes(column) ? percentile : lowerIsBetter.includes(column) ? 1 - percentile : 0.5;
                 
-                // 5-tier gradient: solid green → muted light green → blank → muted light red → solid red
-                if (colorIntensity >= 0.8) return 'custom-green-100';      // Solid dark green (top 20%)
-                if (colorIntensity >= 0.6) return 'custom-green-50';       // Muted light green
-                if (colorIntensity >= 0.4) return '';                       // Blank (middle 20%)
-                if (colorIntensity >= 0.2) return 'custom-red-50';         // Muted light red
-                return 'custom-red-100';                                    // Solid dark red (bottom 20%)
+                if (colorIntensity >= 0.8) return 'custom-green-100';
+                if (colorIntensity >= 0.6) return 'custom-green-50';
+                if (colorIntensity >= 0.4) return '';
+                if (colorIntensity >= 0.2) return 'custom-red-50';
+                return 'custom-red-100';
             };
 
             const handleSort = (column) => {
