@@ -679,14 +679,133 @@
                                                 </div>
                                             </div>
                                             <button
-                                                onClick={() => {
+                                                onClick={async () => {
                                                     if (currentHalf === 1) {
                                                         setIsStarting2ndHalf(true);
                                                         setShowStartingLineupModal(true);
                                                     } else if (currentHalf === 2) {
+                                                        // End 2nd half before starting OT
+                                                        const resetStats = {
+                                                            vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                                                            opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+                                                        };
+                                                        
+                                                        const endOf2ndHalfRecord = {
+                                                            timestamp: '0:00 2nd',
+                                                            gameTime: '0:00 2nd',
+                                                            vtScore: vtScore,
+                                                            oppScore: oppScore,
+                                                            changes: 'End of 2nd Half',
+                                                            newLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            previousLineup: previousLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            half: 2,
+                                                            completedSegmentStats: currentStats
+                                                        };
+                                                        
+                                                        const newHistory = [...lineupHistory, endOf2ndHalfRecord];
+                                                        
+                                                        const startOfOTRecord = {
+                                                            timestamp: '5:00 OT',
+                                                            gameTime: '5:00 OT',
+                                                            vtScore: vtScore,
+                                                            oppScore: oppScore,
+                                                            changes: 'Start of OT',
+                                                            newLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            previousLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            half: 3,
+                                                            completedSegmentStats: resetStats
+                                                        };
+                                                        
+                                                        const finalHistory = [...newHistory, startOfOTRecord];
+                                                        setLineupHistory(finalHistory);
+                                                        
+                                                        if (window.firebaseDb) {
+                                                            try {
+                                                                const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
+                                                                const updates = {};
+                                                                finalHistory.forEach((record, index) => {
+                                                                    updates[`${index}`] = record;
+                                                                });
+                                                                await window.firebaseDb.set(lineupChangesRef, updates);
+                                                                
+                                                                const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
+                                                                await window.firebaseDb.set(currentStatsRef, resetStats);
+                                                                
+                                                                const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                                                                await window.firebaseDb.update(gameInfoRef, {
+                                                                    currentHalf: 3,
+                                                                    gameTime: '5:00'
+                                                                });
+                                                            } catch (error) {
+                                                                console.error('Error starting OT:', error);
+                                                            }
+                                                        }
+                                                        
+                                                        setCurrentStats(resetStats);
                                                         setCurrentHalf(3);
                                                         setGameTime('5:00');
                                                     } else {
+                                                        // Additional OT periods
+                                                        const resetStats = {
+                                                            vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                                                            opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+                                                        };
+                                                        
+                                                        const prevOTNum = currentHalf === 3 ? 'OT' : `${currentHalf - 2}OT`;
+                                                        
+                                                        const endOfPrevOTRecord = {
+                                                            timestamp: `0:00 ${prevOTNum}`,
+                                                            gameTime: `0:00 ${prevOTNum}`,
+                                                            vtScore: vtScore,
+                                                            oppScore: oppScore,
+                                                            changes: `End of ${prevOTNum}`,
+                                                            newLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            previousLineup: previousLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            half: currentHalf,
+                                                            completedSegmentStats: currentStats
+                                                        };
+                                                        
+                                                        const newHistory = [...lineupHistory, endOfPrevOTRecord];
+                                                        
+                                                        const nextOTNum = `${currentHalf - 1}OT`;
+                                                        const startOfNextOTRecord = {
+                                                            timestamp: `5:00 ${nextOTNum}`,
+                                                            gameTime: `5:00 ${nextOTNum}`,
+                                                            vtScore: vtScore,
+                                                            oppScore: oppScore,
+                                                            changes: `Start of ${nextOTNum}`,
+                                                            newLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            previousLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            half: currentHalf + 1,
+                                                            completedSegmentStats: resetStats
+                                                        };
+                                                        
+                                                        const finalHistory = [...newHistory, startOfNextOTRecord];
+                                                        setLineupHistory(finalHistory);
+                                                        
+                                                        if (window.firebaseDb) {
+                                                            try {
+                                                                const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
+                                                                const updates = {};
+                                                                finalHistory.forEach((record, index) => {
+                                                                    updates[`${index}`] = record;
+                                                                });
+                                                                await window.firebaseDb.set(lineupChangesRef, updates);
+                                                                
+                                                                const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
+                                                                await window.firebaseDb.set(currentStatsRef, resetStats);
+                                                                
+                                                                const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
+                                                                await window.firebaseDb.update(gameInfoRef, {
+                                                                    currentHalf: currentHalf + 1,
+                                                                    gameTime: '5:00'
+                                                                });
+                                                            } catch (error) {
+                                                                console.error('Error starting next OT:', error);
+                                                            }
+                                                        }
+                                                        
+                                                        setCurrentStats(resetStats);
                                                         setCurrentHalf(currentHalf + 1);
                                                         setGameTime('5:00');
                                                     }
