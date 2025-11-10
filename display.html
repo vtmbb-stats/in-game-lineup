@@ -57,12 +57,13 @@
       const [sortColumn, setSortColumn] = useState('plusMinus');
       const [sortDirection, setSortDirection] = useState('desc');
       const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
+      const [selectedPlayers, setSelectedPlayers] = useState([]);
 
       const roster = [
-        { id:0, name:'Jailen Bedford' }, { id:1, name:'Tobi Lawal' }, { id:2, name:'Jaden Schutt' },
-        { id:3, name:'Ben Hammond' }, { id:4, name:'Izaiah Pasha' }, { id:5, name:"Sin'Cere Jones" },
-        { id:7, name:'Brett Freeman' }, { id:10, name:'Tyler Johnson' }, { id:13, name:'Amani Hansberry' },
-        { id:15, name:'Snook Peterkin' }, { id:17, name:'Neo Avdalas' }, { id:22, name:'Solomon Davis' },
+        { id:3, name:'Ben Hammond' }, { id:17, name:'Neo Avdalas' }, { id:4, name:'Izaiah Pasha' },
+        { id:7, name:'Brett Freeman' }, { id:15, name:'Snook Peterkin' }, { id:0, name:'Jailen Bedford' },
+        { id:2, name:'Jaden Schutt' }, { id:10, name:'Tyler Johnson' }, { id:5, name:"Sin'Cere Jones" },
+        { id:1, name:'Tobi Lawal' }, { id:13, name:'Amani Hansberry' }, { id:22, name:'Solomon Davis' },
         { id:32, name:'Christian Gurdak' }, { id:77, name:'Antonio Dorn' }
       ];
 
@@ -80,13 +81,22 @@
       }, [startGame, endGame, loading, playerAvailability, includeGarbageTime]);
 
       useEffect(() => {
-        const sorted = [...lineupAnalytics].sort((a,b) => {
+        let filtered = [...lineupAnalytics];
+        
+        // Filter by selected players
+        if (selectedPlayers.length > 0) {
+          filtered = filtered.filter(lineup => 
+            selectedPlayers.every(pid => lineup.playerIds.includes(pid))
+          );
+        }
+        
+        const sorted = filtered.sort((a,b) => {
           let av = a[sortColumn], bv = b[sortColumn];
           if (sortColumn === 'minutes') { av = a.totalMinutesSeconds; bv = b.totalMinutesSeconds; }
           return sortDirection === 'desc' ? bv - av : av - bv;
         });
         setSortedAnalytics(sorted);
-      }, [lineupAnalytics, sortColumn, sortDirection]);
+      }, [lineupAnalytics, sortColumn, sortDirection, selectedPlayers]);
 
       const loadAllGames = async () => {
         if (!window.firebaseDb) return;
@@ -128,8 +138,14 @@
         setAllGamesData(gamesData);
         setSchedule(gamesFound);
 
+        // Find Charleston Southern game or default to first game
+        const charlestonIndex = gamesFound.findIndex(g => 
+          g.opponent && g.opponent.toLowerCase().includes('charleston')
+        );
+        
         if (gamesFound.length > 0) {
-          setStartGame(gamesFound[0].date);
+          const defaultStart = charlestonIndex !== -1 ? charlestonIndex : 0;
+          setStartGame(gamesFound[defaultStart].date);
           setEndGame(gamesFound[gamesFound.length - 1].date);
         }
 
@@ -420,6 +436,18 @@
 
       const togglePlayerAvailability = (id) => setPlayerAvailability(p => ({...p, [id]: !p[id]}));
 
+      const togglePlayerFilter = (id) => {
+        setSelectedPlayers(prev => {
+          if (prev.includes(id)) {
+            return prev.filter(pid => pid !== id);
+          } else {
+            return [...prev, id];
+          }
+        });
+      };
+
+      const clearPlayerFilters = () => setSelectedPlayers([]);
+
       if (loading) {
         return (
           <div className={`min-h-screen flex items-center justify-center ${darkMode?'bg-gray-900':'bg-gray-100'}`}>
@@ -467,6 +495,43 @@
 
           <div className="flex">
             <div className={`w-64 p-4 border-r border-gray-300 dark:border-gray-700 ${darkMode?'bg-gray-800':'bg-white'}`}>
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className={`text-lg font-semibold ${darkMode?'text-white':'text-gray-900'}`}>Filter Lineups</h3>
+                  {selectedPlayers.length > 0 && (
+                    <button
+                      onClick={clearPlayerFilters}
+                      className={`text-xs px-2 py-1 rounded ${darkMode?'bg-red-600 text-white':'bg-red-500 text-white'}`}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1 mb-4">
+                  {roster.map(p => {
+                    const isSelected = selectedPlayers.includes(p.id);
+                    return (
+                      <div
+                        key={`filter-${p.id}`}
+                        onClick={() => togglePlayerFilter(p.id)}
+                        className={`p-2 rounded cursor-pointer text-sm ${
+                          isSelected 
+                            ? (darkMode ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white')
+                            : (darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700')
+                        }`}
+                      >
+                        {p.name}
+                      </div>
+                    );
+                  })}
+                </div>
+                {selectedPlayers.length > 0 && (
+                  <div className={`text-xs ${darkMode?'text-gray-400':'text-gray-600'} mb-4`}>
+                    Showing lineups with: {selectedPlayers.map(id => roster.find(p => p.id === id)?.name.split(' ').pop()).join(', ')}
+                  </div>
+                )}
+              </div>
+              
               <h3 className={`text-lg font-semibold mb-3 ${darkMode?'text-white':'text-gray-900'}`}>Players</h3>
               <div className="space-y-2">
                 {roster.map(p => {
@@ -519,7 +584,7 @@
                         ))}
                       </tbody>
                     </table>
-                    {lineupAnalytics.length===0 && (<div className={`${darkMode?'text-gray-400':'text-gray-500'} text-center py-8`}>No lineup data available for selected range</div>)}
+                    {sortedAnalytics.length===0 && (<div className={`${darkMode?'text-gray-400':'text-gray-500'} text-center py-8`}>No lineup data available for selected range{selectedPlayers.length > 0 ? ' and filters' : ''}</div>)}
                   </div>
                 </div>
               </div>
