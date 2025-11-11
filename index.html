@@ -1168,14 +1168,23 @@
                                             <input
                                                 type="text"
                                                 value={pendingGameTime}
-                                                onChange={(e) => setPendingGameTime(e.target.value)}
-                                                placeholder="e.g., 15:42"
+                                                onChange={(e) => {
+                                                    // Only allow digits and colons
+                                                    const filtered = e.target.value.replace(/[^0-9:]/g, '');
+                                                    setPendingGameTime(filtered);
+                                                }}
+                                                placeholder="e.g., 15:42 or 4:22"
                                                 className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${
                                                     darkMode 
                                                         ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
                                                         : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
                                                 }`}
                                             />
+                                            {pendingGameTime && !/^\d{1,2}:\d{2}$/.test(pendingGameTime) && (
+                                                <p className="text-red-500 text-xs mt-1">
+                                                    Format should be M:SS or MM:SS (e.g., 4:22 or 15:42)
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex gap-3 mt-6">
