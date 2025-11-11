@@ -124,12 +124,13 @@
           .filter(d => allGamesData[d].lineupHistory && allGamesData[d].lineupHistory.length > 0)
           .sort();
       
-        // set endGame to latest game with data if not chosen yet
-        if (!endGame && gamesWithData.length > 0) {
+        if (gamesWithData.length > 0 && !endGame) {
+          // set to most recent game with data
           setEndGame(gamesWithData[gamesWithData.length - 1]);
         }
-      }, [loading, allGamesData, endGame]);
       
+      }, [loading, allGamesData, endGame]);
+
       const loadAllGames = async () => {
         if (!window.firebaseDb) return;
         setLoading(true);
