@@ -381,7 +381,13 @@
         });
 
         const analytics = Array.from(map.values()).map(r => {
-          const names = r.players.map(id => (roster.find(p=>p.id===id)?.name || '').split(' ').pop()).join(', ');
+          // sort lineup by roster order before displaying
+          const orderedIds = r.players.slice().sort(
+            (a,b) => roster.findIndex(p=>p.id===a) - roster.findIndex(p=>p.id===b)
+          );
+          const names = orderedIds
+            .map(id => (roster.find(p=>p.id===id)?.name || '').split(' ').pop())
+            .join(', ');
           const offPoss = r.totalPossessions || 1;
           const defPoss = r.totalOppPossessions || 1;
           const availOR = r.totalOffReb + r.totalOppDefReb;
