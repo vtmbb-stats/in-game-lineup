@@ -117,25 +117,13 @@
         if (!loading) calculateCombos();
       }, [startGame, endGame, loading, allGamesData, includeGarbageTime]);
 
-      useEffect(() => {
-        if (loading || Object.keys(allGamesData).length === 0) return;
-      
-        const gamesWithData = Object.keys(allGamesData)
-          .filter(d => allGamesData[d].lineupHistory && allGamesData[d].lineupHistory.length > 0)
-          .sort();
-      
-        if (gamesWithData.length > 0 && !endGame) {
-          // set to most recent game with data
-          setEndGame(gamesWithData[gamesWithData.length - 1]);
-        }
-      
-      }, [loading, allGamesData, endGame]);
-
       const loadAllGames = async () => {
         if (!window.firebaseDb) return;
         setLoading(true);
         const unsubscribers = [];
         const gamesData = {};
+        let loadedCount = 0;
+        const totalGames = gameSchedule.length;
 
         gameSchedule.forEach(game => {
           const gameDate = game.date;
@@ -149,6 +137,18 @@
               gamesData[gameDate].ended = gameInfo.ended || false;
               setAllGamesData({ ...gamesData });
             }
+            loadedCount++;
+            if (loadedCount >= totalGames * 2) {
+              // All data loaded, set the most recent game with data
+              const gamesWithData = Object.keys(gamesData)
+                .filter(d => gamesData[d].lineupHistory && gamesData[d].lineupHistory.length > 0)
+                .sort();
+              
+              if (gamesWithData.length > 0) {
+                setEndGame(gamesWithData[gamesWithData.length - 1]);
+              }
+              setLoading(false);
+            }
           });
 
           const unsubLineup = window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
@@ -156,6 +156,18 @@
               if (!gamesData[gameDate]) gamesData[gameDate] = { ended: false, lineupHistory: [] };
               gamesData[gameDate].lineupHistory = Object.values(snapshot.val());
               setAllGamesData({ ...gamesData });
+            }
+            loadedCount++;
+            if (loadedCount >= totalGames * 2) {
+              // All data loaded, set the most recent game with data
+              const gamesWithData = Object.keys(gamesData)
+                .filter(d => gamesData[d].lineupHistory && gamesData[d].lineupHistory.length > 0)
+                .sort();
+              
+              if (gamesWithData.length > 0) {
+                setEndGame(gamesWithData[gamesWithData.length - 1]);
+              }
+              setLoading(false);
             }
           });
 
@@ -165,7 +177,6 @@
           });
         });
 
-        setLoading(false);
         return () => { unsubscribers.forEach(unsub => unsub()); };
       };
 
