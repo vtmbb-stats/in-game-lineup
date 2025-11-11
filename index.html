@@ -51,8 +51,8 @@
             const [gameStarted, setGameStarted] = useState(false);
             const [currentHalf, setCurrentHalf] = useState(1);
             const [gameTime, setGameTime] = useState('20:00');
-            const [currentLineup, setCurrentLineup] = useState([3, 2, 17, 1, 13]);
-            const [previousLineup, setPreviousLineup] = useState([3, 2, 17, 1, 13]);
+            const [currentLineup, setCurrentLineup] = useState([17, 0, 10, 1, 13]);
+            const [previousLineup, setPreviousLineup] = useState([17, 0, 10, 1, 13]);
             const [pendingChanges, setPendingChanges] = useState([]);
             const [showTimeModal, setShowTimeModal] = useState(false);
             const [showStartingLineupModal, setShowStartingLineupModal] = useState(false);
@@ -115,17 +115,17 @@
             ];
 
             const roster = [
-                { id: 0, name: 'Jailen Bedford', position: 'G' },
-                { id: 1, name: 'Tobi Lawal', position: 'F' },
-                { id: 2, name: 'Jaden Schutt', position: 'G' },
                 { id: 3, name: 'Ben Hammond', position: 'G' },
-                { id: 4, name: 'Izaiah Pasha', position: 'G' },
-                { id: 5, name: 'Sin\'Cere Jones', position: 'F' },
-                { id: 7, name: 'Brett Freeman', position: 'G' },
-                { id: 10, name: 'Tyler Johnson', position: 'F' },
-                { id: 13, name: 'Amani Hansberry', position: 'F' },
-                { id: 15, name: 'Snook Peterkin', position: 'G' },
                 { id: 17, name: 'Neo Avdalas', position: 'G' },
+                { id: 4, name: 'Izaiah Pasha', position: 'G' },
+                { id: 7, name: 'Brett Freeman', position: 'G' },
+                { id: 15, name: 'Snook Peterkin', position: 'G' },
+                { id: 0, name: 'Jailen Bedford', position: 'G' },
+                { id: 2, name: 'Jaden Schutt', position: 'G' },
+                { id: 10, name: 'Tyler Johnson', position: 'F' },
+                { id: 5, name: 'Sin\'Cere Jones', position: 'F' },
+                { id: 1, name: 'Tobi Lawal', position: 'F' },
+                { id: 13, name: 'Amani Hansberry', position: 'F' },
                 { id: 22, name: 'Solomon Davis', position: 'C' },
                 { id: 32, name: 'Christian Gurdak', position: 'C' },
                 { id: 77, name: 'Antonio Dorn', position: 'C' }
@@ -533,9 +533,42 @@
             };
 
             const confirmAllChanges = async () => {
+                const confirmAllChanges = async () => {
+                // Validate time format
+                const timeRegex = /^\d{1,2}:\d{2}$/;
                 if (!pendingGameTime) {
                     alert('Please fill in game time before making changes.');
                     return;
+                }
+                
+                if (!timeRegex.test(pendingGameTime)) {
+                    alert('Invalid time format. Please use M:SS or MM:SS format (e.g., 4:22 or 15:42)');
+                    return;
+                }
+                
+                // Validate that minutes and seconds are reasonable
+                const [minutes, seconds] = pendingGameTime.split(':').map(Number);
+                if (isNaN(minutes) || isNaN(seconds)) {
+                    alert('Invalid time format. Please enter numbers only.');
+                    return;
+                }
+                
+                if (seconds > 59) {
+                    alert('Seconds must be between 00 and 59.');
+                    return;
+                }
+                
+                if (currentHalf === 1 || currentHalf === 2) {
+                    if (minutes > 20) {
+                        alert('Minutes must be between 0 and 20 for regular halves.');
+                        return;
+                    }
+                } else {
+                    // Overtime
+                    if (minutes > 5) {
+                        alert('Minutes must be between 0 and 5 for overtime periods.');
+                        return;
+                    }
                 }
             
                 if (pendingChanges.length === 0) {
