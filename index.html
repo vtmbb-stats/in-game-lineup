@@ -44,24 +44,25 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        // Helper: YYYY-MM-DD for local timezone
+        const todayLocalYMD = () => {
+          const d = new Date();
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        };
+        // Pick next upcoming game; fallback to last item if none remain
+        const defaultGameDate = (() => {
+          const today = todayLocalYMD();
+          const next = gameSchedule.find(g => g.date > today);
+          return next ? next.date : gameSchedule[gameSchedule.length - 1].date;
+        })();
+        // Use this instead of hardcoded '2025-10-11'
+
         const BasketballLineupTracker = () => {
             const [darkMode, setDarkMode] = useState(false);
             const [autoSync, setAutoSync] = useState(false);
-            // Helper: YYYY-MM-DD for local timezone
-            const todayLocalYMD = () => {
-              const d = new Date();
-              const y = d.getFullYear();
-              const m = String(d.getMonth() + 1).padStart(2, '0');
-              const day = String(d.getDate()).padStart(2, '0');
-              return `${y}-${m}-${day}`;
-            };
-            // Pick next upcoming game; fallback to last item if none remain
-            const defaultGameDate = (() => {
-              const today = todayLocalYMD();
-              const next = gameSchedule.find(g => g.date > today);
-              return next ? next.date : gameSchedule[gameSchedule.length - 1].date;
-            })();
-            // Use this instead of hardcoded '2025-10-11'
             const [selectedGame, setSelectedGame] = React.useState(defaultGameDate);
             const [gameStarted, setGameStarted] = useState(false);
             const [currentHalf, setCurrentHalf] = useState(1);
