@@ -356,7 +356,7 @@
                 let totalMinutes = 0;
                 
                 segments.forEach(segment => {
-                    const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
+                    const lineupKey = [...segment.lineup].sort((a, b) => a - b).join('-');
                     if (segment.lineup.some(pid => !playerAvailability[pid])) return;
                     if (!includeGarbageTime && segment.isGarbageTime) return;
                     
@@ -423,7 +423,7 @@
                     const minutesDisplay = hasCurrent ? '--:--' : `${Math.floor(lineup.totalMinutesSeconds / 60)}:${(lineup.totalMinutesSeconds % 60).toString().padStart(2, '0')}`;
                     
                     return {
-                        id: lineup.players.sort((a, b) => a - b).join('-'),
+                        id: [...lineup.players].sort((a, b) => a - b).join('-'),
                         players: playerNames,
                         playerIds: lineup.players,
                         plusMinus: lineup.totalPlusMinus,
