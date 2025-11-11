@@ -40,7 +40,7 @@
     const SpecificCombosViewer = () => {
       const [darkMode, setDarkMode] = useState(true);
       const [startGame, setStartGame] = useState('2025-11-03'); // Charleston Southern
-      const [endGame, setEndGame] = useState(''); // auto-fill to most recent game w/ data
+      const [endGame, setEndGame] = useState(''); // Will auto-fill to most recent game with data
       const [allGamesData, setAllGamesData] = useState({});
       const [guardCombos, setGuardCombos] = useState([]);
       const [bigCombos, setBigCombos] = useState([]);
@@ -417,31 +417,39 @@
       return (
         <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
           <div className="p-4 border-b border-gray-300 dark:border-gray-700">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center mb-4">
               <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>VT Basketball Specific Combos</h1>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <label className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>From:</label>
-                  <select value={startGame} onChange={(e) => setStartGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-                    {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>To:</label>
-                  <select value={endGame} onChange={(e) => setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-                    {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Garbage Time:</label>
-                  <button
-                    onClick={() => setIncludeGarbageTime(!includeGarbageTime)}
-                    className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
-                  >
-                    {includeGarbageTime ? 'Included' : 'Excluded'}
-                  </button>
-                </div>
+              <div className="flex items-center gap-3">
+                <a href="game.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'} transition-colors`}>
+                  Single Game Viewer
+                </a>
+                <a href="display.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-purple-500 hover:bg-purple-600 text-white'} transition-colors`}>
+                  Full Season Dashboard
+                </a>
                 <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
+              </div>
+            </div>
+            <div className="flex justify-end items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>From:</label>
+                <select value={startGame} onChange={(e) => setStartGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                  {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className={`${darkMode ? 'text-white' : 'text-gray-900'}`}>To:</label>
+                <select value={endGame} onChange={(e) => setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                  {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Garbage Time:</label>
+                <button
+                  onClick={() => setIncludeGarbageTime(!includeGarbageTime)}
+                  className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
+                >
+                  {includeGarbageTime ? 'Included' : 'Excluded'}
+                </button>
               </div>
             </div>
           </div>
