@@ -414,7 +414,12 @@
                 console.log(`Total minutes: ${(totalMinutes / 60).toFixed(2)}`);
                 
                 const analytics = Array.from(lineupMap.values()).map(lineup => {
-                    const playerNames = lineup.players.map(id => roster.find(p => p.id === id)?.name.split(' ').pop() || '').join(', ');
+                    const playerNames = [...lineup.players]
+                      .sort((a, b) =>
+                        roster.findIndex(p => p.id === a) - roster.findIndex(p => p.id === b)
+                      )
+                      .map(id => roster.find(p => p.id === id)?.name.split(' ').pop() || '')
+                      .join(', ');
                     const offPoss = lineup.totalPossessions || 1;
                     const defPoss = lineup.totalOppPossessions || 1;
                     const availOffReb = lineup.totalOffReb + lineup.totalOppDefReb;
