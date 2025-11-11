@@ -44,6 +44,42 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        const gameSchedule = [
+            { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall (Scrimmage)' },
+            { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne (Scrimmage)' },
+            { date: '2025-11-03', opponent: 'Charleston Southern', displayName: 'Nov 4 vs Charleston Southern' },
+            { date: '2025-11-08', opponent: 'Providence', displayName: 'Nov 8 vs Providence' },
+            { date: '2025-11-12', opponent: 'Saint Joseph\'s', displayName: 'Nov 12 vs Saint Joseph\'s' },
+            { date: '2025-11-16', opponent: 'Charlotte', displayName: 'Nov 16 vs Charlotte' },
+            { date: '2025-11-19', opponent: 'Bryant', displayName: 'Nov 19 vs Bryant' },
+            { date: '2025-11-26', opponent: 'Colorado State', displayName: 'Nov 26 vs Colorado State' },
+            { date: '2025-11-27', opponent: 'TBD', displayName: 'Nov 27 vs TBD' },
+            { date: '2025-11-28', opponent: 'TBD', displayName: 'Nov 28 vs TBD' },
+            { date: '2025-12-02', opponent: 'South Carolina', displayName: 'Dec 2 vs South Carolina' },
+            { date: '2025-12-06', opponent: 'George Mason', displayName: 'Dec 6 vs George Mason' },
+            { date: '2025-12-11', opponent: 'Western Carolina', displayName: 'Dec 11 vs Western Carolina' },
+            { date: '2025-12-14', opponent: 'Maryland-Eastern Shore', displayName: 'Dec 14 vs Maryland-Eastern Shore' },
+            { date: '2025-12-20', opponent: 'Elon', displayName: 'Dec 20 vs Elon' },
+            { date: '2025-12-31', opponent: 'Virginia', displayName: 'Dec 31 vs Virginia' },
+            { date: '2026-01-03', opponent: 'Wake Forest', displayName: 'Jan 3 vs Wake Forest' },
+            { date: '2026-01-07', opponent: 'Stanford', displayName: 'Jan 7 vs Stanford' },
+            { date: '2026-01-10', opponent: 'California', displayName: 'Jan 10 vs California' },
+            { date: '2026-01-14', opponent: 'SMU', displayName: 'Jan 14 vs SMU' },
+            { date: '2026-01-17', opponent: 'Notre Dame', displayName: 'Jan 17 vs Notre Dame' },
+            { date: '2026-01-21', opponent: 'Syracuse', displayName: 'Jan 21 vs Syracuse' },
+            { date: '2026-01-24', opponent: 'Louisville', displayName: 'Jan 24 vs Louisville' },
+            { date: '2026-01-27', opponent: 'Georgia Tech', displayName: 'Jan 27 vs Georgia Tech' },
+            { date: '2026-01-31', opponent: 'Duke', displayName: 'Jan 31 vs Duke' },
+            { date: '2026-02-07', opponent: 'NC State', displayName: 'Feb 7 vs NC State' },
+            { date: '2026-02-11', opponent: 'Clemson', displayName: 'Feb 11 vs Clemson' },
+            { date: '2026-02-14', opponent: 'Florida State', displayName: 'Feb 14 vs Florida State' },
+            { date: '2026-02-17', opponent: 'Miami', displayName: 'Feb 17 vs Miami' },
+            { date: '2026-02-21', opponent: 'Wake Forest', displayName: 'Feb 21 vs Wake Forest' },
+            { date: '2026-02-28', opponent: 'North Carolina', displayName: 'Feb 28 vs North Carolina' },
+            { date: '2026-03-03', opponent: 'Boston College', displayName: 'Mar 3 vs Boston College' },
+            { date: '2026-03-07', opponent: 'Virginia', displayName: 'Mar 7 vs Virginia' }
+        ];
+
         // Helper: YYYY-MM-DD for local timezone
         const todayLocalYMD = () => {
           const d = new Date();
@@ -93,42 +129,6 @@
                     turnovers: 0
                 }
             });
-
-            const gameSchedule = [
-                { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall (Scrimmage)' },
-                { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne (Scrimmage)' },
-                { date: '2025-11-03', opponent: 'Charleston Southern', displayName: 'Nov 4 vs Charleston Southern' },
-                { date: '2025-11-08', opponent: 'Providence', displayName: 'Nov 8 vs Providence' },
-                { date: '2025-11-12', opponent: 'Saint Joseph\'s', displayName: 'Nov 12 vs Saint Joseph\'s' },
-                { date: '2025-11-16', opponent: 'Charlotte', displayName: 'Nov 16 vs Charlotte' },
-                { date: '2025-11-19', opponent: 'Bryant', displayName: 'Nov 19 vs Bryant' },
-                { date: '2025-11-26', opponent: 'Colorado State', displayName: 'Nov 26 vs Colorado State' },
-                { date: '2025-11-27', opponent: 'TBD', displayName: 'Nov 27 vs TBD' },
-                { date: '2025-11-28', opponent: 'TBD', displayName: 'Nov 28 vs TBD' },
-                { date: '2025-12-02', opponent: 'South Carolina', displayName: 'Dec 2 vs South Carolina' },
-                { date: '2025-12-06', opponent: 'George Mason', displayName: 'Dec 6 vs George Mason' },
-                { date: '2025-12-11', opponent: 'Western Carolina', displayName: 'Dec 11 vs Western Carolina' },
-                { date: '2025-12-14', opponent: 'Maryland-Eastern Shore', displayName: 'Dec 14 vs Maryland-Eastern Shore' },
-                { date: '2025-12-20', opponent: 'Elon', displayName: 'Dec 20 vs Elon' },
-                { date: '2025-12-31', opponent: 'Virginia', displayName: 'Dec 31 vs Virginia' },
-                { date: '2026-01-03', opponent: 'Wake Forest', displayName: 'Jan 3 vs Wake Forest' },
-                { date: '2026-01-07', opponent: 'Stanford', displayName: 'Jan 7 vs Stanford' },
-                { date: '2026-01-10', opponent: 'California', displayName: 'Jan 10 vs California' },
-                { date: '2026-01-14', opponent: 'SMU', displayName: 'Jan 14 vs SMU' },
-                { date: '2026-01-17', opponent: 'Notre Dame', displayName: 'Jan 17 vs Notre Dame' },
-                { date: '2026-01-21', opponent: 'Syracuse', displayName: 'Jan 21 vs Syracuse' },
-                { date: '2026-01-24', opponent: 'Louisville', displayName: 'Jan 24 vs Louisville' },
-                { date: '2026-01-27', opponent: 'Georgia Tech', displayName: 'Jan 27 vs Georgia Tech' },
-                { date: '2026-01-31', opponent: 'Duke', displayName: 'Jan 31 vs Duke' },
-                { date: '2026-02-07', opponent: 'NC State', displayName: 'Feb 7 vs NC State' },
-                { date: '2026-02-11', opponent: 'Clemson', displayName: 'Feb 11 vs Clemson' },
-                { date: '2026-02-14', opponent: 'Florida State', displayName: 'Feb 14 vs Florida State' },
-                { date: '2026-02-17', opponent: 'Miami', displayName: 'Feb 17 vs Miami' },
-                { date: '2026-02-21', opponent: 'Wake Forest', displayName: 'Feb 21 vs Wake Forest' },
-                { date: '2026-02-28', opponent: 'North Carolina', displayName: 'Feb 28 vs North Carolina' },
-                { date: '2026-03-03', opponent: 'Boston College', displayName: 'Mar 3 vs Boston College' },
-                { date: '2026-03-07', opponent: 'Virginia', displayName: 'Mar 7 vs Virginia' }
-            ];
 
             const roster = [
                 { id: 3, name: 'Ben Hammond', position: 'G' },
