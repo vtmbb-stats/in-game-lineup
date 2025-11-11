@@ -61,7 +61,7 @@
 
       const roster = [
         { id:3, name:'Ben Hammond' }, { id:17, name:'Neo Avdalas' }, { id:4, name:'Izaiah Pasha' },
-        { id:7, name:'Brett Freeman' }, { id:15, name:'Snook Peterkin' }, { id:0, name:'Jailen Bedford' },
+        { id:7, name:'Brett Freeman' }, { id:0, name:'Jailen Bedford' },
         { id:2, name:'Jaden Schutt' }, { id:10, name:'Tyler Johnson' }, { id:5, name:"Sin'Cere Jones" },
         { id:1, name:'Tobi Lawal' }, { id:13, name:'Amani Hansberry' }, { id:22, name:'Solomon Davis' },
         { id:32, name:'Christian Gurdak' }, { id:77, name:'Antonio Dorn' }
@@ -413,19 +413,52 @@
 
       const getColorClass = (value, column, analytics) => {
         if (analytics.length < 2) return '';
+        
+        // Special handling for plusMinus
+        if (column === 'plusMinus') {
+          if (value === 0) return '';
+          
+          // Separate positive and negative values
+          const positives = analytics.map(x => x.plusMinus).filter(v => v > 0);
+          const negatives = analytics.map(x => x.plusMinus).filter(v => v < 0);
+          
+          if (value > 0) {
+            if (positives.length === 0) return 'custom-green-100';
+            positives.sort((a,b) => a-b);
+            const idx = positives.indexOf(value);
+            const pct = idx / (positives.length - 1);
+            // Higher values get darker green
+            return pct >= 0.5 ? 'custom-green-100' : 'custom-green-50';
+          } else {
+            if (negatives.length === 0) return 'custom-red-100';
+            negatives.sort((a,b) => b-a); // Sort descending (most negative first)
+            const idx = negatives.indexOf(value);
+            const pct = idx / (negatives.length - 1);
+            // More negative values get darker red
+            return pct >= 0.5 ? 'custom-red-100' : 'custom-red-50';
+          }
+        }
+        
+        // For other stats, use percentile-based distribution
         const vals = analytics.map(x => x[column]).filter(v => !isNaN(v));
         if (vals.length < 2) return '';
         vals.sort((a,b)=>a-b);
-        const min = vals[0], max = vals[vals.length-1], range = max - min;
-        if (range === 0) return '';
-        const pct = (value - min)/range;
-        const up = ['plusMinus','pointsPerPossession','offRebRate','defRebRate','defTurnoverRate'];
+        
+        const idx = vals.indexOf(value);
+        if (idx === -1) return '';
+        const percentile = idx / (vals.length - 1);
+        
+        // Determine if higher is better or lower is better
+        const up = ['pointsPerPossession','offRebRate','defRebRate','defTurnoverRate'];
         const down = ['defPointsPerPossession','turnoverRate'];
-        const x = up.includes(column) ? pct : down.includes(column) ? 1-pct : 0.5;
-        if (x >= 0.8) return 'custom-green-100';
-        if (x >= 0.6) return 'custom-green-50';
-        if (x >= 0.4) return '';
-        if (x >= 0.2) return 'custom-red-50';
+        
+        const goodPercentile = up.includes(column) ? percentile : down.includes(column) ? 1-percentile : 0.5;
+        
+        // Distribute colors evenly based on percentile
+        if (goodPercentile >= 0.8) return 'custom-green-100';
+        if (goodPercentile >= 0.6) return 'custom-green-50';
+        if (goodPercentile >= 0.4) return '';
+        if (goodPercentile >= 0.2) return 'custom-red-50';
         return 'custom-red-100';
       };
 
@@ -464,38 +497,46 @@
       return (
         <div className={`min-h-screen ${darkMode?'bg-gray-900':'bg-gray-100'}`}>
           <div className="p-4 border-b border-gray-300 dark:border-gray-700">
-            <div className="flex justify-between items-center">
-              <h1 className={`text-2xl font-bold ${darkMode?'text-white':'text-gray-900'}`}>VT Basketball Combo Analysis</h1>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>From:</label>
-                  <select value={startGame} onChange={(e)=>setStartGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode?'bg-gray-800 border-gray-600 text-white':'bg-white border-gray-300 text-gray-900'}`}>
-                    {schedule.map(g => (<option key={g.date} value={g.date}>{g.displayName}</option>))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>To:</label>
-                  <select value={endGame} onChange={(e)=>setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode?'bg-gray-800 border-gray-600 text-white':'bg-white border-gray-300 text-gray-900'}`}>
-                    {schedule.map(g => (<option key={g.date} value={g.date}>{g.displayName}</option>))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>Garbage Time:</label>
-                  <button
-                    onClick={()=>setIncludeGarbageTime(!includeGarbageTime)}
-                    className={`px-4 py-2 rounded-md ${includeGarbageTime?(darkMode?'bg-green-600 text-white':'bg-green-500 text-white'):(darkMode?'bg-gray-700 text-gray-300':'bg-gray-300 text-gray-700')}`}
-                  >
-                    {includeGarbageTime?'Included':'Excluded'}
-                  </button>
-                </div>
+            <div className="flex justify-between items-center mb-4">
+              <h1 className={`text-2xl font-bold ${darkMode?'text-white':'text-gray-900'}`}>Virginia Tech Basketball Lineup Analysis</h1>
+              <div className="flex items-center gap-3">
+                <a href="game.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'} transition-colors`}>
+                  Single Game Viewer
+                </a>
+                <a href="specific-combos.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-green-500 hover:bg-green-600 text-white'} transition-colors`}>
+                  Guard/Big Combinations
+                </a>
                 <button onClick={()=>setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode?'bg-yellow-500 text-gray-900':'bg-gray-800 text-white'}`}>{darkMode?'Light':'Dark'}</button>
+              </div>
+            </div>
+            <div className="flex justify-end items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>From:</label>
+                <select value={startGame} onChange={(e)=>setStartGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode?'bg-gray-800 border-gray-600 text-white':'bg-white border-gray-300 text-gray-900'}`}>
+                  {schedule.map(g => (<option key={g.date} value={g.date}>{g.displayName}</option>))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>To:</label>
+                <select value={endGame} onChange={(e)=>setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode?'bg-gray-800 border-gray-600 text-white':'bg-white border-gray-300 text-gray-900'}`}>
+                  {schedule.map(g => (<option key={g.date} value={g.date}>{g.displayName}</option>))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>Garbage Time:</label>
+                <button
+                  onClick={()=>setIncludeGarbageTime(!includeGarbageTime)}
+                  className={`px-4 py-2 rounded-md ${includeGarbageTime?(darkMode?'bg-green-600 text-white':'bg-green-500 text-white'):(darkMode?'bg-gray-700 text-gray-300':'bg-gray-300 text-gray-700')}`}
+                >
+                  {includeGarbageTime?'Included':'Excluded'}
+                </button>
               </div>
             </div>
           </div>
 
           <div className="flex">
-            <div className={`w-64 p-4 border-r border-gray-300 dark:border-gray-700 ${darkMode?'bg-gray-800':'bg-white'}`}>
-              <div className="mb-4">
+            <div className={`w-80 p-4 border-r border-gray-300 dark:border-gray-700 ${darkMode?'bg-gray-800':'bg-white'}`}>
+              <div className="mb-6">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className={`text-lg font-semibold ${darkMode?'text-white':'text-gray-900'}`}>Filter Lineups</h3>
                   {selectedPlayers.length > 0 && (
@@ -507,26 +548,26 @@
                     </button>
                   )}
                 </div>
-                <div className="space-y-1 mb-4">
+                <div className="grid grid-cols-4 gap-1 mb-3">
                   {roster.map(p => {
                     const isSelected = selectedPlayers.includes(p.id);
                     return (
                       <div
                         key={`filter-${p.id}`}
                         onClick={() => togglePlayerFilter(p.id)}
-                        className={`p-2 rounded cursor-pointer text-sm ${
+                        className={`p-1 rounded cursor-pointer text-xs text-center font-medium ${
                           isSelected 
                             ? (darkMode ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white')
                             : (darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700')
                         }`}
                       >
-                        {p.name}
+                        #{p.id}
                       </div>
                     );
                   })}
                 </div>
                 {selectedPlayers.length > 0 && (
-                  <div className={`text-xs ${darkMode?'text-gray-400':'text-gray-600'} mb-4`}>
+                  <div className={`text-xs ${darkMode?'text-gray-400':'text-gray-600'}`}>
                     Showing lineups with: {selectedPlayers.map(id => roster.find(p => p.id === id)?.name.split(' ').pop()).join(', ')}
                   </div>
                 )}
@@ -591,7 +632,7 @@
             </div>
           </div>
 
-          <div className="p-6 space-y-8">
+          {/* <div className="p-6 space-y-8">
             <div>
               <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode?'text-white':'text-gray-900'}`}>2-Player Combos</h2>
               <div className="grid grid-cols-2 gap-6">
@@ -659,14 +700,7 @@
                 </div>
               </div>
             </div>
-
-            <div className={`rounded-lg shadow p-6 ${darkMode?'bg-gray-800':'bg-white'}`}>
-              <h2 className={`text-2xl font-bold mb-4 ${darkMode?'text-white':'text-gray-900'}`}>Opponent-Weighted Lineup Scores</h2>
-              <div className={`text-center py-12 ${darkMode?'text-gray-400':'text-gray-500'} text-lg`}>
-                Opponent strengths not available yet
-              </div>
-            </div>
-          </div>
+          </div> */}
         </div>
       );
     };
