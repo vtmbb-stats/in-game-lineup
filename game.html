@@ -62,7 +62,6 @@
                 { id: 17, name: 'Neo Avdalas', position: 'G' },
                 { id: 4, name: 'Izaiah Pasha', position: 'G' },
                 { id: 7, name: 'Brett Freeman', position: 'G' },
-                { id: 15, name: 'Snook Peterkin', position: 'G' },
                 { id: 0, name: 'Jailen Bedford', position: 'G' },
                 { id: 2, name: 'Jaden Schutt', position: 'G' },
                 { id: 10, name: 'Tyler Johnson', position: 'F' },
@@ -452,20 +451,61 @@
 
             const getColorClass = (value, column, analytics) => {
                 if (analytics.length < 2) return '';
-                const values = analytics.map(item => item[column]).filter(v => !isNaN(v));
-                if (values.length < 2) return '';
-                values.sort((a, b) => a - b);
-                const min = values[0], max = values[values.length - 1], range = max - min;
-                if (range === 0) return '';
-                const percentile = (value - min) / range;
-                const higherIsBetter = ['plusMinus', 'pointsPerPossession', 'offRebRate', 'defRebRate', 'defTurnoverRate'];
-                const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
-                let colorIntensity = higherIsBetter.includes(column) ? percentile : lowerIsBetter.includes(column) ? 1 - percentile : 0.5;
                 
-                if (colorIntensity >= 0.8) return 'custom-green-100';
-                if (colorIntensity >= 0.6) return 'custom-green-50';
-                if (colorIntensity >= 0.4) return '';
-                if (colorIntensity >= 0.2) return 'custom-red-50';
+                // Special handling for plusMinus
+                if (column === 'plusMinus') {
+                  if (value === 0) return '';
+                  
+                  // Separate positive and negative values
+                  const positives = analytics.map(x => x.plusMinus).filter(v => v > 0);
+                  const negatives = analytics.map(x => x.plusMinus).filter(v => v < 0);
+                  
+                  if (value > 0) {
+                    if (positives.length === 0) return 'custom-green-100';
+                    if (positives.length === 1) return 'custom-green-100';
+                    positives.sort((a,b) => a-b);
+                    const idx = positives.indexOf(value);
+                    const pct = idx / (positives.length - 1);
+                    // Higher values get darker green
+                    return pct >= 0.5 ? 'custom-green-100' : 'custom-green-50';
+                  } else {
+                    if (negatives.length === 0) return 'custom-red-100';
+                    if (negatives.length === 1) return 'custom-red-100';
+                    negatives.sort((a,b) => b-a); // Sort descending (most negative first)
+                    const idx = negatives.indexOf(value);
+                    const pct = idx / (negatives.length - 1);
+                    // More negative values get darker red
+                    return pct >= 0.5 ? 'custom-red-100' : 'custom-red-50';
+                  }
+                }
+                
+                // For other stats, use percentile-based distribution
+                const vals = analytics.map(x => x[column]).filter(v => !isNaN(v) && isFinite(v));
+                if (vals.length < 2) return '';
+                
+                // Create sorted unique values to handle duplicates properly
+                const uniqueVals = [...new Set(vals)].sort((a,b) => a-b);
+                
+                // If all values are the same, return no color
+                if (uniqueVals.length === 1) return '';
+                
+                // Find where this value ranks among unique values
+                const uniqueIdx = uniqueVals.indexOf(value);
+                if (uniqueIdx === -1) return '';
+                
+                const percentile = uniqueIdx / (uniqueVals.length - 1);
+                
+                // Determine if higher is better or lower is better
+                const up = ['pointsPerPossession','offRebRate','defRebRate','defTurnoverRate'];
+                const down = ['defPointsPerPossession','turnoverRate'];
+                
+                const goodPercentile = up.includes(column) ? percentile : down.includes(column) ? 1-percentile : 0.5;
+                
+                // Distribute colors evenly based on percentile
+                if (goodPercentile >= 0.8) return 'custom-green-100';
+                if (goodPercentile >= 0.6) return 'custom-green-50';
+                if (goodPercentile >= 0.4) return '';
+                if (goodPercentile >= 0.2) return 'custom-red-50';
                 return 'custom-red-100';
             };
 
@@ -483,22 +523,33 @@
             return (
                 <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
                     <div className="p-4 border-b border-gray-300 dark:border-gray-700">
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center mb-4">
                             <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>VT Basketball Game Viewer</h1>
-                            <div className="flex items-center gap-4">
-                                <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-                                    {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
-                                </select>
-                                <div className="flex items-center gap-2">
-                                    <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Garbage Time:</label>
-                                    <button 
-                                        onClick={() => setIncludeGarbageTime(!includeGarbageTime)} 
-                                        className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
-                                    >
-                                        {includeGarbageTime ? 'Included' : 'Excluded'}
-                                    </button>
-                                </div>
+                            <div className="flex items-center gap-3">
+                                <a href="live.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'} transition-colors`}>
+                                    Live Game Viewer
+                                </a>
+                                <a href="specific-combos.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'} transition-colors`}>
+                                    Guard/Big Combinations
+                                </a>
+                                <a href="display.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'} transition-colors`}>
+                                    Full Season Dashboard
+                                </a>
                                 <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
+                            </div>
+                        </div>
+                        <div className="flex justify-end items-center gap-4">
+                            <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                                {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                            </select>
+                            <div className="flex items-center gap-2">
+                                <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Garbage Time:</label>
+                                <button 
+                                    onClick={() => setIncludeGarbageTime(!includeGarbageTime)} 
+                                    className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
+                                >
+                                    {includeGarbageTime ? 'Included' : 'Excluded'}
+                                </button>
                             </div>
                         </div>
                     </div>
