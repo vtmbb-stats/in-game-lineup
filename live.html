@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VT Basketball Gameday Analytics</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .custom-green-100 {
+            background-color: #00A327;
+        }
+        .custom-green-50 {
+            background-color: #66C47E;
+        }
+        .custom-red-50 {
+            background-color: #E06060;
+        }
+        .custom-red-100 {
+            background-color: #DB2800;
+        }
+    </style>
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
@@ -377,7 +391,6 @@
                     }
                 }
                 
-                // Build segments between substitutions
                 for (let i = 1; i < realChanges.length; i++) {
                     const thisChange = realChanges[i];
                     const prevChange = realChanges[i - 1];
@@ -387,15 +400,12 @@
                         : [];
 
                     if (segmentLineup.length === 5) {
-                        // Check if this segment crosses halftime
                         const prevIsInFirstHalf = prevChange.half === 1;
                         const thisIsInSecondHalf = thisChange.half === 2;
                         
                         if (prevIsInFirstHalf && thisIsInSecondHalf && endOf1stHalf) {
-                            // Check if lineup continued from 1st to 2nd half (no sub at halftime)
                             const lineupContinued = endOf1stHalf.newLineup === prevChange.newLineup;
                             
-                            // Always create segment ending 1st half
                             segments.push({
                                 lineup: segmentLineup,
                                 startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
@@ -405,7 +415,6 @@
                                 stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} }
                             });
                             
-                            // Only create 2nd half continuation if lineup didn't change
                             if (lineupContinued && startOf2ndHalf) {
                                 segments.push({
                                     lineup: segmentLineup,
@@ -416,7 +425,6 @@
                                     stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
                                 });
                             } else if (!lineupContinued) {
-                                // Lineup changed at halftime - create segment for NEW lineup starting 2nd half
                                 const newLineup = thisChange.previousLineup
                                     ? thisChange.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
                                     : [];
@@ -432,7 +440,6 @@
                                 }
                             }
                         } else {
-                            // Normal segment within same half
                             segments.push({
                                 lineup: segmentLineup,
                                 startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
@@ -445,7 +452,6 @@
                     }
                 }
                 
-                // Handle segment to end of 1st half if needed
                 if (!isStartOf2ndHalf && realChanges.length > 0) {
                     const lastChange = realChanges[realChanges.length - 1];
                     const lastSegmentLineup = lastChange.newLineup
@@ -493,7 +499,6 @@
                     const seconds = parseInt(match[2]);
                     const period = match[3];
                     
-                    // Convert to total game seconds (elapsed time from game start)
                     const timeInPeriod = minutes * 60 + seconds;
                     
                     if (period === '1st') {
@@ -585,7 +590,6 @@
                         const firstHalfChanges = realChanges.filter(c => c.half === 1);
                         const secondHalfChanges = realChanges.filter(c => c.half === 2);
                         
-                        // Process 1st half changes
                         if (firstHalfChanges.length > 0) {
                             const firstHalfFirstChange = firstHalfChanges[0];
                             const firstSegmentLineup = firstHalfFirstChange.previousLineup
@@ -601,7 +605,6 @@
                                 stats: firstHalfFirstChange.completedSegmentStats || { vt: {}, opponent: {} }
                             });
                             
-                            // Process middle 1st half changes
                             for (let i = 1; i < firstHalfChanges.length; i++) {
                                 const thisChange = firstHalfChanges[i];
                                 const prevChange = firstHalfChanges[i - 1];
@@ -622,7 +625,6 @@
                                 }
                             }
                             
-                            // Add final 1st half segment to halftime
                             if (endOf1stHalf) {
                                 const lastFirstHalfChange = firstHalfChanges[firstHalfChanges.length - 1];
                                 const endOf1stSegmentLineup = lastFirstHalfChange.newLineup
@@ -641,7 +643,6 @@
                                 }
                             }
                         } else if (endOf1stHalf && startOf2ndHalf) {
-                            // No 1st half changes - create single 1st half segment
                             const firstHalfLineup = startOf2ndHalf.previousLineup
                                 ? startOf2ndHalf.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
                                 : startingLineupIds;
@@ -656,7 +657,6 @@
                             });
                         }
                         
-                        // If still in 1st half (no endOf1stHalf), create current segment
                         if (!endOf1stHalf && firstHalfChanges.length > 0) {
                             const lastFirstHalfChange = firstHalfChanges[firstHalfChanges.length - 1];
                             const currentLineupIds = lastFirstHalfChange.newLineup 
@@ -675,10 +675,8 @@
                             }
                         }
                         
-                        // Now process 2nd half
                         if (startOf2ndHalf) {
                             if (secondHalfChanges.length > 0) {
-                                // Create segment from start of 2nd half to first 2nd half change
                                 const startOf2ndSegmentLineup = startOf2ndHalf.newLineup
                                     ? startOf2ndHalf.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
                                     : [];
@@ -694,7 +692,6 @@
                                         stats: firstSecondHalfChange.completedSegmentStats || { vt: {}, opponent: {} }
                                     });
                                     
-                                    // Process middle 2nd half changes
                                     for (let i = 1; i < secondHalfChanges.length; i++) {
                                         const thisChange = secondHalfChanges[i];
                                         const prevChange = secondHalfChanges[i - 1];
@@ -715,7 +712,6 @@
                                         }
                                     }
                                     
-                                    // Add current 2nd half segment
                                     const lastSecondHalfChange = secondHalfChanges[secondHalfChanges.length - 1];
                                     const currentLineupIds = lastSecondHalfChange.newLineup 
                                         ? lastSecondHalfChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
@@ -733,7 +729,6 @@
                                     }
                                 }
                             } else {
-                                // No 2nd half changes - single segment for whole 2nd half
                                 const startOf2ndSegmentLineup = startOf2ndHalf.newLineup
                                     ? startOf2ndHalf.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
                                     : [];
@@ -847,7 +842,11 @@
                         return true;
                     })
                     .map(lineup => {
-                    const playerNames = lineup.players.map(id => {
+                    // Sort lineup by roster order before displaying
+                    const orderedIds = lineup.players.slice().sort(
+                        (a, b) => roster.findIndex(p => p.id === a) - roster.findIndex(p => p.id === b)
+                    );
+                    const playerNames = orderedIds.map(id => {
                         const player = roster.find(p => p.id === id);
                         return player ? player.name.split(' ').pop() : '';
                     }).join(', ');
@@ -903,35 +902,61 @@
             const getColorClass = (value, column, analytics) => {
                 if (analytics.length < 2) return '';
                 
-                const values = analytics.map(item => item[column]).filter(v => !isNaN(v));
-                if (values.length < 2) return '';
-                
-                values.sort((a, b) => a - b);
-                const min = values[0];
-                const max = values[values.length - 1];
-                const range = max - min;
-                
-                if (range === 0) return '';
-                
-                const percentile = (value - min) / range;
-                
-                const higherIsBetter = ['plusMinus', 'pointsPerPossession', 'offRebRate', 'defRebRate', 'defTurnoverRate'];
-                const lowerIsBetter = ['defPointsPerPossession', 'turnoverRate'];
-                
-                let colorIntensity;
-                if (higherIsBetter.includes(column)) {
-                    colorIntensity = percentile;
-                } else if (lowerIsBetter.includes(column)) {
-                    colorIntensity = 1 - percentile;
-                } else {
-                    colorIntensity = 0.5;
+                // Special handling for plusMinus
+                if (column === 'plusMinus') {
+                    if (value === 0) return '';
+                    
+                    // Separate positive and negative values
+                    const positives = analytics.map(x => x.plusMinus).filter(v => v > 0);
+                    const negatives = analytics.map(x => x.plusMinus).filter(v => v < 0);
+                    
+                    if (value > 0) {
+                        if (positives.length === 0) return 'custom-green-100';
+                        if (positives.length === 1) return 'custom-green-100';
+                        positives.sort((a,b) => a-b);
+                        const idx = positives.indexOf(value);
+                        const pct = idx / (positives.length - 1);
+                        // Higher values get darker green
+                        return pct >= 0.5 ? 'custom-green-100' : 'custom-green-50';
+                    } else {
+                        if (negatives.length === 0) return 'custom-red-100';
+                        if (negatives.length === 1) return 'custom-red-100';
+                        negatives.sort((a,b) => b-a); // Sort descending (most negative first)
+                        const idx = negatives.indexOf(value);
+                        const pct = idx / (negatives.length - 1);
+                        // More negative values get darker red
+                        return pct >= 0.5 ? 'custom-red-100' : 'custom-red-50';
+                    }
                 }
                 
-                if (colorIntensity >= 0.8) return darkMode ? 'bg-green-800' : 'bg-green-200';
-                if (colorIntensity >= 0.6) return darkMode ? 'bg-green-900' : 'bg-green-100';
-                if (colorIntensity >= 0.4) return '';
-                if (colorIntensity >= 0.2) return darkMode ? 'bg-red-900' : 'bg-red-100';
-                return darkMode ? 'bg-red-800' : 'bg-red-200';
+                // For other stats, use percentile-based distribution
+                const vals = analytics.map(x => x[column]).filter(v => !isNaN(v) && isFinite(v));
+                if (vals.length < 2) return '';
+                
+                // Create sorted unique values to handle duplicates properly
+                const uniqueVals = [...new Set(vals)].sort((a,b) => a-b);
+                
+                // If all values are the same, return no color
+                if (uniqueVals.length === 1) return '';
+                
+                // Find where this value ranks among unique values
+                const uniqueIdx = uniqueVals.indexOf(value);
+                if (uniqueIdx === -1) return '';
+                
+                const percentile = uniqueIdx / (uniqueVals.length - 1);
+                
+                // Determine if higher is better or lower is better
+                const up = ['pointsPerPossession','offRebRate','defRebRate','defTurnoverRate'];
+                const down = ['defPointsPerPossession','turnoverRate'];
+                
+                const goodPercentile = up.includes(column) ? percentile : down.includes(column) ? 1-percentile : 0.5;
+                
+                // Distribute colors evenly based on percentile
+                if (goodPercentile >= 0.8) return 'custom-green-100';
+                if (goodPercentile >= 0.6) return 'custom-green-50';
+                if (goodPercentile >= 0.4) return '';
+                if (goodPercentile >= 0.2) return 'custom-red-50';
+                return 'custom-red-100';
             };
 
             const handleSort = (column) => {
