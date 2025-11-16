@@ -356,11 +356,12 @@
             if (!includeGarbageTime && segment.isGarbageTime) return;
             const currentLineup = segment.lineup;
             const duration = calculateMinutesPlayed(segment.startTime, segment.endTime);
-            if (duration <= 0) return;
-
             const vtPoints = segment.endScore.vt - segment.startScore.vt;
             const oppPoints = segment.endScore.opp - segment.startScore.opp;
             const plusMinus = vtPoints - oppPoints;
+            
+            // Skip only if both duration is 0 AND no score changed
+            if (duration <= 0 && plusMinus === 0) return;
 
             const vtStats = segment.stats.vt || {};
             const oppStats = segment.stats.opponent || {};
