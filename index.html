@@ -88,9 +88,13 @@
           const day = String(d.getDate()).padStart(2, '0');
           return `${y}-${m}-${day}`;
         };
-        // Pick next upcoming game; fallback to last item if none remain
+        // Pick today's game if it exists, otherwise next upcoming game; fallback to last item if none remain
         const defaultGameDate = (() => {
           const today = todayLocalYMD();
+          // First check if there's a game today
+          const todayGame = gameSchedule.find(g => g.date === today);
+          if (todayGame) return todayGame.date;
+          // Otherwise find next upcoming game
           const next = gameSchedule.find(g => g.date > today);
           return next ? next.date : gameSchedule[gameSchedule.length - 1].date;
         })();
@@ -664,6 +668,31 @@
                 setPendingChanges([]);
             };
 
+            // Calculate total VT possessions from all lineup history (sum all segments, don't reset)
+            const totalVTPossessions = lineupHistory.reduce((total, record) => {
+                return total + (record.completedSegmentStats?.vt?.possessions || 0);
+            }, 0) + currentStats.vt.possessions;
+
+            // Calculate total game stats for both teams
+            const totalGameStats = {
+                vt: {
+                    offReb: lineupHistory.reduce((total, record) => 
+                        total + (record.completedSegmentStats?.vt?.offensiveRebounds || 0), 0) + currentStats.vt.offensiveRebounds,
+                    defReb: lineupHistory.reduce((total, record) => 
+                        total + (record.completedSegmentStats?.vt?.defensiveRebounds || 0), 0) + currentStats.vt.defensiveRebounds,
+                    turnovers: lineupHistory.reduce((total, record) => 
+                        total + (record.completedSegmentStats?.vt?.turnovers || 0), 0) + currentStats.vt.turnovers
+                },
+                opponent: {
+                    offReb: lineupHistory.reduce((total, record) => 
+                        total + (record.completedSegmentStats?.opponent?.offensiveRebounds || 0), 0) + currentStats.opponent.offensiveRebounds,
+                    defReb: lineupHistory.reduce((total, record) => 
+                        total + (record.completedSegmentStats?.opponent?.defensiveRebounds || 0), 0) + currentStats.opponent.defensiveRebounds,
+                    turnovers: lineupHistory.reduce((total, record) => 
+                        total + (record.completedSegmentStats?.opponent?.turnovers || 0), 0) + currentStats.opponent.turnovers
+                }
+            };
+
             return (
                 <div className={`min-h-screen p-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
                     <div className="max-w-6xl mx-auto">
@@ -1039,6 +1068,17 @@
                                 {!gameStarted && <span className="text-sm font-normal text-orange-500 ml-2">Start game to enable</span>}
                             </h2>
                             
+                            {gameStarted && (
+                                <div className={`text-center mb-6 pb-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                    <div className={`text-sm font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        Total VT Possessions
+                                    </div>
+                                    <div className={`text-3xl font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+                                        {totalVTPossessions}
+                                    </div>
+                                </div>
+                            )}
+                            
                             <div className="grid grid-cols-2 gap-8">
                                 <div className="text-center">
                                     <h3 className={`text-lg font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -1324,6 +1364,43 @@
                                             </div>
                                         </div>
                                     ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className={`rounded-lg shadow-lg p-4 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <div className="grid grid-cols-2 gap-8">
+                                <div className="text-center">
+                                    <h3 className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        Virginia Tech - Total Game Stats
+                                    </h3>
+                                    <div className={`flex justify-center gap-6 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        <div>
+                                            <span className="font-semibold">Off Reb:</span> {totalGameStats.vt.offReb}
+                                        </div>
+                                        <div>
+                                            <span className="font-semibold">Def Reb:</span> {totalGameStats.vt.defReb}
+                                        </div>
+                                        <div>
+                                            <span className="font-semibold">TO:</span> {totalGameStats.vt.turnovers}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="text-center">
+                                    <h3 className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        {currentOpponent} - Total Game Stats
+                                    </h3>
+                                    <div className={`flex justify-center gap-6 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        <div>
+                                            <span className="font-semibold">Off Reb:</span> {totalGameStats.opponent.offReb}
+                                        </div>
+                                        <div>
+                                            <span className="font-semibold">Def Reb:</span> {totalGameStats.opponent.defReb}
+                                        </div>
+                                        <div>
+                                            <span className="font-semibold">TO:</span> {totalGameStats.opponent.turnovers}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
