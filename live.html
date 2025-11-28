@@ -77,6 +77,10 @@
                 opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
             });
 
+            const capPPP = (ppp) => {
+              return Math.min(ppp, 3.0);
+            };
+
             const roster = [
                 { id: 3, name: 'Ben Hammond', position: 'G' },
                 { id: 17, name: 'Neo Avdalas', position: 'G' },
@@ -890,7 +894,7 @@
                         id: lineup.players.sort((a, b) => a - b).join('-'),
                         players: playerNames,
                         plusMinus: lineup.totalPlusMinus,
-                        pointsPerPossession: lineup.totalPoints / offPossessions,
+                        pointsPerPossession: offPoss > 0 ? capPPP(r.totalPoints / offPoss) : 0,
                         defPointsPerPossession: lineup.totalOppPoints / defPossessions,
                         offRebRate: availableOffReb > 0 ? (lineup.totalOffReb / availableOffReb) * 100 : 0,
                         defRebRate: availableDefReb > 0 ? (lineup.totalDefReb / availableDefReb) * 100 : 0,
