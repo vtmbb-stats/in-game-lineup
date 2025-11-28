@@ -59,6 +59,10 @@
       const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
       const [selectedPlayers, setSelectedPlayers] = useState([]);
 
+      const capPPP = (ppp) => {
+        return Math.min(ppp, 3.0);
+      };
+
       const roster = [
         { id:3, name:'Ben Hammond' }, { id:17, name:'Neo Avdalas' }, { id:4, name:'Izaiah Pasha' },
         { id:7, name:'Brett Freeman' }, { id:0, name:'Jailen Bedford' },
@@ -400,7 +404,7 @@
             players: names,
             playerIds: r.players,
             plusMinus: r.totalPlusMinus,
-            pointsPerPossession: r.totalPoints / offPoss,
+            pointsPerPossession: offPoss > 0 ? capPPP(r.totalPoints / offPoss) : 0,
             defPointsPerPossession: r.totalOppPoints / defPoss,
             offRebRate: availOR>0 ? (r.totalOffReb/availOR)*100 : 0,
             defRebRate: availDR>0 ? (r.totalDefReb/availDR)*100 : 0,
