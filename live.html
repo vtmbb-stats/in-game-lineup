@@ -894,7 +894,7 @@
                         id: lineup.players.sort((a, b) => a - b).join('-'),
                         players: playerNames,
                         plusMinus: lineup.totalPlusMinus,
-                        pointsPerPossession: offPoss > 0 ? capPPP(r.totalPoints / offPoss) : 0,
+                        pointsPerPossession: offPossessions > 0 ? capPPP(lineup.totalPoints / offPossessions) : 0,
                         defPointsPerPossession: lineup.totalOppPoints / defPossessions,
                         offRebRate: availableOffReb > 0 ? (lineup.totalOffReb / availableOffReb) * 100 : 0,
                         defRebRate: availableDefReb > 0 ? (lineup.totalDefReb / availableDefReb) * 100 : 0,
