@@ -109,6 +109,7 @@
             const [gameTime, setGameTime] = useState('20:00');
             const [currentLineup, setCurrentLineup] = useState([17, 0, 10, 1, 13]);
             const [previousLineup, setPreviousLineup] = useState([17, 0, 10, 1, 13]);
+            const [startingLineup, setStartingLineup] = useState([17, 0, 10, 1, 13]);
             const [pendingChanges, setPendingChanges] = useState([]);
             const [showTimeModal, setShowTimeModal] = useState(false);
             const [showStartingLineupModal, setShowStartingLineupModal] = useState(false);
@@ -351,20 +352,7 @@
                     opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
                 };
                 
-                const endOf1stHalfRecord = {
-                    timestamp: '0:00 1st',
-                    gameTime: '0:00 1st',
-                    vtScore: vtScore,
-                    oppScore: oppScore,
-                    changes: 'End of 1st Half',
-                    newLineup: previousLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
-                    previousLineup: previousLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
-                    half: 1,
-                    completedSegmentStats: currentStats
-                };
-                
-                const newHistory = [...lineupHistory, endOf1stHalfRecord];
-                
+                // The end of 1st half is already recorded, just add start of 2nd half
                 const startOf2ndHalfRecord = {
                     timestamp: '20:00 2nd',
                     gameTime: '20:00 2nd',
@@ -372,12 +360,12 @@
                     oppScore: oppScore,
                     changes: 'Start of 2nd Half',
                     newLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
-                    previousLineup: previousLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                    previousLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
                     half: 2,
                     completedSegmentStats: resetStats
                 };
                 
-                const finalHistory = [...newHistory, startOf2ndHalfRecord];
+                const finalHistory = [...lineupHistory, startOf2ndHalfRecord];
                 setLineupHistory(finalHistory);
                 
                 if (window.firebaseDb) {
@@ -418,6 +406,7 @@
                 setGameTime('20:00');
                 setVtScore(0);
                 setOppScore(0);
+                setStartingLineup([...currentLineup]); // Store the starting lineup
                 setCurrentStats({
                     vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
                     opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
@@ -483,6 +472,17 @@
             };
 
             const endGame = async () => {
+                const confirmEnd = window.confirm(
+                    `Are you sure you want to END this game?\n\n` +
+                    `Current Score: VT ${vtScore} - ${currentOpponent} ${oppScore}\n` +
+                    `Game Time: ${gameTime} ${currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : currentHalf === 3 ? 'OT' : `${currentHalf - 2}OT`}\n\n` +
+                    `This action will finalize all game data and cannot be undone.`
+                );
+                
+                if (!confirmEnd) {
+                    return;
+                }
+                
                 const halfSuffix = currentHalf === 1 ? '1st' : currentHalf === 2 ? '2nd' : currentHalf === 3 ? 'OT' : `${currentHalf - 2}OT`;
                 const fullGameTime = `0:00 ${halfSuffix}`;
 
@@ -777,6 +777,38 @@
                                             <button
                                                 onClick={async () => {
                                                     if (currentHalf === 1) {
+                                                        // Record end of 1st half immediately
+                                                        const endOf1stHalfRecord = {
+                                                            timestamp: '0:00 1st',
+                                                            gameTime: '0:00 1st',
+                                                            vtScore: vtScore,
+                                                            oppScore: oppScore,
+                                                            changes: 'End of 1st Half',
+                                                            newLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            previousLineup: currentLineup.map(id => roster.find(p => p.id === id)?.name).join(', '),
+                                                            half: 1,
+                                                            completedSegmentStats: currentStats
+                                                        };
+                                                        
+                                                        const newHistory = [...lineupHistory, endOf1stHalfRecord];
+                                                        setLineupHistory(newHistory);
+                                                        
+                                                        // Save to Firebase immediately
+                                                        if (window.firebaseDb) {
+                                                            try {
+                                                                const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
+                                                                const updates = {};
+                                                                newHistory.forEach((record, index) => {
+                                                                    updates[`${index}`] = record;
+                                                                });
+                                                                await window.firebaseDb.set(lineupChangesRef, updates);
+                                                            } catch (error) {
+                                                                console.error('Error saving end of 1st half:', error);
+                                                            }
+                                                        }
+                                                        
+                                                        // Reset to starting lineup for 2nd half selection
+                                                        setCurrentLineup([...startingLineup]);
                                                         setIsStarting2ndHalf(true);
                                                         setShowStartingLineupModal(true);
                                                     } else if (currentHalf === 2) {
