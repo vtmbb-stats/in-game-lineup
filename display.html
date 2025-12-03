@@ -405,7 +405,7 @@
             playerIds: r.players,
             plusMinus: r.totalPlusMinus,
             pointsPerPossession: offPoss > 0 ? capPPP(r.totalPoints / offPoss) : 0,
-            defPointsPerPossession: r.totalOppPoints / defPoss,
+            defPointsPerPossession: defPoss > 0 ? capPPP(r.totalPoints / defPoss) : 0,
             offRebRate: availOR>0 ? (r.totalOffReb/availOR)*100 : 0,
             defRebRate: availDR>0 ? (r.totalDefReb/availDR)*100 : 0,
             turnoverRate: (r.totalTurnovers/offPoss)*100,
