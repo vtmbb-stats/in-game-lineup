@@ -436,7 +436,7 @@
                         playerIds: lineup.players,
                         plusMinus: lineup.totalPlusMinus,
                         pointsPerPossession: offPoss > 0 ? capPPP(r.totalPoints / offPoss) : 0,
-                        defPointsPerPossession: lineup.totalOppPoints / defPoss,
+                        defPointsPerPossession: defPoss > 0 ? capPPP(r.totalPoints / defPoss) : 0,
                         offRebRate: availOffReb > 0 ? (lineup.totalOffReb / availOffReb) * 100 : 0,
                         defRebRate: availDefReb > 0 ? (lineup.totalDefReb / availDefReb) * 100 : 0,
                         turnoverRate: offPoss > 0 ? (lineup.totalTurnovers / offPoss) * 100 : 0,
