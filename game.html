@@ -344,6 +344,34 @@
                 return `${Math.floor(playedSeconds / 60)}:${(playedSeconds % 60).toString().padStart(2, '0')}`;
             };
 
+            const calculatePlayerMinutes = (playerId) => {
+                let totalSeconds = 0;
+                
+                // Get all segments from the analytics
+                const segments = buildSegments(lineupHistory);
+                
+                // Filter segments where this player was in the lineup
+                const playerSegments = segments.filter(segment => 
+                    segment.lineup.includes(playerId) &&
+                    (includeGarbageTime || !segment.isGarbageTime)
+                );
+                
+                // Sum up the minutes from each segment
+                playerSegments.forEach(segment => {
+                    if (segment.endTime !== 'Current') {
+                        const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
+                        if (minutesStr !== '--:--') {
+                            const [mins, secs] = minutesStr.split(':').map(Number);
+                            totalSeconds += (mins * 60 + secs);
+                        }
+                    }
+                });
+                
+                const totalMins = Math.floor(totalSeconds / 60);
+                const totalSecs = totalSeconds % 60;
+                return `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
+            };
+
             const calculateAnalytics = () => {
                 // Don't calculate if we don't have data yet
                 if (!lineupHistory || lineupHistory.length === 0) {
@@ -564,14 +592,30 @@
                                 {roster.map(player => {
                                     const plusMinus = getPlayerPlusMinus(player.id);
                                     const isAvailable = playerAvailability[player.id];
+                                    const minutesPlayed = calculatePlayerMinutes(player.id);
+                                    
                                     return (
                                         <div key={player.id} className={`p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} ${!isAvailable ? 'opacity-50' : ''}`}>
                                             <div className="flex justify-between items-center">
-                                                <div>
-                                                    <div className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{player.name}</div>
-                                                    <div className={`text-sm ${plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>{plusMinus >= 0 ? '+' : ''}{plusMinus}</div>
+                                                <div className="flex-1">
+                                                    <div className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {player.name}
+                                                    </div>
+                                                    <div className="flex gap-3 items-center">
+                                                        <div className={`text-sm ${plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                            {plusMinus >= 0 ? '+' : ''}{plusMinus}
+                                                        </div>
+                                                        <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                                            {minutesPlayed}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <input type="checkbox" checked={isAvailable ?? true} onChange={() => togglePlayerAvailability(player.id)} className="ml-2" />
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={isAvailable ?? true} 
+                                                    onChange={() => togglePlayerAvailability(player.id)} 
+                                                    className="ml-2" 
+                                                />
                                             </div>
                                         </div>
                                     );
