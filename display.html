@@ -73,12 +73,8 @@
 
       const [includeLosses, setIncludeLosses] = useState(true);
       const lossGames = [
-        '2025-10-25', // Duquesne
-        '2025-11-08', // Providence
         '2025-11-27', // Saint Mary's
         '2025-11-28', // VCU
-        '2025-12-02', // South Carolina
-        // Add more loss dates as they occur
       ];
 
       useEffect(() => { loadAllGames(); }, []);
@@ -309,6 +305,13 @@
         if (si > ei) return [];
         
         let games = s.slice(si, ei + 1);
+        
+        // Always exclude first 2 exhibition games
+        const exhibitionGames = [
+          '2025-10-11', // Seton Hall
+          '2025-10-25'  // Duquesne
+        ];
+        games = games.filter(g => !exhibitionGames.includes(g.date));
         
         // Filter out losses if needed
         if (!includeLosses) {
