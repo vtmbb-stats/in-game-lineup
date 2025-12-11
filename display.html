@@ -175,6 +175,30 @@
         return d > 0 ? d : 0;
       };
 
+      const calculatePlayerMinutes = (playerId) => {
+        const gamesToInclude = getSliceByDates();
+        if (gamesToInclude.length === 0) return '0:00';
+        
+        let totalSeconds = 0;
+        
+        gamesToInclude.forEach(game => {
+          const hist = allGamesData[game.date];
+          if (!hist) return;
+          const segments = buildSegments(hist);
+          
+          segments.forEach(seg => {
+            if (!includeGarbageTime && seg.isGarbageTime) return;
+            if (seg.lineup.includes(playerId)) {
+              totalSeconds += calculateMinutesPlayed(seg.startTime, seg.endTime);
+            }
+          });
+        });
+        
+        const totalMins = Math.floor(totalSeconds / 60);
+        const totalSecs = totalSeconds % 60;
+        return `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
+      };
+
       const buildSegments = (lineupHistory) => {
         if (!lineupHistory || lineupHistory.length === 0) return [];
         const segments = [];
@@ -597,14 +621,30 @@
                 {roster.map(p => {
                   const pm = getPlayerPlusMinus(p.id);
                   const ok = playerAvailability[p.id];
+                  const minutesPlayed = calculatePlayerMinutes(p.id);
+                  
                   return (
                     <div key={p.id} className={`p-2 rounded ${darkMode?'bg-gray-700':'bg-gray-100'} ${!ok?'opacity-50':''}`}>
                       <div className="flex justify-between items-center">
-                        <div>
-                          <div className={`font-medium text-sm ${darkMode?'text-white':'text-gray-900'}`}>{p.name}</div>
-                          <div className={`text-sm ${pm>=0?'text-green-500':'text-red-500'}`}>{pm>=0?'+':''}{pm}</div>
+                        <div className="flex-1">
+                          <div className={`font-medium text-sm ${darkMode?'text-white':'text-gray-900'}`}>
+                            {p.name}
+                          </div>
+                          <div className="flex gap-3 items-center">
+                            <div className={`text-sm ${pm>=0?'text-green-500':'text-red-500'}`}>
+                              {pm>=0?'+':''}{pm}
+                            </div>
+                            <div className={`text-sm ${darkMode?'text-gray-400':'text-gray-600'}`}>
+                              {minutesPlayed}
+                            </div>
+                          </div>
                         </div>
-                        <input type="checkbox" checked={ok ?? true} onChange={()=>togglePlayerAvailability(p.id)} className="ml-2" />
+                        <input 
+                          type="checkbox" 
+                          checked={ok ?? true} 
+                          onChange={()=>togglePlayerAvailability(p.id)} 
+                          className="ml-2" 
+                        />
                       </div>
                     </div>
                   );
