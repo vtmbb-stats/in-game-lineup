@@ -71,6 +71,16 @@
         { id:32, name:'Christian Gurdak' }, { id:77, name:'Antonio Dorn' }
       ];
 
+      const [includeLosses, setIncludeLosses] = useState(true);
+      const lossGames = [
+        '2025-10-25', // Duquesne
+        '2025-11-08', // Providence
+        '2025-11-27', // Saint Mary's
+        '2025-11-28', // VCU
+        '2025-12-02', // South Carolina
+        // Add more loss dates as they occur
+      ];
+
       useEffect(() => { loadAllGames(); }, []);
       useEffect(() => {
         const availability = {};
@@ -82,7 +92,7 @@
           calculateCombos();
           calculateLineupAnalytics();
         }
-      }, [startGame, endGame, loading, playerAvailability, includeGarbageTime]);
+      }, [startGame, endGame, loading, playerAvailability, includeGarbageTime, includeLosses]);
 
       useEffect(() => {
         let filtered = [...lineupAnalytics];
@@ -297,7 +307,15 @@
         const ei = s.findIndex(g => g.date === endGame);
         if (si === -1 || ei === -1) return [];
         if (si > ei) return [];
-        return s.slice(si, ei + 1);
+        
+        let games = s.slice(si, ei + 1);
+        
+        // Filter out losses if needed
+        if (!includeLosses) {
+          games = games.filter(g => !lossGames.includes(g.date));
+        }
+        
+        return games;
       };
 
       const calculateCombos = () => {
@@ -572,6 +590,15 @@
                   className={`px-4 py-2 rounded-md ${includeGarbageTime?(darkMode?'bg-green-600 text-white':'bg-green-500 text-white'):(darkMode?'bg-gray-700 text-gray-300':'bg-gray-300 text-gray-700')}`}
                 >
                   {includeGarbageTime?'Included':'Excluded'}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>Losses:</label>
+                <button
+                  onClick={()=>setIncludeLosses(!includeLosses)}
+                  className={`px-4 py-2 rounded-md ${includeLosses?(darkMode?'bg-green-600 text-white':'bg-green-500 text-white'):(darkMode?'bg-gray-700 text-gray-300':'bg-gray-300 text-gray-700')}`}
+                >
+                  {includeLosses?'Included':'Excluded'}
                 </button>
               </div>
             </div>
