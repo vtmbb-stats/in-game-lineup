@@ -120,11 +120,9 @@
             }, []);
 
             useEffect(() => {
-                // Find the most recent game with data
                 if (!window.firebaseDb || selectedGame !== '') return;
                 
                 const checkGamesForData = async () => {
-                    // Check games in reverse order (most recent first)
                     for (let i = gameSchedule.length - 1; i >= 0; i--) {
                         const game = gameSchedule[i];
                         const gameInfoRef = window.firebaseDb.ref(`game-info/${game.date}`);
@@ -146,7 +144,6 @@
                         }
                     }
                     
-                    // If no game has data, default to first game
                     if (gameSchedule.length > 0) {
                         setSelectedGame(gameSchedule[0].date);
                     }
@@ -179,13 +176,10 @@
                 setSortedAnalytics(sorted);
             }, [lineupAnalytics, sortColumn, sortDirection]);
 
-            // COMPLETELY REWRITTEN buildSegments function
             const buildSegments = (lineupHistory) => {
                 if (!lineupHistory || lineupHistory.length === 0) return [];
                 
                 const segments = [];
-                
-                // Sort all records by time
                 const sorted = [...lineupHistory].sort((a, b) => {
                     const parseTime = (t) => {
                         const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
@@ -196,41 +190,30 @@
                     return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
                 });
                 
-                // Track lineup for NEXT segment as we go
                 let nextSegmentLineup = null;
                 
                 for (let i = 0; i < sorted.length; i++) {
                     const curr = sorted[i];
-                    
-                    // The lineup that PLAYED during the segment ENDING at curr.gameTime
-                    // is curr.previousLineup (the lineup before this substitution)
                     let segmentLineup;
                     
                     if (curr.changes === 'Start of 2nd Half') {
-                        // Start of 2nd half: use previousLineup for the segment that's starting
                         nextSegmentLineup = curr.newLineup;
-                        continue; // Don't create a segment, just update for next iteration
+                        continue;
                     } else if (i === 0) {
-                        // First record: the segment from game start to here used previousLineup
                         segmentLineup = curr.previousLineup;
                         nextSegmentLineup = curr.newLineup;
                     } else if (curr.changes === 'End of 1st Half' || curr.changes === 'End of Game') {
-                        // End markers: use the lineup that was playing (which we tracked)
                         segmentLineup = nextSegmentLineup || curr.previousLineup;
-                        // Don't update nextSegmentLineup, it stays the same
                     } else {
-                        // Normal substitution: segment used the lineup before this sub
                         segmentLineup = curr.previousLineup;
                         nextSegmentLineup = curr.newLineup;
                     }
                     
                     if (!segmentLineup) continue;
                     
-                    // Determine segment times/scores
                     let startTime, startScore, endTime, endScore, stats;
                     
                     if (i === 0) {
-                        // First segment
                         startTime = '20:00 1st';
                         startScore = { vt: 0, opp: 0 };
                         endTime = curr.gameTime;
@@ -238,7 +221,6 @@
                         stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
                     } else {
                         const prev = sorted[i - 1];
-                        // Skip if previous was Start of 2nd Half (already handled)
                         if (prev.changes === 'Start of 2nd Half') {
                             startTime = '20:00 2nd';
                             startScore = { vt: prev.vtScore, opp: prev.oppScore };
@@ -251,13 +233,8 @@
                         stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
                     }
                     
-                    // Skip 0:00 segments (simultaneous subs)
-                    if (startTime === endTime) {
-                        console.log(`Skipping 0:00 segment at ${startTime}`);
-                        continue;
-                    }
+                    if (startTime === endTime) continue;
                     
-                    // Convert lineup string to IDs
                     const lineupIds = segmentLineup.split(', ')
                         .map(name => roster.find(p => p.name === name)?.id)
                         .filter(id => id !== undefined);
@@ -274,7 +251,6 @@
                     }
                 }
                 
-                // Mark garbage time
                 const garbageTimeStart = sorted.find(r => r.garbageTime === true);
                 if (garbageTimeStart) {
                     const garbageTimeValue = parseGameTime(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
@@ -346,17 +322,13 @@
 
             const calculatePlayerMinutes = (playerId) => {
                 let totalSeconds = 0;
-                
-                // Get all segments from the analytics
                 const segments = buildSegments(lineupHistory);
                 
-                // Filter segments where this player was in the lineup
                 const playerSegments = segments.filter(segment => 
                     segment.lineup.includes(playerId) &&
                     (includeGarbageTime || !segment.isGarbageTime)
                 );
                 
-                // Sum up the minutes from each segment
                 playerSegments.forEach(segment => {
                     if (segment.endTime !== 'Current') {
                         const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
@@ -373,18 +345,13 @@
             };
 
             const calculateAnalytics = () => {
-                // Don't calculate if we don't have data yet
                 if (!lineupHistory || lineupHistory.length === 0) {
-                    console.log('No lineup history yet, skipping analytics calculation');
                     setLineupAnalytics([]);
                     return;
                 }
                 
                 const segments = buildSegments(lineupHistory);
-                console.log(`Built ${segments.length} segments`);
-                
                 const lineupMap = new Map();
-                let totalMinutes = 0;
                 
                 segments.forEach(segment => {
                     const lineupKey = [...segment.lineup].sort((a, b) => a - b).join('-');
@@ -421,9 +388,7 @@
                         const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
                         if (minutesStr !== '--:--') {
                             const [mins, secs] = minutesStr.split(':').map(Number);
-                            const seconds = mins * 60 + secs;
-                            lineup.totalMinutesSeconds += seconds;
-                            totalMinutes += seconds;
+                            lineup.totalMinutesSeconds += (mins * 60 + secs);
                         }
                     }
                     
@@ -441,8 +406,6 @@
                     lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
                     lineup.totalOppTurnovers += oppStats.turnovers || 0;
                 });
-                
-                console.log(`Total minutes: ${(totalMinutes / 60).toFixed(2)}`);
                 
                 const analytics = Array.from(lineupMap.values()).map(lineup => {
                     const playerNames = [...lineup.players]
@@ -484,11 +447,8 @@
             const getColorClass = (value, column, analytics) => {
                 if (analytics.length < 2) return '';
                 
-                // Special handling for plusMinus
                 if (column === 'plusMinus') {
                   if (value === 0) return '';
-                  
-                  // Separate positive and negative values
                   const positives = analytics.map(x => x.plusMinus).filter(v => v > 0);
                   const negatives = analytics.map(x => x.plusMinus).filter(v => v < 0);
                   
@@ -498,42 +458,28 @@
                     positives.sort((a,b) => a-b);
                     const idx = positives.indexOf(value);
                     const pct = idx / (positives.length - 1);
-                    // Higher values get darker green
                     return pct >= 0.5 ? 'custom-green-100' : 'custom-green-50';
                   } else {
                     if (negatives.length === 0) return 'custom-red-100';
                     if (negatives.length === 1) return 'custom-red-100';
-                    negatives.sort((a,b) => b-a); // Sort descending (most negative first)
+                    negatives.sort((a,b) => b-a);
                     const idx = negatives.indexOf(value);
                     const pct = idx / (negatives.length - 1);
-                    // More negative values get darker red
                     return pct >= 0.5 ? 'custom-red-100' : 'custom-red-50';
                   }
                 }
                 
-                // For other stats, use percentile-based distribution
                 const vals = analytics.map(x => x[column]).filter(v => !isNaN(v) && isFinite(v));
                 if (vals.length < 2) return '';
-                
-                // Create sorted unique values to handle duplicates properly
                 const uniqueVals = [...new Set(vals)].sort((a,b) => a-b);
-                
-                // If all values are the same, return no color
                 if (uniqueVals.length === 1) return '';
-                
-                // Find where this value ranks among unique values
                 const uniqueIdx = uniqueVals.indexOf(value);
                 if (uniqueIdx === -1) return '';
-                
                 const percentile = uniqueIdx / (uniqueVals.length - 1);
-                
-                // Determine if higher is better or lower is better
                 const up = ['pointsPerPossession','offRebRate','defRebRate','defTurnoverRate'];
                 const down = ['defPointsPerPossession','turnoverRate'];
-                
                 const goodPercentile = up.includes(column) ? percentile : down.includes(column) ? 1-percentile : 0.5;
                 
-                // Distribute colors evenly based on percentile
                 if (goodPercentile >= 0.8) return 'custom-green-100';
                 if (goodPercentile >= 0.6) return 'custom-green-50';
                 if (goodPercentile >= 0.4) return '';
