@@ -554,6 +554,91 @@
                 return `${mins}:${secs.toString().padStart(2, '0')}`;
             };
 
+            // Add this function to calculate player minutes
+            const calculatePlayerMinutes = (playerId) => {
+                if (currentLineup.includes(playerId)) {
+                    return '--:--';
+                }
+                
+                let totalSeconds = 0;
+                const segments = [];
+                
+                // Build segments where this player was in the game
+                if (lineupHistory.length === 0) {
+                    // If no changes yet, check if player was in starting lineup
+                    let startingLineupIds = [3, 2, 17, 1, 13];
+                    if (gameData && gameData.startingLineup) {
+                        startingLineupIds = gameData.startingLineup.split(', ').map(name => 
+                            roster.find(p => p.name === name)?.id
+                        ).filter(id => id !== undefined);
+                    }
+                    
+                    if (startingLineupIds.includes(playerId)) {
+                        return '--:--'; // Player is currently in
+                    }
+                    return '0:00';
+                }
+                
+                const realChanges = lineupHistory.filter(record => 
+                    record.changes !== 'End of 1st Half' && record.changes !== 'Start of 2nd Half'
+                );
+                
+                // Track when player enters and exits
+                let currentlyIn = false;
+                let entryTime = null;
+                
+                // Check starting lineup
+                let startingLineupIds = [3, 2, 17, 1, 13];
+                if (gameData && gameData.startingLineup) {
+                    startingLineupIds = gameData.startingLineup.split(', ').map(name => 
+                        roster.find(p => p.name === name)?.id
+                    ).filter(id => id !== undefined);
+                }
+                
+                if (startingLineupIds.includes(playerId)) {
+                    currentlyIn = true;
+                    entryTime = '20:00 1st';
+                }
+                
+                // Process each lineup change
+                for (const change of realChanges) {
+                    const previousLineup = change.previousLineup 
+                        ? change.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                        : [];
+                    const newLineup = change.newLineup
+                        ? change.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                        : [];
+                    
+                    const wasIn = previousLineup.includes(playerId);
+                    const isIn = newLineup.includes(playerId);
+                    
+                    if (wasIn && !isIn) {
+                        // Player exited
+                        if (entryTime) {
+                            const minutes = calculateMinutesPlayed(entryTime, change.gameTime);
+                            if (minutes !== '--:--') {
+                                const [mins, secs] = minutes.split(':').map(Number);
+                                totalSeconds += (mins * 60 + secs);
+                            }
+                        }
+                        currentlyIn = false;
+                        entryTime = null;
+                    } else if (!wasIn && isIn) {
+                        // Player entered
+                        currentlyIn = true;
+                        entryTime = change.gameTime;
+                    } else if (wasIn && isIn) {
+                        // Player stayed in through a change
+                        currentlyIn = true;
+                        if (!entryTime) entryTime = change.gameTime;
+                    }
+                }
+                
+                const totalMins = Math.floor(totalSeconds / 60);
+                const totalSecs = totalSeconds % 60;
+                return `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
+            };
+
             const calculateAnalytics = () => {
                 const segments = [];
                 
@@ -1078,16 +1163,22 @@
                                 {roster.filter(player => !currentLineup.includes(player.id)).map(player => {
                                     const stats = playerStats[player.id] || { plusMinus: 0 };
                                     const isAvailable = playerAvailability[player.id];
+                                    const minutesPlayed = calculatePlayerMinutes(player.id);
                                     
                                     return (
                                         <div key={player.id} className={`p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} ${!isAvailable ? 'opacity-50' : ''}`}>
                                             <div className="flex justify-between items-center">
-                                                <div>
+                                                <div className="flex-1">
                                                     <div className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                                         {player.name}
                                                     </div>
-                                                    <div className={`text-sm ${stats.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                        {stats.plusMinus >= 0 ? '+' : ''}{stats.plusMinus}
+                                                    <div className="flex gap-3 items-center">
+                                                        <div className={`text-sm ${stats.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                            {stats.plusMinus >= 0 ? '+' : ''}{stats.plusMinus}
+                                                        </div>
+                                                        <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                                            {minutesPlayed}
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <input
@@ -1101,7 +1192,6 @@
                                     );
                                 })}
                             </div>
-                        </div>
 
                         <div className="flex-1 p-4">
                             <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
