@@ -131,11 +131,23 @@
 
       const trueBigs = [1, 13, 5, 77, 32, 22];
 
+      const [includeLosses, setIncludeLosses] = useState(true);
+
+      const lossGames = [
+        '2025-11-27', // Saint Mary's
+        '2025-11-28', // VCU
+      ];
+
+      const exhibitionGames = [
+        '2025-10-11', // Seton Hall
+        '2025-10-25'  // Duquesne
+      ];
+
       useEffect(() => { loadAllGames(); }, []);
 
       useEffect(() => {
         if (!loading) calculateCombos();
-      }, [startGame, endGame, loading, allGamesData, includeGarbageTime]);
+      }, [startGame, endGame, loading, allGamesData, includeGarbageTime, includeLosses]);
 
       const loadAllGames = async () => {
         if (!window.firebaseDb) return;
@@ -359,8 +371,16 @@
       };
 
       const calculateCombos = () => {
-        const selectedGames = Object.keys(allGamesData).filter(date => date >= startGame && date <= endGame);
-
+        let selectedGames = Object.keys(allGamesData).filter(date => date >= startGame && date <= endGame);
+        
+        // Always exclude exhibition games
+        selectedGames = selectedGames.filter(date => !exhibitionGames.includes(date));
+        
+        // Filter out losses if needed
+        if (!includeLosses) {
+          selectedGames = selectedGames.filter(date => !lossGames.includes(date));
+        }
+      
         const guardStats = guardComboDefinitions.map(def => ({ ...def, totalSeconds: 0, totalPlusMinus: 0 }));
         const bigStats = bigComboDefinitions.map(def => ({
           ...def, totalSeconds: 0, totalPlusMinus: 0, totalOffRebs: 0, totalDefRebs: 0, totalOppOffRebs: 0, totalOppDefRebs: 0
@@ -481,6 +501,15 @@
                   className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
                 >
                   {includeGarbageTime ? 'Included' : 'Excluded'}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Losses:</label>
+                <button
+                  onClick={() => setIncludeLosses(!includeLosses)}
+                  className={`px-4 py-2 rounded-md ${includeLosses ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
+                >
+                  {includeLosses ? 'Included' : 'Excluded'}
                 </button>
               </div>
             </div>
