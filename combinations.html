@@ -214,13 +214,19 @@
 
       const parseGameTimeValue = (t) => {
         if (!t) return 0;
-        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT|2OT|3OT|4OT)/);
         if (!m) return 0;
         const mm = parseInt(m[1], 10), ss = parseInt(m[2], 10), per = m[3];
         const inPer = mm * 60 + ss;
+        
         if (per === '1st') return (20 * 60) - inPer;
         if (per === '2nd') return (40 * 60) - inPer;
-        return (45 * 60) - inPer;
+        if (per === 'OT') return (45 * 60) - inPer;
+        if (per === '2OT') return (50 * 60) - inPer;
+        if (per === '3OT') return (55 * 60) - inPer;
+        if (per === '4OT') return (60 * 60) - inPer;
+        
+        return 0;
       };
 
       const calculateMinutesPlayed = (startTime, endTime) => {
@@ -241,38 +247,34 @@
         if (!lineupHistory || lineupHistory.length === 0) return [];
         const segments = [];
         const sorted = [...lineupHistory].sort((a, b) => {
-          const parseTime = (t) => {
-            const m = t?.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-            if (!m) return 0;
-            const p = m[3] === '1st' ? 0 : m[3] === '2nd' ? 1 : 2;
-            return p * 100000 + ((20 * 60) - (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)));
-          };
-          return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
+          return parseGameTimeValue(a.timestamp || a.gameTime || '') - parseGameTimeValue(b.timestamp || b.gameTime || '');
         });
-
+      
         let nextSegmentLineup = null;
-
+      
         for (let i = 0; i < sorted.length; i++) {
           const curr = sorted[i];
           let segmentLineup;
-
-          if (curr.changes === 'Start of 2nd Half') {
+      
+          // Handle all period starts
+          if (curr.changes?.startsWith('Start of')) {
             nextSegmentLineup = curr.newLineup;
             continue;
           } else if (i === 0) {
             segmentLineup = curr.previousLineup;
             nextSegmentLineup = curr.newLineup;
-          } else if (curr.changes === 'End of 1st Half' || curr.changes === 'End of Game') {
+          } else if (curr.changes?.startsWith('End of')) {
             segmentLineup = nextSegmentLineup || curr.previousLineup;
+            nextSegmentLineup = curr.newLineup;
           } else {
             segmentLineup = curr.previousLineup;
             nextSegmentLineup = curr.newLineup;
           }
-
+      
           if (!segmentLineup) continue;
-
+      
           let startTime, startScore, endTime, endScore, stats;
-
+      
           if (i === 0) {
             startTime = '20:00 1st';
             startScore = { vt: 0, opp: 0 };
@@ -281,8 +283,8 @@
             stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
           } else {
             const prev = sorted[i - 1];
-            if (prev.changes === 'Start of 2nd Half') {
-              startTime = '20:00 2nd';
+            if (prev.changes?.startsWith('Start of')) {
+              startTime = prev.gameTime;
               startScore = { vt: prev.vtScore, opp: prev.oppScore };
             } else {
               startTime = prev.gameTime;
@@ -292,13 +294,13 @@
             endScore = { vt: curr.vtScore, opp: curr.oppScore };
             stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
           }
-
+      
           if (startTime === endTime) continue;
-
+      
           const lineupIds = segmentLineup.split(', ')
             .map(name => roster.find(p => p.name === name)?.id)
             .filter(id => id !== undefined);
-
+      
           if (lineupIds.length === 5) {
             segments.push({
               lineup: lineupIds,
@@ -310,32 +312,9 @@
             });
           }
         }
-
-        const endOfGame = sorted.find(r => r.changes === 'End of Game');
-        if (endOfGame) {
-          const prev = sorted[sorted.length - 1];
-          const startTime = prev?.changes === 'Start of 2nd Half' ? '20:00 2nd' : (prev?.gameTime || '20:00 1st');
-          const startScore = { vt: prev?.vtScore ?? 0, opp: prev?.oppScore ?? 0 };
-          const endTime = endOfGame.gameTime || '0:00 2nd';
-          const endScore = { vt: endOfGame.vtScore ?? startScore.vt, opp: endOfGame.oppScore ?? startScore.opp };
-          const chosen = nextSegmentLineup || prev?.previousLineup || prev?.newLineup;
-          if (chosen) {
-            const ids = chosen.split(', ')
-              .map(name => roster.find(p => p.name === name)?.id)
-              .filter(id => id !== undefined);
-            if (ids.length === 5 && startTime !== endTime) {
-              segments.push({
-                lineup: ids,
-                startTime,
-                endTime,
-                startScore,
-                endScore,
-                stats: endOfGame.completedSegmentStats || { vt: {}, opponent: {} }
-              });
-            }
-          }
-        }
-
+      
+        // Remove the "endOfGame" block that was here
+      
         const garbageTimeStart = sorted.find(r => r.garbageTime === true);
         if (garbageTimeStart) {
           const gVal = parseGameTimeValue(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
@@ -344,7 +323,7 @@
             if (sv >= gVal) s.isGarbageTime = true;
           });
         }
-
+      
         return segments;
       };
 
