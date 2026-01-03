@@ -373,12 +373,21 @@
                 
                 const sortedHistory = [...lineupHistory].sort((a, b) => {
                     const parseTime = (timeStr) => {
-                        const match = timeStr.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                        const match = timeStr.match(/(\d+):(\d+)\s+(1st|2nd|OT|2OT|3OT|4OT)/);
                         if (!match) return 0;
                         const mins = parseInt(match[1]);
                         const secs = parseInt(match[2]);
-                        const period = match[3] === '1st' ? 0 : match[3] === '2nd' ? 1 : 2;
-                        return period * 100000 + ((20 * 60) - (mins * 60 + secs));
+                        const per = match[3];
+                        const timeInPeriod = mins * 60 + secs;
+                        
+                        if (per === '1st') return (20 * 60) - timeInPeriod;
+                        if (per === '2nd') return (40 * 60) - timeInPeriod;
+                        if (per === 'OT') return (45 * 60) - timeInPeriod;
+                        if (per === '2OT') return (50 * 60) - timeInPeriod;
+                        if (per === '3OT') return (55 * 60) - timeInPeriod;
+                        if (per === '4OT') return (60 * 60) - timeInPeriod;
+                        
+                        return 0;
                     };
                     
                     const aTime = a.timestamp || a.gameTime || '';
@@ -516,7 +525,7 @@
                 
                 const parseTime = (timeString) => {
                     if (!timeString) return null;
-                    const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                    const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT|2OT|3OT|4OT)/);
                     if (!match) return null;
                     
                     const minutes = parseInt(match[1]);
@@ -525,13 +534,12 @@
                     
                     const timeInPeriod = minutes * 60 + seconds;
                     
-                    if (period === '1st') {
-                        return (20 * 60) - timeInPeriod;
-                    } else if (period === '2nd') {
-                        return (40 * 60) - timeInPeriod;
-                    } else if (period === 'OT') {
-                        return (45 * 60) - timeInPeriod;
-                    }
+                    if (period === '1st') return (20 * 60) - timeInPeriod;
+                    if (period === '2nd') return (40 * 60) - timeInPeriod;
+                    if (period === 'OT') return (45 * 60) - timeInPeriod;
+                    if (period === '2OT') return (50 * 60) - timeInPeriod;
+                    if (period === '3OT') return (55 * 60) - timeInPeriod;
+                    if (period === '4OT') return (60 * 60) - timeInPeriod;
                     
                     return null;
                 };
