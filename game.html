@@ -179,7 +179,6 @@
                 setSortedAnalytics(sorted);
             }, [lineupAnalytics, sortColumn, sortDirection]);
 
-            // COMPLETELY REWRITTEN buildSegments function
             const buildSegments = (lineupHistory) => {
                 if (!lineupHistory || lineupHistory.length === 0) return [];
                 
@@ -187,13 +186,7 @@
                 
                 // Sort all records by time
                 const sorted = [...lineupHistory].sort((a, b) => {
-                    const parseTime = (t) => {
-                        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                        if (!m) return 0;
-                        const p = m[3] === '1st' ? 0 : m[3] === '2nd' ? 1 : 2;
-                        return p * 100000 + ((20 * 60) - (parseInt(m[1]) * 60 + parseInt(m[2])));
-                    };
-                    return parseTime(a.timestamp || a.gameTime || '') - parseTime(b.timestamp || b.gameTime || '');
+                    return parseGameTime(a.timestamp || a.gameTime || '') - parseGameTime(b.timestamp || b.gameTime || '');
                 });
                 
                 // Track lineup for NEXT segment as we go
@@ -202,24 +195,19 @@
                 for (let i = 0; i < sorted.length; i++) {
                     const curr = sorted[i];
                     
-                    // The lineup that PLAYED during the segment ENDING at curr.gameTime
-                    // is curr.previousLineup (the lineup before this substitution)
                     let segmentLineup;
                     
-                    if (curr.changes === 'Start of 2nd Half') {
-                        // Start of 2nd half: use previousLineup for the segment that's starting
+                    // Handle all period starts (2nd Half, OT, 2OT, 3OT, etc.)
+                    if (curr.changes?.startsWith('Start of')) {
                         nextSegmentLineup = curr.newLineup;
-                        continue; // Don't create a segment, just update for next iteration
+                        continue;
                     } else if (i === 0) {
-                        // First record: the segment from game start to here used previousLineup
                         segmentLineup = curr.previousLineup;
                         nextSegmentLineup = curr.newLineup;
-                    } else if (curr.changes === 'End of 1st Half' || curr.changes === 'End of Game') {
-                        // End markers: use the lineup that was playing (which we tracked)
+                    } else if (curr.changes?.startsWith('End of')) {
                         segmentLineup = nextSegmentLineup || curr.previousLineup;
-                        // Don't update nextSegmentLineup, it stays the same
+                        nextSegmentLineup = curr.newLineup;
                     } else {
-                        // Normal substitution: segment used the lineup before this sub
                         segmentLineup = curr.previousLineup;
                         nextSegmentLineup = curr.newLineup;
                     }
@@ -230,7 +218,6 @@
                     let startTime, startScore, endTime, endScore, stats;
                     
                     if (i === 0) {
-                        // First segment
                         startTime = '20:00 1st';
                         startScore = { vt: 0, opp: 0 };
                         endTime = curr.gameTime;
@@ -238,9 +225,8 @@
                         stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
                     } else {
                         const prev = sorted[i - 1];
-                        // Skip if previous was Start of 2nd Half (already handled)
-                        if (prev.changes === 'Start of 2nd Half') {
-                            startTime = '20:00 2nd';
+                        if (prev.changes?.startsWith('Start of')) {
+                            startTime = prev.gameTime;
                             startScore = { vt: prev.vtScore, opp: prev.oppScore };
                         } else {
                             startTime = prev.gameTime;
@@ -252,10 +238,7 @@
                     }
                     
                     // Skip 0:00 segments (simultaneous subs)
-                    if (startTime === endTime) {
-                        console.log(`Skipping 0:00 segment at ${startTime}`);
-                        continue;
-                    }
+                    if (startTime === endTime) continue;
                     
                     // Convert lineup string to IDs
                     const lineupIds = segmentLineup.split(', ')
@@ -291,49 +274,28 @@
             
             const parseGameTime = (timeString) => {
                 if (!timeString) return 0;
-                const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+                const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT|2OT|3OT|4OT)/);
                 if (!match) return 0;
                 const minutes = parseInt(match[1]);
                 const seconds = parseInt(match[2]);
                 const period = match[3];
                 const timeInPeriod = minutes * 60 + seconds;
                 
-                if (period === '1st') {
-                    return (20 * 60) - timeInPeriod;
-                } else if (period === '2nd') {
-                    return (40 * 60) - timeInPeriod;
-                } else if (period === 'OT') {
-                    return (45 * 60) - timeInPeriod;
-                }
+                if (period === '1st') return (20 * 60) - timeInPeriod;
+                if (period === '2nd') return (40 * 60) - timeInPeriod;
+                if (period === 'OT') return (45 * 60) - timeInPeriod;
+                if (period === '2OT') return (50 * 60) - timeInPeriod;
+                if (period === '3OT') return (55 * 60) - timeInPeriod;
+                if (period === '4OT') return (60 * 60) - timeInPeriod;
+                
                 return 0;
             };
 
             const calculateMinutesPlayed = (startTime, endTime) => {
                 if (endTime === 'Current') return '--:--';
                 
-                const parseTime = (timeString) => {
-                    if (!timeString) return null;
-                    const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                    if (!match) return null;
-                    
-                    const minutes = parseInt(match[1]);
-                    const seconds = parseInt(match[2]);
-                    const period = match[3];
-                    const timeInPeriod = minutes * 60 + seconds;
-                    
-                    if (period === '1st') {
-                        return (20 * 60) - timeInPeriod;
-                    } else if (period === '2nd') {
-                        return (40 * 60) - timeInPeriod;
-                    } else if (period === 'OT') {
-                        return (45 * 60) - timeInPeriod;
-                    }
-                    
-                    return null;
-                };
-                
-                const startGameSeconds = parseTime(startTime);
-                const endGameSeconds = parseTime(endTime);
+                const startGameSeconds = parseGameTime(startTime);
+                const endGameSeconds = parseGameTime(endTime);
                 
                 if (startGameSeconds === null || endGameSeconds === null) return '--:--';
                 
