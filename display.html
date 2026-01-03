@@ -164,13 +164,21 @@
 
       const parseGameTimeValue = (t) => {
         if (!t) return 0;
-        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
+        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT|2OT|3OT|4OT)/);
         if (!m) return 0;
-        const min = parseInt(m[1],10), sec = parseInt(m[2],10), per = m[3];
-        const s = min*60 + sec;
+        const min = parseInt(m[1], 10);
+        const sec = parseInt(m[2], 10);
+        const per = m[3];
+        const s = min * 60 + sec;
+        
         if (per === '1st') return 20*60 - s;
         if (per === '2nd') return 40*60 - s;
-        return 45*60 - s;
+        if (per === 'OT') return 45*60 - s;
+        if (per === '2OT') return 50*60 - s;
+        if (per === '3OT') return 55*60 - s;
+        if (per === '4OT') return 60*60 - s;
+        
+        return 0;
       };
 
       const calculateMinutesPlayed = (startTime, endTime) => {
