@@ -44,11 +44,14 @@
       const [allGamesData, setAllGamesData] = useState({});
       const [guardCombos, setGuardCombos] = useState([]);
       const [bigCombos, setBigCombos] = useState([]);
+      const [threePlayerCombos, setThreePlayerCombos] = useState([]);
       const [loading, setLoading] = useState(true);
       const [guardSortColumn, setGuardSortColumn] = useState('plusMinus');
       const [guardSortDirection, setGuardSortDirection] = useState('desc');
       const [bigSortColumn, setBigSortColumn] = useState('plusMinus');
       const [bigSortDirection, setBigSortDirection] = useState('desc');
+      const [threeSortColumn, setThreeSortColumn] = useState('plusMinus');
+      const [threeSortDirection, setThreeSortDirection] = useState('desc');
       const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
 
       const roster = [
@@ -175,7 +178,6 @@
             }
             loadedCount++;
             if (loadedCount >= totalGames * 2) {
-              // All data loaded, set the most recent game with data
               const gamesWithData = Object.keys(gamesData)
                 .filter(d => gamesData[d].lineupHistory && gamesData[d].lineupHistory.length > 0)
                 .sort();
@@ -195,7 +197,6 @@
             }
             loadedCount++;
             if (loadedCount >= totalGames * 2) {
-              // All data loaded, set the most recent game with data
               const gamesWithData = Object.keys(gamesData)
                 .filter(d => gamesData[d].lineupHistory && gamesData[d].lineupHistory.length > 0)
                 .sort();
@@ -260,7 +261,6 @@
           const curr = sorted[i];
           let segmentLineup;
       
-          // Handle all period starts
           if (curr.changes?.startsWith('Start of')) {
             nextSegmentLineup = curr.newLineup;
             continue;
@@ -317,8 +317,6 @@
           }
         }
       
-        // Remove the "endOfGame" block that was here
-      
         const garbageTimeStart = sorted.find(r => r.garbageTime === true);
         if (garbageTimeStart) {
           const gVal = parseGameTimeValue(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
@@ -341,6 +339,11 @@
         else { setBigSortColumn(column); setBigSortDirection('desc'); }
       };
 
+      const handleThreeSort = (column) => {
+        if (threeSortColumn === column) setThreeSortDirection(threeSortDirection === 'desc' ? 'asc' : 'desc');
+        else { setThreeSortColumn(column); setThreeSortDirection('desc'); }
+      };
+
       const sortCombos = (combos, sortColumn, sortDirection) => {
         return [...combos].sort((a, b) => {
           if (a.totalSeconds === 0 && b.totalSeconds === 0) return 0;
@@ -356,10 +359,8 @@
       const calculateCombos = () => {
         let selectedGames = Object.keys(allGamesData).filter(date => date >= startGame && date <= endGame);
         
-        // Always exclude exhibition games
         selectedGames = selectedGames.filter(date => !exhibitionGames.includes(date));
         
-        // Filter out losses if needed
         if (!includeLosses) {
           selectedGames = selectedGames.filter(date => !lossGames.includes(date));
         }
@@ -368,6 +369,9 @@
         const bigStats = bigComboDefinitions.map(def => ({
           ...def, totalSeconds: 0, totalPlusMinus: 0, totalOffRebs: 0, totalDefRebs: 0, totalOppOffRebs: 0, totalOppDefRebs: 0
         }));
+
+        // 3-player combo tracking
+        const threePlayerMap = new Map();
 
         selectedGames.forEach(gameDate => {
           const gameData = allGamesData[gameDate];
@@ -383,7 +387,6 @@
             const oppPoints = segment.endScore.opp - segment.startScore.opp;
             const plusMinus = vtPoints - oppPoints;
             
-            // Skip only if both duration is 0 AND no score changed
             if (duration <= 0 && plusMinus === 0) return;
 
             const vtStats = segment.stats.vt || {};
@@ -412,6 +415,41 @@
                 bigStats[idx].totalOppDefRebs += oppStats.defensiveRebounds || 0;
               }
             });
+
+            // Calculate 3-player combinations
+            for (let i = 0; i < currentLineup.length; i++) {
+              for (let j = i + 1; j < currentLineup.length; j++) {
+                for (let k = j + 1; k < currentLineup.length; k++) {
+                  const key = [currentLineup[i], currentLineup[j], currentLineup[k]].sort((a,b) => a-b).join('-');
+                  if (!threePlayerMap.has(key)) {
+                    threePlayerMap.set(key, {
+                      players: [currentLineup[i], currentLineup[j], currentLineup[k]],
+                      totalSeconds: 0,
+                      totalPlusMinus: 0,
+                      totalOffRebs: 0,
+                      totalDefRebs: 0,
+                      totalOppOffRebs: 0,
+                      totalOppDefRebs: 0,
+                      totalTurnovers: 0,
+                      totalOppTurnovers: 0,
+                      totalPossessions: 0,
+                      totalOppPossessions: 0
+                    });
+                  }
+                  const combo = threePlayerMap.get(key);
+                  combo.totalSeconds += duration;
+                  combo.totalPlusMinus += plusMinus;
+                  combo.totalOffRebs += vtStats.offensiveRebounds || 0;
+                  combo.totalDefRebs += vtStats.defensiveRebounds || 0;
+                  combo.totalOppOffRebs += oppStats.offensiveRebounds || 0;
+                  combo.totalOppDefRebs += oppStats.defensiveRebounds || 0;
+                  combo.totalTurnovers += vtStats.turnovers || 0;
+                  combo.totalOppTurnovers += oppStats.turnovers || 0;
+                  combo.totalPossessions += vtStats.possessions || 0;
+                  combo.totalOppPossessions += oppStats.possessions || 0;
+                }
+              }
+            }
           });
         });
 
@@ -445,8 +483,41 @@
           };
         });
 
+        const finalThreePlayerCombos = Array.from(threePlayerMap.values())
+          .filter(combo => combo.totalSeconds >= 300) // At least 5 minutes
+          .map(combo => {
+            const minutes = combo.totalSeconds / 60;
+            const pmPerMinute = minutes > 0 ? combo.totalPlusMinus / minutes : 0;
+            const names = combo.players
+              .map(id => roster.find(p => p.id === id)?.name || '')
+              .join(', ');
+            
+            const totalPossibleOffRebs = combo.totalOppDefRebs + combo.totalOffRebs;
+            const totalPossibleDefRebs = combo.totalOppOffRebs + combo.totalDefRebs;
+            const orebPct = totalPossibleOffRebs > 0 ? (combo.totalOffRebs / totalPossibleOffRebs) * 100 : 0;
+            const drebPct = totalPossibleDefRebs > 0 ? (combo.totalDefRebs / totalPossibleDefRebs) * 100 : 0;
+            
+            const offPoss = combo.totalPossessions || 1;
+            const defPoss = combo.totalOppPossessions || 1;
+            const turnoverRate = (combo.totalTurnovers / offPoss) * 100;
+            const defTurnoverRate = (combo.totalOppTurnovers / defPoss) * 100;
+
+            return {
+              names,
+              minutes: formatMinutes(combo.totalSeconds),
+              totalSeconds: combo.totalSeconds,
+              plusMinus: combo.totalPlusMinus,
+              pmPerMinute,
+              orebPct,
+              drebPct,
+              turnoverRate,
+              defTurnoverRate
+            };
+          });
+
         setGuardCombos(finalGuardCombos);
         setBigCombos(finalBigCombos);
+        setThreePlayerCombos(finalThreePlayerCombos);
       };
 
       return (
@@ -503,84 +574,145 @@
               <div className={`text-xl ${darkMode ? 'text-white' : 'text-gray-900'}`}>Loading data...</div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-6 p-6">
-              <div>
-                <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Guard Combinations</h2>
-                <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                  <table className="w-full">
-                    <thead>
-                      <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                        <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
-                        <th onClick={() => handleGuardSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
-                          +/- {guardSortColumn === 'plusMinus' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
-                        </th>
-                        <th onClick={() => handleGuardSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'minutes' ? 'font-bold' : ''}`}>
-                          Minutes {guardSortColumn === 'minutes' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortCombos(guardCombos, guardSortColumn, guardSortDirection).map((combo, idx) => (
-                        <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
-                          <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
-                          <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
-                          </td>
-                          <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Guard Combinations</h2>
+                  <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                    <table className="w-full">
+                      <thead>
+                        <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                          <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
+                          <th onClick={() => handleGuardSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
+                            +/- {guardSortColumn === 'plusMinus' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                          </th>
+                          <th onClick={() => handleGuardSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${guardSortColumn === 'minutes' ? 'font-bold' : ''}`}>
+                            Minutes {guardSortColumn === 'minutes' && <span className="ml-1">{guardSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {guardCombos.length === 0 && (
-                    <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      No data available for selected range
-                    </div>
-                  )}
+                      </thead>
+                      <tbody>
+                        {sortCombos(guardCombos, guardSortColumn, guardSortDirection).map((combo, idx) => (
+                          <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
+                            <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
+                            <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
+                            </td>
+                            <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {guardCombos.length === 0 && (
+                      <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        No data available for selected range
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Big Combinations</h2>
+                  <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                    <table className="w-full">
+                      <thead>
+                        <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                          <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
+                          <th onClick={() => handleBigSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
+                            +/- {bigSortColumn === 'plusMinus' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                          </th>
+                          <th onClick={() => handleBigSort('orebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'orebPct' ? 'font-bold' : ''}`}>
+                            OReb% {bigSortColumn === 'orebPct' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                          </th>
+                          <th onClick={() => handleBigSort('drebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'drebPct' ? 'font-bold' : ''}`}>
+                            DReb% {bigSortColumn === 'drebPct' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                          </th>
+                          <th onClick={() => handleBigSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'minutes' ? 'font-bold' : ''}`}>
+                            Minutes {bigSortColumn === 'minutes' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortCombos(bigCombos, bigSortColumn, bigSortDirection).map((combo, idx) => (
+                          <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
+                            <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
+                            <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
+                            </td>
+                            <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {combo.totalSeconds > 0 ? combo.orebPct.toFixed(1) + '%' : '-'}
+                            </td>
+                            <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {combo.totalSeconds > 0 ? combo.drebPct.toFixed(1) + '%' : '-'}
+                            </td>
+                            <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {bigCombos.length === 0 && (
+                      <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        No data available for selected range
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
               <div>
-                <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Big Combinations</h2>
+                <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>All 3-Player Combinations (5+ minutes)</h2>
                 <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                   <table className="w-full">
                     <thead>
                       <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                         <th className={`text-left p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Combo</th>
-                        <th onClick={() => handleBigSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
-                          +/- {bigSortColumn === 'plusMinus' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        <th onClick={() => handleThreeSort('plusMinus')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${threeSortColumn === 'plusMinus' ? 'font-bold' : ''}`}>
+                          +/- {threeSortColumn === 'plusMinus' && <span className="ml-1">{threeSortDirection === 'desc' ? '↓' : '↑'}</span>}
                         </th>
-                        <th onClick={() => handleBigSort('orebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'orebPct' ? 'font-bold' : ''}`}>
-                          OReb% {bigSortColumn === 'orebPct' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        <th onClick={() => handleThreeSort('orebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${threeSortColumn === 'orebPct' ? 'font-bold' : ''}`}>
+                          OReb% {threeSortColumn === 'orebPct' && <span className="ml-1">{threeSortDirection === 'desc' ? '↓' : '↑'}</span>}
                         </th>
-                        <th onClick={() => handleBigSort('drebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'drebPct' ? 'font-bold' : ''}`}>
-                          DReb% {bigSortColumn === 'drebPct' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        <th onClick={() => handleThreeSort('drebPct')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${threeSortColumn === 'drebPct' ? 'font-bold' : ''}`}>
+                          DReb% {threeSortColumn === 'drebPct' && <span className="ml-1">{threeSortDirection === 'desc' ? '↓' : '↑'}</span>}
                         </th>
-                        <th onClick={() => handleBigSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${bigSortColumn === 'minutes' ? 'font-bold' : ''}`}>
-                          Minutes {bigSortColumn === 'minutes' && <span className="ml-1">{bigSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        <th onClick={() => handleThreeSort('turnoverRate')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${threeSortColumn === 'turnoverRate' ? 'font-bold' : ''}`}>
+                          TO% {threeSortColumn === 'turnoverRate' && <span className="ml-1">{threeSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        </th>
+                        <th onClick={() => handleThreeSort('defTurnoverRate')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${threeSortColumn === 'defTurnoverRate' ? 'font-bold' : ''}`}>
+                          Def TO% {threeSortColumn === 'defTurnoverRate' && <span className="ml-1">{threeSortDirection === 'desc' ? '↓' : '↑'}</span>}
+                        </th>
+                        <th onClick={() => handleThreeSort('minutes')} className={`text-left p-3 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${threeSortColumn === 'minutes' ? 'font-bold' : ''}`}>
+                          Minutes {threeSortColumn === 'minutes' && <span className="ml-1">{threeSortDirection === 'desc' ? '↓' : '↑'}</span>}
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {sortCombos(bigCombos, bigSortColumn, bigSortDirection).map((combo, idx) => (
-                        <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${combo.totalSeconds === 0 ? 'opacity-30' : ''}`}>
+                      {sortCombos(threePlayerCombos, threeSortColumn, threeSortDirection).map((combo, idx) => (
+                        <tr key={idx} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                           <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.names}</td>
                           <td className={`p-3 font-semibold ${combo.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                             {combo.plusMinus >= 0 ? '+' : ''}{combo.plusMinus}
                           </td>
                           <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                            {combo.totalSeconds > 0 ? combo.orebPct.toFixed(1) + '%' : '-'}
+                            {combo.orebPct.toFixed(1)}%
                           </td>
                           <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                            {combo.totalSeconds > 0 ? combo.drebPct.toFixed(1) + '%' : '-'}
+                            {combo.drebPct.toFixed(1)}%
+                          </td>
+                          <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {combo.turnoverRate.toFixed(1)}%
+                          </td>
+                          <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {combo.defTurnoverRate.toFixed(1)}%
                           </td>
                           <td className={`p-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{combo.minutes}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  {bigCombos.length === 0 && (
+                  {threePlayerCombos.length === 0 && (
                     <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      No data available for selected range
+                      No 3-player combinations with 5+ minutes found
                     </div>
                   )}
                 </div>
