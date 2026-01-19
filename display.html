@@ -75,6 +75,33 @@
       const lossGames = [
         '2025-11-27', // Saint Mary's
         '2025-11-28', // VCU
+        '2026-01-03', // Wake Forest
+        '2026-01-07', // Stanford
+        '2026-01-14', // SMU
+      ];
+
+      const [includeHighMajorOnly, setIncludeHighMajorOnly] = useState(false);
+      const highMajorGames = [
+        '2025-11-08', // Providence
+        '2025-12-02', // South Carolina
+        '2025-12-31', // Virginia
+        '2026-01-03', // Wake Forest
+        '2026-01-07', // Stanford
+        '2026-01-10', // California
+        '2026-01-14', // SMU
+        '2026-01-17', // Notre Dame
+        '2026-01-21', // Syracuse
+        '2026-01-24', // Louisville
+        '2026-01-27', // Georgia Tech
+        '2026-01-31', // Duke
+        '2026-02-07', // NC State
+        '2026-02-11', // Clemson
+        '2026-02-14', // Florida State
+        '2026-02-17', // Miami
+        '2026-02-21', // Wake Forest
+        '2026-02-28', // North Carolina
+        '2026-03-03', // Boston College
+        '2026-03-07', // Virginia
       ];
 
       useEffect(() => { loadAllGames(); }, []);
@@ -88,7 +115,7 @@
           calculateCombos();
           calculateLineupAnalytics();
         }
-      }, [startGame, endGame, loading, playerAvailability, includeGarbageTime, includeLosses]);
+      }, [startGame, endGame, loading, playerAvailability, includeGarbageTime, includeLosses, includeHighMajorOnly]);
 
       useEffect(() => {
         let filtered = [...lineupAnalytics];
@@ -311,6 +338,11 @@
         // Filter out losses if needed
         if (!includeLosses) {
           games = games.filter(g => !lossGames.includes(g.date));
+        }
+        
+        // Filter for high major only if needed
+        if (includeHighMajorOnly) {
+          games = games.filter(g => highMajorGames.includes(g.date));
         }
         
         return games;
@@ -597,6 +629,15 @@
                   className={`px-4 py-2 rounded-md ${includeLosses?(darkMode?'bg-green-600 text-white':'bg-green-500 text-white'):(darkMode?'bg-gray-700 text-gray-300':'bg-gray-300 text-gray-700')}`}
                 >
                   {includeLosses?'Included':'Excluded'}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>High Major Only:</label>
+                <button
+                  onClick={()=>setIncludeHighMajorOnly(!includeHighMajorOnly)}
+                  className={`px-4 py-2 rounded-md ${includeHighMajorOnly?(darkMode?'bg-green-600 text-white':'bg-green-500 text-white'):(darkMode?'bg-gray-700 text-gray-300':'bg-gray-300 text-gray-700')}`}
+                >
+                  {includeHighMajorOnly?'Yes':'No'}
                 </button>
               </div>
             </div>
