@@ -80,7 +80,6 @@
                 { date: '2026-03-07', opponent: 'Virginia', displayName: 'Mar 7 vs Virginia' }
             ];
         
-        // Helper: YYYY-MM-DD for local timezone
         const todayLocalYMD = () => {
           const d = new Date();
           const y = d.getFullYear();
@@ -88,17 +87,14 @@
           const day = String(d.getDate()).padStart(2, '0');
           return `${y}-${m}-${day}`;
         };
-        // Pick today's game if it exists, otherwise next upcoming game; fallback to last item if none remain
+
         const defaultGameDate = (() => {
           const today = todayLocalYMD();
-          // First check if there's a game today
           const todayGame = gameSchedule.find(g => g.date === today);
           if (todayGame) return todayGame.date;
-          // Otherwise find next upcoming game
           const next = gameSchedule.find(g => g.date > today);
           return next ? next.date : gameSchedule[gameSchedule.length - 1].date;
         })();
-        // Use this instead of hardcoded '2025-10-11'
 
         const BasketballLineupTracker = () => {
             const [darkMode, setDarkMode] = useState(false);
@@ -351,7 +347,6 @@
                     opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
                 };
                 
-                // The end of 1st half is already recorded, just add start of 2nd half
                 const startOf2ndHalfRecord = {
                     timestamp: '20:00 2nd',
                     gameTime: '20:00 2nd',
@@ -405,7 +400,7 @@
                 setGameTime('20:00');
                 setVtScore(0);
                 setOppScore(0);
-                setStartingLineup([...currentLineup]); // Store the starting lineup
+                setStartingLineup([...currentLineup]);
                 setCurrentStats({
                     vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
                     opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
@@ -563,7 +558,6 @@
                     return;
                 }
                 
-                // Validate that minutes and seconds are reasonable
                 const [minutes, seconds] = pendingGameTime.split(':').map(Number);
                 if (isNaN(minutes) || isNaN(seconds)) {
                     alert('Invalid time format. Please enter numbers only.');
@@ -581,7 +575,6 @@
                         return;
                     }
                 } else {
-                    // Overtime
                     if (minutes > 5) {
                         alert('Minutes must be between 0 and 5 for overtime periods.');
                         return;
@@ -667,12 +660,10 @@
                 setPendingChanges([]);
             };
 
-            // Calculate total VT possessions from all lineup history (sum all segments, don't reset)
             const totalVTPossessions = lineupHistory.reduce((total, record) => {
                 return total + (record.completedSegmentStats?.vt?.possessions || 0);
             }, 0) + currentStats.vt.possessions;
 
-            // Calculate total game stats for both teams
             const totalGameStats = {
                 vt: {
                     offReb: lineupHistory.reduce((total, record) => 
@@ -776,7 +767,7 @@
                                             <button
                                                 onClick={async () => {
                                                     if (currentHalf === 1) {
-                                                        // Record end of 1st half immediately
+                                                        // Record end of 1st half
                                                         const endOf1stHalfRecord = {
                                                             timestamp: '0:00 1st',
                                                             gameTime: '0:00 1st',
@@ -792,7 +783,7 @@
                                                         const newHistory = [...lineupHistory, endOf1stHalfRecord];
                                                         setLineupHistory(newHistory);
                                                         
-                                                        // Save to Firebase immediately
+                                                        // Save to Firebase
                                                         if (window.firebaseDb) {
                                                             try {
                                                                 const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
@@ -805,13 +796,31 @@
                                                                 console.error('Error saving end of 1st half:', error);
                                                             }
                                                         }
+
+                                                        // FIX: Reset currentStats immediately after capturing them in
+                                                        // the end-of-half record, so they don't get double-counted
+                                                        // in totalVTPossessions during the 2nd half.
+                                                        const resetStats = {
+                                                            vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
+                                                            opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
+                                                        };
+
+                                                        if (window.firebaseDb) {
+                                                            try {
+                                                                const currentStatsRef = window.firebaseDb.ref(`current-stats/${selectedGame}`);
+                                                                await window.firebaseDb.set(currentStatsRef, resetStats);
+                                                            } catch (error) {
+                                                                console.error('Error resetting stats after 1st half:', error);
+                                                            }
+                                                        }
+
+                                                        setCurrentStats(resetStats);
                                                         
                                                         // Reset to starting lineup for 2nd half selection
                                                         setCurrentLineup([...startingLineup]);
                                                         setIsStarting2ndHalf(true);
                                                         setShowStartingLineupModal(true);
                                                     } else if (currentHalf === 2) {
-                                                        // End 2nd half before starting OT
                                                         const resetStats = {
                                                             vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
                                                             opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
@@ -872,7 +881,6 @@
                                                         setCurrentHalf(3);
                                                         setGameTime('5:00');
                                                     } else {
-                                                        // Additional OT periods
                                                         const resetStats = {
                                                             vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
                                                             opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
@@ -1119,58 +1127,10 @@
                                         {vtScore}
                                     </div>
                                     <div className="flex justify-center gap-2">
-                                        <button
-                                            onClick={() => updateScore('vt', 1)}
-                                            disabled={!gameStarted}
-                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                            } ${
-                                                darkMode 
-                                                    ? 'bg-orange-600 text-white hover:bg-orange-700' 
-                                                    : 'bg-orange-500 text-white hover:bg-orange-600'
-                                            }`}
-                                        >
-                                            +1
-                                        </button>
-                                        <button
-                                            onClick={() => updateScore('vt', 2)}
-                                            disabled={!gameStarted}
-                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                            } ${
-                                                darkMode 
-                                                    ? 'bg-orange-600 text-white hover:bg-orange-700' 
-                                                    : 'bg-orange-500 text-white hover:bg-orange-600'
-                                            }`}
-                                        >
-                                            +2
-                                        </button>
-                                        <button
-                                            onClick={() => updateScore('vt', 3)}
-                                            disabled={!gameStarted}
-                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                            } ${
-                                                darkMode 
-                                                    ? 'bg-orange-600 text-white hover:bg-orange-700' 
-                                                    : 'bg-orange-500 text-white hover:bg-orange-600'
-                                            }`}
-                                        >
-                                            +3
-                                        </button>
-                                        <button
-                                            onClick={() => updateScore('vt', -1)}
-                                            disabled={!gameStarted || vtScore === 0}
-                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                                                !gameStarted || vtScore === 0 ? 'cursor-not-allowed opacity-50' : ''
-                                            } ${
-                                                darkMode 
-                                                    ? 'bg-red-600 text-white hover:bg-red-700' 
-                                                    : 'bg-red-500 text-white hover:bg-red-600'
-                                            }`}
-                                        >
-                                            -1
-                                        </button>
+                                        <button onClick={() => updateScore('vt', 1)} disabled={!gameStarted} className={`px-4 py-2 rounded-md font-medium transition-colors ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-orange-600 text-white hover:bg-orange-700' : 'bg-orange-500 text-white hover:bg-orange-600'}`}>+1</button>
+                                        <button onClick={() => updateScore('vt', 2)} disabled={!gameStarted} className={`px-4 py-2 rounded-md font-medium transition-colors ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-orange-600 text-white hover:bg-orange-700' : 'bg-orange-500 text-white hover:bg-orange-600'}`}>+2</button>
+                                        <button onClick={() => updateScore('vt', 3)} disabled={!gameStarted} className={`px-4 py-2 rounded-md font-medium transition-colors ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-orange-600 text-white hover:bg-orange-700' : 'bg-orange-500 text-white hover:bg-orange-600'}`}>+3</button>
+                                        <button onClick={() => updateScore('vt', -1)} disabled={!gameStarted || vtScore === 0} className={`px-4 py-2 rounded-md font-medium transition-colors ${!gameStarted || vtScore === 0 ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-red-500 text-white hover:bg-red-600'}`}>-1</button>
                                     </div>
                                 </div>
 
@@ -1182,58 +1142,10 @@
                                         {oppScore}
                                     </div>
                                     <div className="flex justify-center gap-2">
-                                        <button
-                                            onClick={() => updateScore('opponent', 1)}
-                                            disabled={!gameStarted}
-                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                            } ${
-                                                darkMode 
-                                                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                                                    : 'bg-blue-500 text-white hover:bg-blue-600'
-                                            }`}
-                                        >
-                                            +1
-                                        </button>
-                                        <button
-                                            onClick={() => updateScore('opponent', 2)}
-                                            disabled={!gameStarted}
-                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                            } ${
-                                                darkMode 
-                                                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                                                    : 'bg-blue-500 text-white hover:bg-blue-600'
-                                            }`}
-                                        >
-                                            +2
-                                        </button>
-                                        <button
-                                            onClick={() => updateScore('opponent', 3)}
-                                            disabled={!gameStarted}
-                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                                                !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                            } ${
-                                                darkMode 
-                                                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                                                    : 'bg-blue-500 text-white hover:bg-blue-600'
-                                            }`}
-                                        >
-                                            +3
-                                        </button>
-                                        <button
-                                            onClick={() => updateScore('opponent', -1)}
-                                            disabled={!gameStarted || oppScore === 0}
-                                            className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                                                !gameStarted || oppScore === 0 ? 'cursor-not-allowed opacity-50' : ''
-                                            } ${
-                                                darkMode 
-                                                    ? 'bg-red-600 text-white hover:bg-red-700' 
-                                                    : 'bg-red-500 text-white hover:bg-red-600'
-                                            }`}
-                                        >
-                                            -1
-                                        </button>
+                                        <button onClick={() => updateScore('opponent', 1)} disabled={!gameStarted} className={`px-4 py-2 rounded-md font-medium transition-colors ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-blue-500 text-white hover:bg-blue-600'}`}>+1</button>
+                                        <button onClick={() => updateScore('opponent', 2)} disabled={!gameStarted} className={`px-4 py-2 rounded-md font-medium transition-colors ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-blue-500 text-white hover:bg-blue-600'}`}>+2</button>
+                                        <button onClick={() => updateScore('opponent', 3)} disabled={!gameStarted} className={`px-4 py-2 rounded-md font-medium transition-colors ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-blue-500 text-white hover:bg-blue-600'}`}>+3</button>
+                                        <button onClick={() => updateScore('opponent', -1)} disabled={!gameStarted || oppScore === 0} className={`px-4 py-2 rounded-md font-medium transition-colors ${!gameStarted || oppScore === 0 ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-red-500 text-white hover:bg-red-600'}`}>-1</button>
                                     </div>
                                 </div>
                             </div>
@@ -1254,7 +1166,6 @@
                                                 type="text"
                                                 value={pendingGameTime}
                                                 onChange={(e) => {
-                                                    // Only allow digits and colons
                                                     const filtered = e.target.value.replace(/[^0-9:]/g, '');
                                                     setPendingGameTime(filtered);
                                                 }}
@@ -1310,40 +1221,12 @@
                                     {['possessions', 'offensiveRebounds', 'defensiveRebounds', 'turnovers'].map((stat) => (
                                         <div key={stat} className="text-center">
                                             <div className="flex justify-center items-center gap-2 mb-2">
-                                                <button
-                                                    onClick={() => updateStat('vt', stat, -1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-red-600 text-white hover:bg-red-700' 
-                                                            : 'bg-red-500 text-white hover:bg-red-600'
-                                                    }`}
-                                                >
-                                                    -
-                                                </button>
-                                                <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.vt[stat]}
-                                                </div>
-                                                <button
-                                                    onClick={() => updateStat('vt', stat, 1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-green-600 text-white hover:bg-green-700' 
-                                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                                    }`}
-                                                >
-                                                    +
-                                                </button>
+                                                <button onClick={() => updateStat('vt', stat, -1)} disabled={!gameStarted} className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-red-500 text-white hover:bg-red-600'}`}>-</button>
+                                                <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>{currentStats.vt[stat]}</div>
+                                                <button onClick={() => updateStat('vt', stat, 1)} disabled={!gameStarted} className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-green-500 text-white hover:bg-green-600'}`}>+</button>
                                             </div>
                                             <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat === 'offensiveRebounds' ? 'Off Reb' : 
-                                                 stat === 'defensiveRebounds' ? 'Def Reb' : 
-                                                 stat.replace(/([A-Z])/g, ' $1').trim()}
+                                                {stat === 'offensiveRebounds' ? 'Off Reb' : stat === 'defensiveRebounds' ? 'Def Reb' : stat.replace(/([A-Z])/g, ' $1').trim()}
                                             </div>
                                         </div>
                                     ))}
@@ -1358,40 +1241,12 @@
                                     {['possessions', 'offensiveRebounds', 'defensiveRebounds', 'turnovers'].map((stat) => (
                                         <div key={stat} className="text-center">
                                             <div className="flex justify-center items-center gap-2 mb-2">
-                                                <button
-                                                    onClick={() => updateStat('opponent', stat, -1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-red-600 text-white hover:bg-red-700' 
-                                                            : 'bg-red-500 text-white hover:bg-red-600'
-                                                    }`}
-                                                >
-                                                    -
-                                                </button>
-                                                <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                    {currentStats.opponent[stat]}
-                                                </div>
-                                                <button
-                                                    onClick={() => updateStat('opponent', stat, 1)}
-                                                    disabled={!gameStarted}
-                                                    className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${
-                                                        !gameStarted ? 'cursor-not-allowed opacity-50' : ''
-                                                    } ${
-                                                        darkMode 
-                                                            ? 'bg-green-600 text-white hover:bg-green-700' 
-                                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                                    }`}
-                                                >
-                                                    +
-                                                </button>
+                                                <button onClick={() => updateStat('opponent', stat, -1)} disabled={!gameStarted} className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-red-500 text-white hover:bg-red-600'}`}>-</button>
+                                                <div className={`text-lg font-bold min-w-[2rem] ${darkMode ? 'text-white' : 'text-gray-900'}`}>{currentStats.opponent[stat]}</div>
+                                                <button onClick={() => updateStat('opponent', stat, 1)} disabled={!gameStarted} className={`px-3 py-2 rounded-md font-medium text-sm transition-colors ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''} ${darkMode ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-green-500 text-white hover:bg-green-600'}`}>+</button>
                                             </div>
                                             <div className={`text-sm capitalize ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {stat === 'offensiveRebounds' ? 'Off Reb' : 
-                                                 stat === 'defensiveRebounds' ? 'Def Reb' : 
-                                                 stat.replace(/([A-Z])/g, ' $1').trim()}
+                                                {stat === 'offensiveRebounds' ? 'Off Reb' : stat === 'defensiveRebounds' ? 'Def Reb' : stat.replace(/([A-Z])/g, ' $1').trim()}
                                             </div>
                                         </div>
                                     ))}
@@ -1406,15 +1261,9 @@
                                         Virginia Tech - Total Game Stats
                                     </h3>
                                     <div className={`flex justify-center gap-6 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                        <div>
-                                            <span className="font-semibold">Off Reb:</span> {totalGameStats.vt.offReb}
-                                        </div>
-                                        <div>
-                                            <span className="font-semibold">Def Reb:</span> {totalGameStats.vt.defReb}
-                                        </div>
-                                        <div>
-                                            <span className="font-semibold">TO:</span> {totalGameStats.vt.turnovers}
-                                        </div>
+                                        <div><span className="font-semibold">Off Reb:</span> {totalGameStats.vt.offReb}</div>
+                                        <div><span className="font-semibold">Def Reb:</span> {totalGameStats.vt.defReb}</div>
+                                        <div><span className="font-semibold">TO:</span> {totalGameStats.vt.turnovers}</div>
                                     </div>
                                 </div>
                                 <div className="text-center">
@@ -1422,15 +1271,9 @@
                                         {currentOpponent} - Total Game Stats
                                     </h3>
                                     <div className={`flex justify-center gap-6 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                        <div>
-                                            <span className="font-semibold">Off Reb:</span> {totalGameStats.opponent.offReb}
-                                        </div>
-                                        <div>
-                                            <span className="font-semibold">Def Reb:</span> {totalGameStats.opponent.defReb}
-                                        </div>
-                                        <div>
-                                            <span className="font-semibold">TO:</span> {totalGameStats.opponent.turnovers}
-                                        </div>
+                                        <div><span className="font-semibold">Off Reb:</span> {totalGameStats.opponent.offReb}</div>
+                                        <div><span className="font-semibold">Def Reb:</span> {totalGameStats.opponent.defReb}</div>
+                                        <div><span className="font-semibold">TO:</span> {totalGameStats.opponent.turnovers}</div>
                                     </div>
                                 </div>
                             </div>
