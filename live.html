@@ -77,9 +77,7 @@
                 opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
             });
 
-            const capPPP = (ppp) => {
-              return Math.min(ppp, 3.0);
-            };
+            const capPPP = (ppp) => Math.min(ppp, 3.0);
 
             const roster = [
                 { id: 3, name: 'Ben Hammond', position: 'G' },
@@ -236,10 +234,7 @@
                             
                             const aTime = a.timestamp || a.gameTime || '';
                             const bTime = b.timestamp || b.gameTime || '';
-                            const aVal = parseTime(aTime);
-                            const bVal = parseTime(bTime);
-                            
-                            return bVal - aVal;
+                            return parseTime(bTime) - parseTime(aTime); // descending (newest first)
                         });
                         setLineupHistory(changes);
                     } else {
@@ -272,8 +267,6 @@
             }, [timeframe, liveGameDate]);
 
             const loadBaselineStats = async () => {
-                console.log('=== LOADING BASELINE ===', { timeframe, liveGameDate });
-                
                 if (!window.firebaseDb || !liveGameDate) return;
 
                 const currentGameIndex = gameSchedule.findIndex(g => g.date === liveGameDate);
@@ -291,8 +284,6 @@
                     gamesToLoad = [];
                 }
 
-                console.log('Games to load for baseline:', gamesToLoad.map(g => g.date));
-
                 const baselineMap = new Map();
 
                 for (const game of gamesToLoad) {
@@ -302,9 +293,7 @@
                         window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
                             if (snapshot.exists()) {
                                 const changes = Object.values(snapshot.val());
-                                console.log(`Loaded ${changes.length} changes from ${game.date}:`, changes);
                                 const segments = buildSegmentsForGame(changes, game.date);
-                                console.log(`Built ${segments.length} segments from ${game.date}:`, segments);
                                 
                                 segments.forEach(segment => {
                                     const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
@@ -356,15 +345,12 @@
                                     lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
                                     lineup.totalOppTurnovers += oppStats.turnovers || 0;
                                 });
-                            } else {
-                                console.log(`No data found for ${game.date}`);
                             }
                             resolve();
                         }, { onlyOnce: true });
                     });
                 }
 
-                console.log('=== BASELINE LOADED ===', Array.from(baselineMap.entries()));
                 setBaselineLineupStats(baselineMap);
             };
 
@@ -506,18 +492,6 @@
                 return segments;
             };
 
-            const parseGameTimeToSeconds = (timeString) => {
-                if (!timeString || timeString === 'Current' || timeString === '20:00 1st') return null;
-                
-                const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                if (!match) return null;
-                
-                const minutes = parseInt(match[1]);
-                const seconds = parseInt(match[2]);
-                
-                return minutes * 60 + seconds;
-            };
-            
             const calculateMinutesPlayed = (startTime, endTime) => {
                 if (endTime === 'Current') {
                     return '--:--';
@@ -562,66 +536,95 @@
                 return `${mins}:${secs.toString().padStart(2, '0')}`;
             };
 
-            // Add this function to calculate player minutes
+            // Helper: convert game time string to elapsed seconds from tip-off (chronological order)
+            const parseTimeToElapsed = (timeStr) => {
+                const match = timeStr.match(/(\d+):(\d+)\s+(1st|2nd|OT|2OT|3OT|4OT)/);
+                if (!match) return 0;
+                const mins = parseInt(match[1]);
+                const secs = parseInt(match[2]);
+                const per = match[3];
+                const timeInPeriod = mins * 60 + secs;
+                if (per === '1st') return (20 * 60) - timeInPeriod;
+                if (per === '2nd') return (40 * 60) - timeInPeriod;
+                if (per === 'OT') return (45 * 60) - timeInPeriod;
+                if (per === '2OT') return (50 * 60) - timeInPeriod;
+                if (per === '3OT') return (55 * 60) - timeInPeriod;
+                if (per === '4OT') return (60 * 60) - timeInPeriod;
+                return 0;
+            };
+
             const calculatePlayerMinutes = (playerId) => {
+                // Player is currently on the floor — minutes are live, show dashes
                 if (currentLineup.includes(playerId)) {
                     return '--:--';
                 }
-                
-                let totalSeconds = 0;
-                const segments = [];
-                
-                // Build segments where this player was in the game
-                if (lineupHistory.length === 0) {
-                    // If no changes yet, check if player was in starting lineup
-                    let startingLineupIds = [3, 2, 17, 1, 13];
-                    if (gameData && gameData.startingLineup) {
-                        startingLineupIds = gameData.startingLineup.split(', ').map(name => 
-                            roster.find(p => p.name === name)?.id
-                        ).filter(id => id !== undefined);
-                    }
-                    
-                    if (startingLineupIds.includes(playerId)) {
-                        return '--:--'; // Player is currently in
-                    }
-                    return '0:00';
-                }
-                
-                const realChanges = lineupHistory.filter(record => 
-                    record.changes !== 'End of 1st Half' && record.changes !== 'Start of 2nd Half'
-                );
-                
-                // Track when player enters and exits
-                let currentlyIn = false;
-                let entryTime = null;
-                
-                // Check starting lineup
+
                 let startingLineupIds = [3, 2, 17, 1, 13];
                 if (gameData && gameData.startingLineup) {
-                    startingLineupIds = gameData.startingLineup.split(', ').map(name => 
+                    startingLineupIds = gameData.startingLineup.split(', ').map(name =>
                         roster.find(p => p.name === name)?.id
                     ).filter(id => id !== undefined);
                 }
-                
-                if (startingLineupIds.includes(playerId)) {
-                    currentlyIn = true;
-                    entryTime = '20:00 1st';
+
+                if (lineupHistory.length === 0) {
+                    return startingLineupIds.includes(playerId) ? '--:--' : '0:00';
                 }
-                
-                // Process each lineup change
-                for (const change of realChanges) {
-                    const previousLineup = change.previousLineup 
+
+                // Sort ALL history chronologically (oldest first) — this is the key fix.
+                // lineupHistory from Firebase is sorted newest-first, so iterating it
+                // directly processes exits before entries, producing inflated totals.
+                const sortedHistory = [...lineupHistory].sort((a, b) =>
+                    parseTimeToElapsed(a.timestamp || a.gameTime || '') -
+                    parseTimeToElapsed(b.timestamp || b.gameTime || '')
+                );
+
+                let totalSeconds = 0;
+                let currentlyIn = startingLineupIds.includes(playerId);
+                let entryTime = currentlyIn ? '20:00 1st' : null;
+
+                for (const change of sortedHistory) {
+                    // Handle halftime marker: check if player's status changes at halftime
+                    if (change.changes === 'Start of 2nd Half') {
+                        const newLineup = change.newLineup
+                            ? change.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
+                            : [];
+                        const inNewLineup = newLineup.includes(playerId);
+
+                        if (!currentlyIn && inNewLineup) {
+                            // Player enters at start of 2nd half
+                            currentlyIn = true;
+                            entryTime = '20:00 2nd';
+                        } else if (currentlyIn && !inNewLineup) {
+                            // Player sat out 2nd half — credit through end of 1st half
+                            if (entryTime) {
+                                const minutes = calculateMinutesPlayed(entryTime, '0:00 1st');
+                                if (minutes !== '--:--') {
+                                    const [mins, secs] = minutes.split(':').map(Number);
+                                    totalSeconds += (mins * 60 + secs);
+                                }
+                            }
+                            currentlyIn = false;
+                            entryTime = null;
+                        }
+                        // If currentlyIn && inNewLineup: player continues, entryTime stays
+                        continue;
+                    }
+
+                    // Skip end-of-half marker (stats already captured in record)
+                    if (change.changes === 'End of 1st Half') continue;
+
+                    const previousLineup = change.previousLineup
                         ? change.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
                         : [];
                     const newLineup = change.newLineup
                         ? change.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
                         : [];
-                    
+
                     const wasIn = previousLineup.includes(playerId);
                     const isIn = newLineup.includes(playerId);
-                    
+
                     if (wasIn && !isIn) {
-                        // Player exited
+                        // Player subbed out
                         if (entryTime) {
                             const minutes = calculateMinutesPlayed(entryTime, change.gameTime);
                             if (minutes !== '--:--') {
@@ -632,16 +635,13 @@
                         currentlyIn = false;
                         entryTime = null;
                     } else if (!wasIn && isIn) {
-                        // Player entered
+                        // Player subbed in
                         currentlyIn = true;
                         entryTime = change.gameTime;
-                    } else if (wasIn && isIn) {
-                        // Player stayed in through a change
-                        currentlyIn = true;
-                        if (!entryTime) entryTime = change.gameTime;
                     }
+                    // wasIn && isIn: player stayed through a multi-sub — no change needed
                 }
-                
+
                 const totalMins = Math.floor(totalSeconds / 60);
                 const totalSecs = totalSeconds % 60;
                 return `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
@@ -703,7 +703,6 @@
                             });
                         }
                     } else {
-                        const firstChange = realChanges[0];
                         const firstHalfChanges = realChanges.filter(c => c.half === 1);
                         const secondHalfChanges = realChanges.filter(c => c.half === 2);
                         
@@ -865,8 +864,6 @@
                     }
                 }
 
-                console.log('Current game segments:', segments);
-
                 const lineupMap = new Map();
                 
                 baselineLineupStats.forEach((baselineData, lineupKey) => {
@@ -949,8 +946,6 @@
                     lineup.totalOppTurnovers += oppStats.turnovers || 0;
                 });
 
-                console.log('Final lineup map:', Array.from(lineupMap.entries()));
-
                 const analytics = Array.from(lineupMap.values())
                     .filter(lineup => {
                         if (timeframe === 'this-game') {
@@ -959,7 +954,6 @@
                         return true;
                     })
                     .map(lineup => {
-                    // Sort lineup by roster order before displaying
                     const orderedIds = lineup.players.slice().sort(
                         (a, b) => roster.findIndex(p => p.id === a) - roster.findIndex(p => p.id === b)
                     );
@@ -1019,11 +1013,9 @@
             const getColorClass = (value, column, analytics) => {
                 if (analytics.length < 2) return '';
                 
-                // Special handling for plusMinus
                 if (column === 'plusMinus') {
                     if (value === 0) return '';
                     
-                    // Separate positive and negative values
                     const positives = analytics.map(x => x.plusMinus).filter(v => v > 0);
                     const negatives = analytics.map(x => x.plusMinus).filter(v => v < 0);
                     
@@ -1033,42 +1025,33 @@
                         positives.sort((a,b) => a-b);
                         const idx = positives.indexOf(value);
                         const pct = idx / (positives.length - 1);
-                        // Higher values get darker green
                         return pct >= 0.5 ? 'custom-green-100' : 'custom-green-50';
                     } else {
                         if (negatives.length === 0) return 'custom-red-100';
                         if (negatives.length === 1) return 'custom-red-100';
-                        negatives.sort((a,b) => b-a); // Sort descending (most negative first)
+                        negatives.sort((a,b) => b-a);
                         const idx = negatives.indexOf(value);
                         const pct = idx / (negatives.length - 1);
-                        // More negative values get darker red
                         return pct >= 0.5 ? 'custom-red-100' : 'custom-red-50';
                     }
                 }
                 
-                // For other stats, use percentile-based distribution
                 const vals = analytics.map(x => x[column]).filter(v => !isNaN(v) && isFinite(v));
                 if (vals.length < 2) return '';
                 
-                // Create sorted unique values to handle duplicates properly
                 const uniqueVals = [...new Set(vals)].sort((a,b) => a-b);
-                
-                // If all values are the same, return no color
                 if (uniqueVals.length === 1) return '';
                 
-                // Find where this value ranks among unique values
                 const uniqueIdx = uniqueVals.indexOf(value);
                 if (uniqueIdx === -1) return '';
                 
                 const percentile = uniqueIdx / (uniqueVals.length - 1);
                 
-                // Determine if higher is better or lower is better
                 const up = ['pointsPerPossession','offRebRate','defRebRate','defTurnoverRate'];
                 const down = ['defPointsPerPossession','turnoverRate'];
                 
                 const goodPercentile = up.includes(column) ? percentile : down.includes(column) ? 1-percentile : 0.5;
                 
-                // Distribute colors evenly based on percentile
                 if (goodPercentile >= 0.8) return 'custom-green-100';
                 if (goodPercentile >= 0.6) return 'custom-green-50';
                 if (goodPercentile >= 0.4) return '';
