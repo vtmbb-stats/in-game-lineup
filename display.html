@@ -65,7 +65,7 @@
 
       const roster = [
         { id:3, name:'Ben Hammond' }, { id:17, name:'Neo Avdalas' }, { id:4, name:'Izaiah Pasha' },
-        { id:7, name:'Brett Freeman' }, {id:15, name:'Snook Peterkin' }, { id:0, name:'Jailen Bedford' },
+        { id:7, name:'Brett Freeman' }, { id:0, name:'Jailen Bedford' },
         { id:2, name:'Jaden Schutt' }, { id:10, name:'Tyler Johnson' }, { id:5, name:"Sin'Cere Jones" },
         { id:1, name:'Tobi Lawal' }, { id:13, name:'Amani Hansberry' }, { id:22, name:'Solomon Davis' },
         { id:32, name:'Christian Gurdak' }, { id:77, name:'Antonio Dorn' }
@@ -78,6 +78,13 @@
         '2026-01-03', // Wake Forest
         '2026-01-07', // Stanford
         '2026-01-14', // SMU
+        '2026-01-24', // Louisville
+        '2026-01-31', // Duke
+        '2026-02-07', // NC State
+        '2026-02-14', // Florida State
+        '2026-02-17', // Miami
+        '2026-02-28', // North Carolina
+        '2026-03-07', // Virginia
       ];
 
       const [includeHighMajorOnly, setIncludeHighMajorOnly] = useState(false);
@@ -102,6 +109,7 @@
         '2026-02-28', // North Carolina
         '2026-03-03', // Boston College
         '2026-03-07', // Virginia
+        '2026-03-10', // Wake Forest
       ];
 
       useEffect(() => { loadAllGames(); }, []);
