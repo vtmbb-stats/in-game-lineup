@@ -1,0 +1,5 @@
+# Netlify deploys this repo as-is: no build step, site files are in the repo root.
+# Every push to main goes live — avoid pushing during a game.
+[build]
+  publish = "."
+  command = ""
