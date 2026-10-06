@@ -1,0 +1,9 @@
+{
+  "rules": {
+    // Dashboards are public: anyone with the link can read.
+    ".read": true,
+    // Only the shared input-app account can change data.
+    // Replace the email below with the account in Firebase → Authentication → Users.
+    ".write": "auth != null && auth.token.email === 'REPLACE-WITH-INPUT-ACCOUNT-EMAIL'"
+  }
+}

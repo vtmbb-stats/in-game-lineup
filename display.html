@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>VT Basketball Lineup Analysis</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
@@ -11,835 +11,168 @@
     .custom-red-50{background-color:#E06060}
     .custom-red-100{background-color:#DB2800}
   </style>
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-    import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
-
-    const firebaseConfig = {
-      apiKey:"AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
-      authDomain:"vtmbb-gameday.firebaseapp.com",
-      databaseURL:"https://vtmbb-gameday-default-rtdb.firebaseio.com",
-      projectId:"vtmbb-gameday",
-      storageBucket:"vtmbb-gameday.firebasestorage.app",
-      messagingSenderId:"1012073356538",
-      appId:"1:1012073356538:web:7a41a93d00920d4d00bd43"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const database = getDatabase(app);
-
-    window.firebaseDb = {
-      ref: (path) => ref(database, path),
-      onValue: (dbRef, callback) => onValue(dbRef, callback)
-    };
-  </script>
+  <script type="module" src="firebase.js"></script>
+  <script src="config.js"></script>
+  <script src="lineup-core.js"></script>
 </head>
 <body>
   <div id="root"></div>
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+  <script type="text/babel" src="ui.jsx"></script>
+
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useMemo } = React;
+    const C = window.LineupCore;
+    const CFG = window.VT_CONFIG;
+    const { Nav, DarkToggle, Toggle, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability } = window.UI;
 
-    const ComboAnalysisViewer = () => {
+    // Most recent season that has at least one tracked game (falls back to the current season).
+    const pickDefaultSeason = (allInfo) =>
+      CFG.seasonKeys.find(key => CFG.gamesForSeason(key).some(g => allInfo?.[g.date]?.started)) || CFG.CURRENT_SEASON;
+
+    const SeasonDashboard = () => {
       const [darkMode, setDarkMode] = useState(true);
-      const [schedule, setSchedule] = useState([]);
-      const [startGame, setStartGame] = useState('');
-      const [endGame, setEndGame] = useState('');
-      const [loading, setLoading] = useState(true);
-      const [allGamesData, setAllGamesData] = useState({});
-      const [twoCombos, setTwoCombos] = useState([]);
-      const [threeCombos, setThreeCombos] = useState([]);
-      const [playerAvailability, setPlayerAvailability] = useState({});
-      const [lineupAnalytics, setLineupAnalytics] = useState([]);
-      const [sortedAnalytics, setSortedAnalytics] = useState([]);
-      const [sortColumn, setSortColumn] = useState('plusMinus');
-      const [sortDirection, setSortDirection] = useState('desc');
+      const [season, setSeason] = useState(null);
+      const [games, setGames] = useState(null);       // loaded games for the season
+      const [from, setFrom] = useState('');
+      const [to, setTo] = useState('');
       const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
-      const [selectedPlayers, setSelectedPlayers] = useState([]);
-
-      const capPPP = (ppp) => {
-        return Math.min(ppp, 3.0);
-      };
-
-      const roster = [
-        { id:3, name:'Ben Hammond' }, { id:17, name:'Neo Avdalas' }, { id:4, name:'Izaiah Pasha' },
-        { id:7, name:'Brett Freeman' }, { id:0, name:'Jailen Bedford' },
-        { id:2, name:'Jaden Schutt' }, { id:10, name:'Tyler Johnson' }, { id:5, name:"Sin'Cere Jones" },
-        { id:1, name:'Tobi Lawal' }, { id:13, name:'Amani Hansberry' }, { id:22, name:'Solomon Davis' },
-        { id:32, name:'Christian Gurdak' }, { id:77, name:'Antonio Dorn' }
-      ];
-
       const [includeLosses, setIncludeLosses] = useState(true);
-      const lossGames = [
-        '2025-11-27', // Saint Mary's
-        '2025-11-28', // VCU
-        '2026-01-03', // Wake Forest
-        '2026-01-07', // Stanford
-        '2026-01-14', // SMU
-        '2026-01-24', // Louisville
-        '2026-01-31', // Duke
-        '2026-02-07', // NC State
-        '2026-02-14', // Florida State
-        '2026-02-17', // Miami
-        '2026-02-28', // North Carolina
-        '2026-03-07', // Virginia
-      ];
+      const [highMajorOnly, setHighMajorOnly] = useState(false);
+      const [conferenceOnly, setConferenceOnly] = useState(false);
+      const [selectedPlayers, setSelectedPlayers] = useState([]);
+      const sort = useSort('plusMinus');
+      const { availability, toggle, isAvailable } = useAvailability();
 
-      const [includeHighMajorOnly, setIncludeHighMajorOnly] = useState(false);
-      const highMajorGames = [
-        '2025-11-08', // Providence
-        '2025-12-02', // South Carolina
-        '2025-12-31', // Virginia
-        '2026-01-03', // Wake Forest
-        '2026-01-07', // Stanford
-        '2026-01-10', // California
-        '2026-01-14', // SMU
-        '2026-01-17', // Notre Dame
-        '2026-01-21', // Syracuse
-        '2026-01-24', // Louisville
-        '2026-01-27', // Georgia Tech
-        '2026-01-31', // Duke
-        '2026-02-07', // NC State
-        '2026-02-11', // Clemson
-        '2026-02-14', // Florida State
-        '2026-02-17', // Miami
-        '2026-02-21', // Wake Forest
-        '2026-02-28', // North Carolina
-        '2026-03-03', // Boston College
-        '2026-03-07', // Virginia
-        '2026-03-10', // Wake Forest
-      ];
-
-      useEffect(() => { loadAllGames(); }, []);
       useEffect(() => {
-        const availability = {};
-        roster.forEach(p => availability[p.id] = true);
-        setPlayerAvailability(availability);
+        C.db().then(db => db.read('game-info')).then(all => setSeason(pickDefaultSeason(all)));
       }, []);
-      useEffect(() => {
-        if (!loading && startGame && endGame) {
-          calculateCombos();
-          calculateLineupAnalytics();
-        }
-      }, [startGame, endGame, loading, playerAvailability, includeGarbageTime, includeLosses, includeHighMajorOnly]);
 
       useEffect(() => {
-        let filtered = [...lineupAnalytics];
-        
-        // Filter by selected players
-        if (selectedPlayers.length > 0) {
-          filtered = filtered.filter(lineup => 
-            selectedPlayers.every(pid => lineup.playerIds.includes(pid))
-          );
-        }
-        
-        const sorted = filtered.sort((a,b) => {
-          let av = a[sortColumn], bv = b[sortColumn];
-          if (sortColumn === 'minutes') { av = a.totalMinutesSeconds; bv = b.totalMinutesSeconds; }
-          return sortDirection === 'desc' ? bv - av : av - bv;
+        if (!season) return;
+        setGames(null);
+        setSelectedPlayers([]);
+        C.loadGames(CFG.gamesForSeason(season)).then(loaded => {
+          const real = loaded.filter(g => !g.exhibition);
+          setGames(loaded);
+          setFrom(real[0]?.date || '');
+          setTo(real[real.length - 1]?.date || '');
         });
-        setSortedAnalytics(sorted);
-      }, [lineupAnalytics, sortColumn, sortDirection, selectedPlayers]);
+      }, [season]);
 
-      const loadAllGames = async () => {
-        if (!window.firebaseDb) return;
-        setLoading(true);
-        const gamesData = [];
-        const gamesFound = [];
+      const roster = CFG.rosterForSeason(season);
+      const rangeGames = useMemo(
+        () => C.filterGames(games || [], { from, to, includeLosses, highMajorOnly, conferenceOnly }),
+        [games, from, to, includeLosses, highMajorOnly, conferenceOnly]
+      );
 
-        const gameInfoRootRef = window.firebaseDb.ref('game-info');
-        await new Promise((resolve) => {
-          window.firebaseDb.onValue(gameInfoRootRef, async (snapshot) => {
-            if (snapshot.exists()) {
-              const allGames = snapshot.val();
-              const gameKeys = Object.keys(allGames);
-              for (const gameDate of gameKeys) {
-                const gameInfo = allGames[gameDate];
-                if (gameInfo.started) {
-                  const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${gameDate}`);
-                  await new Promise((res2) => {
-                    window.firebaseDb.onValue(lineupChangesRef, (lineupSnapshot) => {
-                      if (lineupSnapshot.exists()) {
-                        gamesData[gameDate] = Object.values(lineupSnapshot.val());
-                        gamesFound.push({
-                          date: gameDate,
-                          opponent: gameInfo.opponent || 'Unknown',
-                          displayName: `${gameDate} vs ${gameInfo.opponent || 'Unknown'}`
-                        });
-                      }
-                      res2();
-                    });
-                  });
-                }
-              }
-            }
-            resolve();
-          });
+      const { segments, warnings } = useMemo(() => {
+        const segs = [], warns = [];
+        rangeGames.forEach(g => {
+          const built = C.buildSegments(g.history, roster, { startingLineup: g.info?.startingLineup });
+          segs.push(...built.segments);
+          warns.push(...built.warnings.map(w => `${g.displayName}: ${w}`));
         });
+        return { segments: segs, warnings: warns };
+      }, [rangeGames, roster]);
 
-        gamesFound.sort((a,b) => a.date.localeCompare(b.date));
-        setAllGamesData(gamesData);
-        setSchedule(gamesFound);
+      const counted = segments.filter(s => includeGarbageTime || !s.isGarbageTime);
+      const totals = C.playerTotals(counted);
+      const rows = C.aggregateLineups(counted.filter(s => s.lineup.every(isAvailable)), roster)
+        .filter(r => selectedPlayers.every(id => r.playerIds.includes(id)));
 
-        // Find Charleston Southern game or default to first game
-        const charlestonIndex = gamesFound.findIndex(g => 
-          g.opponent && g.opponent.toLowerCase().includes('charleston')
-        );
-        
-        if (gamesFound.length > 0) {
-          const defaultStart = charlestonIndex !== -1 ? charlestonIndex : 0;
-          setStartGame(gamesFound[defaultStart].date);
-          setEndGame(gamesFound[gamesFound.length - 1].date);
-        }
+      const togglePlayerFilter = (id) =>
+        setSelectedPlayers(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
 
-        setLoading(false);
-      };
-
-      const parseGameTimeValue = (t) => {
-        if (!t) return 0;
-        const m = t.match(/(\d+):(\d+)\s+(1st|2nd|OT|2OT|3OT|4OT)/);
-        if (!m) return 0;
-        const min = parseInt(m[1], 10);
-        const sec = parseInt(m[2], 10);
-        const per = m[3];
-        const s = min * 60 + sec;
-        
-        if (per === '1st') return 20*60 - s;
-        if (per === '2nd') return 40*60 - s;
-        if (per === 'OT') return 45*60 - s;
-        if (per === '2OT') return 50*60 - s;
-        if (per === '3OT') return 55*60 - s;
-        if (per === '4OT') return 60*60 - s;
-        
-        return 0;
-      };
-
-      const calculateMinutesPlayed = (startTime, endTime) => {
-        if (endTime === 'Current') return 0;
-        const a = parseGameTimeValue(startTime);
-        const b = parseGameTimeValue(endTime);
-        const d = b - a;
-        return d > 0 ? d : 0;
-      };
-
-      const calculatePlayerMinutes = (playerId) => {
-        const gamesToInclude = getSliceByDates();
-        if (gamesToInclude.length === 0) return '0:00';
-        
-        let totalSeconds = 0;
-        
-        gamesToInclude.forEach(game => {
-          const hist = allGamesData[game.date];
-          if (!hist) return;
-          const segments = buildSegments(hist);
-          
-          segments.forEach(seg => {
-            if (!includeGarbageTime && seg.isGarbageTime) return;
-            if (seg.lineup.includes(playerId)) {
-              totalSeconds += calculateMinutesPlayed(seg.startTime, seg.endTime);
-            }
-          });
-        });
-        
-        const totalMins = Math.floor(totalSeconds / 60);
-        const totalSecs = totalSeconds % 60;
-        return `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
-      };
-
-      const buildSegments = (lineupHistory) => {
-        if (!lineupHistory || lineupHistory.length === 0) return [];
-        const segments = [];
-        const sorted = [...lineupHistory].sort((a,b) => {
-          const ta = parseGameTimeValue(a.timestamp || a.gameTime || '');
-          const tb = parseGameTimeValue(b.timestamp || b.gameTime || '');
-          return ta - tb;
-        });
-      
-        let nextSegmentLineup = null;
-      
-        for (let i = 0; i < sorted.length; i++) {
-          const curr = sorted[i];
-          let segmentLineup;
-      
-          // Handle all period starts
-          if (curr.changes?.startsWith('Start of')) {
-            nextSegmentLineup = curr.newLineup;
-            continue;
-          } else if (i === 0) {
-            segmentLineup = curr.previousLineup;
-            nextSegmentLineup = curr.newLineup;
-          } else if (curr.changes === 'End of 1st Half' || curr.changes?.startsWith('End of')) {
-            segmentLineup = nextSegmentLineup || curr.previousLineup;
-            nextSegmentLineup = curr.newLineup; // Keep lineup for next period
-          } else {
-            segmentLineup = curr.previousLineup;
-            nextSegmentLineup = curr.newLineup;
-          }
-          
-          if (!segmentLineup) continue;
-      
-          let startTime, startScore, endTime, endScore, stats;
-      
-          if (i === 0) {
-            startTime = '20:00 1st';
-            startScore = { vt:0, opp:0 };
-            endTime = curr.gameTime;
-            endScore = { vt:curr.vtScore, opp:curr.oppScore };
-            stats = curr.completedSegmentStats || { vt:{}, opponent:{} };
-          } else {
-            const prev = sorted[i-1];
-            if (prev.changes?.startsWith('Start of')) {
-              startTime = prev.gameTime;
-              startScore = { vt: prev.vtScore, opp: prev.oppScore };
-            } else {
-              startTime = prev.gameTime;
-              startScore = { vt: prev.vtScore, opp: prev.oppScore };
-            }
-            endTime = curr.gameTime;
-            endScore = { vt: curr.vtScore, opp: curr.oppScore };
-            stats = curr.completedSegmentStats || { vt:{}, opponent:{} };
-          }
-      
-          if (startTime === endTime) continue;
-      
-          const ids = segmentLineup.split(', ')
-            .map(n => roster.find(p => p.name === n)?.id)
-            .filter(id => id !== undefined);
-      
-          if (ids.length === 5) {
-            segments.push({ lineup: ids, startTime, endTime, startScore, endScore, stats });
-          }
-        }
-      
-        // Remove the endOfGame block entirely - it's already handled in the loop
-      
-        const garbageTimeStart = sorted.find(r => r.garbageTime === true);
-        if (garbageTimeStart) {
-          const gt = parseGameTimeValue(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
-          segments.forEach(s => {
-            const sv = parseGameTimeValue(s.startTime);
-            if (sv >= gt) s.isGarbageTime = true;
-          });
-        }
-      
-        return segments;
-      };
-
-      const getSliceByDates = () => {
-        const s = schedule;
-        const si = s.findIndex(g => g.date === startGame);
-        const ei = s.findIndex(g => g.date === endGame);
-        if (si === -1 || ei === -1) return [];
-        if (si > ei) return [];
-        
-        let games = s.slice(si, ei + 1);
-        
-        // Always exclude first 2 exhibition games
-        const exhibitionGames = [
-          '2025-10-11', // Seton Hall
-          '2025-10-25'  // Duquesne
-        ];
-        games = games.filter(g => !exhibitionGames.includes(g.date));
-        
-        // Filter out losses if needed
-        if (!includeLosses) {
-          games = games.filter(g => !lossGames.includes(g.date));
-        }
-        
-        // Filter for high major only if needed
-        if (includeHighMajorOnly) {
-          games = games.filter(g => highMajorGames.includes(g.date));
-        }
-        
-        return games;
-      };
-
-      const calculateCombos = () => {
-        const gamesToInclude = getSliceByDates();
-        if (gamesToInclude.length === 0) { setTwoCombos([]); setThreeCombos([]); return; }
-
-        const twoMap = new Map();
-        const threeMap = new Map();
-
-        gamesToInclude.forEach(game => {
-          const hist = allGamesData[game.date];
-          if (!hist) return;
-          const segments = buildSegments(hist);
-
-          segments.forEach(seg => {
-            if (!includeGarbageTime && seg.isGarbageTime) return;
-            if (seg.lineup.some(id => !playerAvailability[id])) return;
-
-            const vt = seg.endScore.vt - seg.startScore.vt;
-            const op = seg.endScore.opp - seg.startScore.opp;
-            const pm = vt - op;
-            const secs = calculateMinutesPlayed(seg.startTime, seg.endTime);
-
-            const lineup = seg.lineup;
-            for (let i=0;i<lineup.length;i++){
-              for (let j=i+1;j<lineup.length;j++){
-                const key = [lineup[i], lineup[j]].sort((a,b)=>a-b).join('-');
-                if (!twoMap.has(key)) twoMap.set(key,{players:key.split('-').map(Number), totalPlusMinus:0, totalSeconds:0});
-                const c = twoMap.get(key); c.totalPlusMinus += pm; c.totalSeconds += secs;
-              }
-            }
-            for (let i=0;i<lineup.length;i++){
-              for (let j=i+1;j<lineup.length;j++){
-                for (let k=j+1;k<lineup.length;k++){
-                  const key = [lineup[i], lineup[j], lineup[k]].sort((a,b)=>a-b).join('-');
-                  if (!threeMap.has(key)) threeMap.set(key,{players:key.split('-').map(Number), totalPlusMinus:0, totalSeconds:0});
-                  const c = threeMap.get(key); c.totalPlusMinus += pm; c.totalSeconds += secs;
-                }
-              }
-            }
-          });
-        });
-
-        const minSeconds = 5*60;
-        const proc = (m) => Array.from(m.values())
-          .filter(c => c.totalSeconds >= minSeconds)
-          .filter(c => c.players.every(id => playerAvailability[id]))
-          .map(c => {
-            const mins = c.totalSeconds/60;
-            return {
-              names: c.players.map(id => roster.find(p=>p.id===id)?.name || '').join(', '),
-              totalPlusMinus: c.totalPlusMinus,
-              totalMinutes: mins,
-              pmPerMinute: c.totalPlusMinus/(mins||1)
-            };
-          })
-          .sort((a,b)=>b.pmPerMinute - a.pmPerMinute);
-
-        setTwoCombos(proc(twoMap));
-        setThreeCombos(proc(threeMap));
-      };
-
-      const calculateLineupAnalytics = () => {
-        const gamesToInclude = getSliceByDates();
-        if (gamesToInclude.length === 0) { setLineupAnalytics([]); return; }
-
-        const map = new Map();
-
-        gamesToInclude.forEach(game => {
-          const hist = allGamesData[game.date];
-          if (!hist) return;
-          const segments = buildSegments(hist);
-
-          segments.forEach(seg => {
-            if (seg.lineup.some(id => !playerAvailability[id])) return;
-            if (!includeGarbageTime && seg.isGarbageTime) return;
-
-            const key = seg.lineup.slice().sort((a,b)=>a-b).join('-');
-            if (!map.has(key)) {
-              map.set(key, {
-                players: seg.lineup, totalMinutesSeconds:0, totalPlusMinus:0,
-                totalPossessions:0, totalOffReb:0, totalDefReb:0, totalTurnovers:0,
-                totalOppPossessions:0, totalOppOffReb:0, totalOppDefReb:0, totalOppTurnovers:0,
-                totalPoints:0, totalOppPoints:0
-              });
-            }
-            const rec = map.get(key);
-            const vt = seg.endScore.vt - seg.startScore.vt;
-            const op = seg.endScore.opp - seg.startScore.opp;
-
-            rec.totalPlusMinus += vt - op;
-            rec.totalPoints += vt;
-            rec.totalOppPoints += op;
-            rec.totalMinutesSeconds += calculateMinutesPlayed(seg.startTime, seg.endTime);
-
-            const vtS = seg.stats?.vt || {};
-            const opS = seg.stats?.opponent || {};
-
-            rec.totalPossessions += (vtS.possessions || 0);
-            rec.totalOffReb += (vtS.offensiveRebounds || 0);
-            rec.totalDefReb += (vtS.defensiveRebounds || 0);
-            rec.totalTurnovers += (vtS.turnovers || 0);
-
-            rec.totalOppPossessions += (opS.possessions || 0);
-            rec.totalOppOffReb += (opS.offensiveRebounds || 0);
-            rec.totalOppDefReb += (opS.defensiveRebounds || 0);
-            rec.totalOppTurnovers += (opS.turnovers || 0);
-          });
-        });
-
-        const analytics = Array.from(map.values()).map(r => {
-          // sort lineup by roster order before displaying
-          const orderedIds = r.players.slice().sort(
-            (a,b) => roster.findIndex(p=>p.id===a) - roster.findIndex(p=>p.id===b)
-          );
-          const names = orderedIds
-            .map(id => (roster.find(p=>p.id===id)?.name || '').split(' ').pop())
-            .join(', ');
-          const offPoss = r.totalPossessions || 1;
-          const defPoss = r.totalOppPossessions || 1;
-          const availOR = r.totalOffReb + r.totalOppDefReb;
-          const availDR = r.totalDefReb + r.totalOppOffReb;
-          const mins = Math.floor(r.totalMinutesSeconds/60);
-          const secs = r.totalMinutesSeconds%60;
-
-          return {
-            id: r.players.slice().sort((a,b)=>a-b).join('-'),
-            players: names,
-            playerIds: r.players,
-            plusMinus: r.totalPlusMinus,
-            pointsPerPossession: offPoss > 0 ? capPPP(r.totalPoints / offPoss) : 0,
-            defPointsPerPossession: defPoss > 0 ? capPPP(r.totalOppPoints / defPoss) : 0,
-            offRebRate: availOR>0 ? (r.totalOffReb/availOR)*100 : 0,
-            defRebRate: availDR>0 ? (r.totalDefReb/availDR)*100 : 0,
-            turnoverRate: (r.totalTurnovers/offPoss)*100,
-            defTurnoverRate: (r.totalOppTurnovers/defPoss)*100,
-            minutes: `${mins}:${secs.toString().padStart(2,'0')}`,
-            totalMinutesSeconds: r.totalMinutesSeconds
-          };
-        });
-
-        setLineupAnalytics(analytics);
-      };
-
-      const getPlayerPlusMinus = (playerId) =>
-        lineupAnalytics.reduce((s,l)=> s + (l.playerIds.includes(playerId) ? l.plusMinus : 0), 0);
-
-      const getColorClass = (value, column, analytics) => {
-        if (analytics.length < 2) return '';
-        
-        // Special handling for plusMinus
-        if (column === 'plusMinus') {
-          if (value === 0) return '';
-          
-          // Separate positive and negative values
-          const positives = analytics.map(x => x.plusMinus).filter(v => v > 0);
-          const negatives = analytics.map(x => x.plusMinus).filter(v => v < 0);
-          
-          if (value > 0) {
-            if (positives.length === 0) return 'custom-green-100';
-            if (positives.length === 1) return 'custom-green-100';
-            positives.sort((a,b) => a-b);
-            const idx = positives.indexOf(value);
-            const pct = idx / (positives.length - 1);
-            // Higher values get darker green
-            return pct >= 0.5 ? 'custom-green-100' : 'custom-green-50';
-          } else {
-            if (negatives.length === 0) return 'custom-red-100';
-            if (negatives.length === 1) return 'custom-red-100';
-            negatives.sort((a,b) => b-a); // Sort descending (most negative first)
-            const idx = negatives.indexOf(value);
-            const pct = idx / (negatives.length - 1);
-            // More negative values get darker red
-            return pct >= 0.5 ? 'custom-red-100' : 'custom-red-50';
-          }
-        }
-        
-        // For other stats, use percentile-based distribution
-        const vals = analytics.map(x => x[column]).filter(v => !isNaN(v) && isFinite(v));
-        if (vals.length < 2) return '';
-        
-        // Create sorted unique values to handle duplicates properly
-        const uniqueVals = [...new Set(vals)].sort((a,b) => a-b);
-        
-        // If all values are the same, return no color
-        if (uniqueVals.length === 1) return '';
-        
-        // Find where this value ranks among unique values
-        const uniqueIdx = uniqueVals.indexOf(value);
-        if (uniqueIdx === -1) return '';
-        
-        const percentile = uniqueIdx / (uniqueVals.length - 1);
-        
-        // Determine if higher is better or lower is better
-        const up = ['pointsPerPossession','offRebRate','defRebRate','defTurnoverRate'];
-        const down = ['defPointsPerPossession','turnoverRate'];
-        
-        const goodPercentile = up.includes(column) ? percentile : down.includes(column) ? 1-percentile : 0.5;
-        
-        // Distribute colors evenly based on percentile
-        if (goodPercentile >= 0.8) return 'custom-green-100';
-        if (goodPercentile >= 0.6) return 'custom-green-50';
-        if (goodPercentile >= 0.4) return '';
-        if (goodPercentile >= 0.2) return 'custom-red-50';
-        return 'custom-red-100';
-      };
-
-      const handleSort = (c) => {
-        if (sortColumn === c) setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc');
-        else { setSortColumn(c); setSortDirection('desc'); }
-      };
-
-      const togglePlayerAvailability = (id) => setPlayerAvailability(p => ({...p, [id]: !p[id]}));
-
-      const togglePlayerFilter = (id) => {
-        setSelectedPlayers(prev => {
-          if (prev.includes(id)) {
-            return prev.filter(pid => pid !== id);
-          } else {
-            return [...prev, id];
-          }
-        });
-      };
-
-      const clearPlayerFilters = () => setSelectedPlayers([]);
-
-      if (loading) {
-        return (
-          <div className={`min-h-screen flex items-center justify-center ${darkMode?'bg-gray-900':'bg-gray-100'}`}>
-            <div className={`text-xl ${darkMode?'text-white':'text-gray-900'}`}>Loading season data...</div>
-          </div>
-        );
-      }
-
-      const top5Twos = twoCombos.slice(0,5);
-      const bottom5Twos = twoCombos.slice(-5).reverse();
-      const top5Threes = threeCombos.slice(0,5);
-      const bottom5Threes = threeCombos.slice(-5).reverse();
+      const textMain = darkMode ? 'text-white' : 'text-gray-900';
+      const gameOptions = (games || []).filter(g => !g.exhibition);
+      const record = (() => {
+        const w = rangeGames.filter(g => g.result === 'W').length;
+        const l = rangeGames.filter(g => g.result === 'L').length;
+        return `${rangeGames.length} game${rangeGames.length === 1 ? '' : 's'} (${w}-${l})`;
+      })();
 
       return (
-        <div className={`min-h-screen ${darkMode?'bg-gray-900':'bg-gray-100'}`}>
-          <div className="p-4 border-b border-gray-300 dark:border-gray-700">
-            <div className="flex justify-between items-center mb-4">
-              <h1 className={`text-2xl font-bold ${darkMode?'text-white':'text-gray-900'}`}>Virginia Tech Basketball Lineup Analysis</h1>
+        <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+          <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}>
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+              <h1 className={`text-2xl font-bold ${textMain}`}>Virginia Tech Basketball Lineup Analysis</h1>
               <div className="flex items-center gap-3">
-                <a href="live.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'} transition-colors`}>
-                  Live Game Viewer
-                </a>
-                <a href="combinations.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'} transition-colors`}>
-                  Guard/Big Combinations
-                </a>
-                <button onClick={()=>setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode?'bg-yellow-500 text-gray-900':'bg-gray-800 text-white'}`}>{darkMode?'Light':'Dark'}</button>
+                <Nav current="display.html" darkMode={darkMode} />
+                <DarkToggle darkMode={darkMode} setDarkMode={setDarkMode} />
               </div>
             </div>
-            <div className="flex justify-end items-center gap-4">
-              <div className="flex items-center gap-2">
-                <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>From:</label>
-                <select value={startGame} onChange={(e)=>setStartGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode?'bg-gray-800 border-gray-600 text-white':'bg-white border-gray-300 text-gray-900'}`}>
-                  {schedule.map(g => (<option key={g.date} value={g.date}>{g.displayName}</option>))}
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>To:</label>
-                <select value={endGame} onChange={(e)=>setEndGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode?'bg-gray-800 border-gray-600 text-white':'bg-white border-gray-300 text-gray-900'}`}>
-                  {schedule.map(g => (<option key={g.date} value={g.date}>{g.displayName}</option>))}
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>Garbage Time:</label>
-                <button
-                  onClick={()=>setIncludeGarbageTime(!includeGarbageTime)}
-                  className={`px-4 py-2 rounded-md ${includeGarbageTime?(darkMode?'bg-green-600 text-white':'bg-green-500 text-white'):(darkMode?'bg-gray-700 text-gray-300':'bg-gray-300 text-gray-700')}`}
-                >
-                  {includeGarbageTime?'Included':'Excluded'}
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>Losses:</label>
-                <button
-                  onClick={()=>setIncludeLosses(!includeLosses)}
-                  className={`px-4 py-2 rounded-md ${includeLosses?(darkMode?'bg-green-600 text-white':'bg-green-500 text-white'):(darkMode?'bg-gray-700 text-gray-300':'bg-gray-300 text-gray-700')}`}
-                >
-                  {includeLosses?'Included':'Excluded'}
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className={`text-sm ${darkMode?'text-gray-300':'text-gray-700'}`}>High Major Only:</label>
-                <button
-                  onClick={()=>setIncludeHighMajorOnly(!includeHighMajorOnly)}
-                  className={`px-4 py-2 rounded-md ${includeHighMajorOnly?(darkMode?'bg-green-600 text-white':'bg-green-500 text-white'):(darkMode?'bg-gray-700 text-gray-300':'bg-gray-300 text-gray-700')}`}
-                >
-                  {includeHighMajorOnly?'Yes':'No'}
-                </button>
-              </div>
+            <div className="flex flex-wrap justify-end items-center gap-4">
+              <Select label="Season" value={season || ''} onChange={setSeason} darkMode={darkMode}>
+                {CFG.seasonKeys.map(k => <option key={k} value={k}>{CFG.SEASONS[k].label}</option>)}
+              </Select>
+              <Select label="From" value={from} onChange={setFrom} darkMode={darkMode}>
+                {gameOptions.map(g => <option key={g.date} value={g.date}>{g.displayName}</option>)}
+              </Select>
+              <Select label="To" value={to} onChange={setTo} darkMode={darkMode}>
+                {gameOptions.map(g => <option key={g.date} value={g.date}>{g.displayName}</option>)}
+              </Select>
+              <Toggle label="Garbage Time" value={includeGarbageTime} onChange={setIncludeGarbageTime} darkMode={darkMode} />
+              <Toggle label="Losses" value={includeLosses} onChange={setIncludeLosses} darkMode={darkMode} />
+              <Toggle label="High Major Only" value={highMajorOnly} onChange={setHighMajorOnly} onText="Yes" offText="No" darkMode={darkMode} />
+              <Toggle label="ACC Only" value={conferenceOnly} onChange={setConferenceOnly} onText="Yes" offText="No" darkMode={darkMode} />
             </div>
           </div>
 
-          <div className="flex">
-            <div className={`w-80 p-4 border-r border-gray-300 dark:border-gray-700 ${darkMode?'bg-gray-800':'bg-white'}`}>
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className={`text-lg font-semibold ${darkMode?'text-white':'text-gray-900'}`}>Filter Lineups</h3>
-                  {selectedPlayers.length > 0 && (
-                    <button
-                      onClick={clearPlayerFilters}
-                      className={`text-xs px-2 py-1 rounded ${darkMode?'bg-red-600 text-white':'bg-red-500 text-white'}`}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-4 gap-1 mb-3">
-                  {[...roster].sort((a, b) => a.id - b.id).map(p => {
-                    const isSelected = selectedPlayers.includes(p.id);
-                    return (
-                      <div
-                        key={`filter-${p.id}`}
-                        onClick={() => togglePlayerFilter(p.id)}
-                        className={`p-1 rounded cursor-pointer text-xs text-center font-medium ${
-                          isSelected 
-                            ? (darkMode ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white')
-                            : (darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700')
-                        }`}
-                      >
+          {games === null ? (
+            <div className={`flex justify-center items-center h-64 text-xl ${textMain}`}>Loading season data…</div>
+          ) : (
+            <div className="flex">
+              <div className={`w-80 p-4 border-r ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'}`}>
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className={`text-lg font-semibold ${textMain}`}>Filter Lineups</h3>
+                    {selectedPlayers.length > 0 && (
+                      <button onClick={() => setSelectedPlayers([])} className="text-xs px-2 py-1 rounded bg-red-600 text-white">Clear</button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-4 gap-1 mb-3">
+                    {[...roster].sort((a, b) => a.id - b.id).map(p => (
+                      <div key={p.id} onClick={() => togglePlayerFilter(p.id)} title={p.name}
+                        className={`p-1 rounded cursor-pointer text-xs text-center font-medium ${selectedPlayers.includes(p.id)
+                          ? 'bg-blue-600 text-white'
+                          : (darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700')}`}>
                         #{p.id}
                       </div>
-                    );
-                  })}
-                </div>
-                {selectedPlayers.length > 0 && (
-                  <div className={`text-xs ${darkMode?'text-gray-400':'text-gray-600'}`}>
-                    Showing lineups with: {selectedPlayers.map(id => roster.find(p => p.id === id)?.name.split(' ').pop()).join(', ')}
+                    ))}
                   </div>
-                )}
-              </div>
-              
-              <h3 className={`text-lg font-semibold mb-3 ${darkMode?'text-white':'text-gray-900'}`}>Players</h3>
-              <div className="space-y-2">
-                {roster.map(p => {
-                  const pm = getPlayerPlusMinus(p.id);
-                  const ok = playerAvailability[p.id];
-                  const minutesPlayed = calculatePlayerMinutes(p.id);
-                  
-                  return (
-                    <div key={p.id} className={`p-2 rounded ${darkMode?'bg-gray-700':'bg-gray-100'} ${!ok?'opacity-50':''}`}>
-                      <div className="flex justify-between items-center">
-                        <div className="flex-1">
-                          <div className={`font-medium text-sm ${darkMode?'text-white':'text-gray-900'}`}>
-                            {p.name}
-                          </div>
-                          <div className="flex gap-3 items-center">
-                            <div className={`text-sm ${pm>=0?'text-green-500':'text-red-500'}`}>
-                              {pm>=0?'+':''}{pm}
-                            </div>
-                            <div className={`text-sm ${darkMode?'text-gray-400':'text-gray-600'}`}>
-                              {minutesPlayed}
-                            </div>
-                          </div>
-                        </div>
-                        <input 
-                          type="checkbox" 
-                          checked={ok ?? true} 
-                          onChange={()=>togglePlayerAvailability(p.id)} 
-                          className="ml-2" 
-                        />
-                      </div>
+                  {selectedPlayers.length > 0 && (
+                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Showing lineups with: {selectedPlayers.map(id => C.lastName(id, roster)).join(', ')}
                     </div>
-                  );
-                })}
+                  )}
+                </div>
+                <PlayerList players={roster} totals={totals} availability={availability} onToggle={toggle} darkMode={darkMode} />
               </div>
-            </div>
 
-            <div className="flex-1 p-4">
-              <div className={`rounded-lg shadow ${darkMode?'bg-gray-800':'bg-white'} mb-6`}>
-                <div className="p-4">
-                  <h3 className={`text-lg font-semibold mb-4 ${darkMode?'text-white':'text-gray-900'}`}>Lineup Analytics</h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className={`border-b ${darkMode?'border-gray-700':'border-gray-200'}`}>
-                          <th className={`text-left p-2 ${darkMode?'text-gray-300':'text-gray-700'}`}>Lineup</th>
-                          {[{key:'plusMinus',label:'+/-'},{key:'pointsPerPossession',label:'PPP'},{key:'defPointsPerPossession',label:'Def PPP'},{key:'offRebRate',label:'OReb%'},{key:'defRebRate',label:'DReb%'},{key:'turnoverRate',label:'TO%'},{key:'defTurnoverRate',label:'Def TO%'},{key:'minutes',label:'Min'}].map(col=>(
-                            <th key={col.key} onClick={()=>handleSort(col.key)} className={`text-left p-2 cursor-pointer hover:bg-opacity-50 ${darkMode?'text-gray-300 hover:bg-gray-700':'text-gray-700 hover:bg-gray-100'} ${sortColumn===col.key?'font-bold':''}`}>
-                              {col.label}{sortColumn===col.key && (<span className="ml-1">{sortDirection==='desc'?'↓':'↑'}</span>)}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sortedAnalytics.map(lineup=>(
-                          <tr key={lineup.id} className={`border-b ${darkMode?'border-gray-700':'border-gray-200'}`}>
-                            <td className={`p-2 font-medium ${darkMode?'text-white':'text-gray-900'}`}>{lineup.players}</td>
-                            <td className={`p-2 ${getColorClass(lineup.plusMinus,'plusMinus',lineupAnalytics)} ${darkMode?'text-white':'text-gray-900'}`}>{lineup.plusMinus>=0?'+':''}{lineup.plusMinus}</td>
-                            <td className={`p-2 ${getColorClass(lineup.pointsPerPossession,'pointsPerPossession',lineupAnalytics)} ${darkMode?'text-white':'text-gray-900'}`}>{lineup.pointsPerPossession.toFixed(2)}</td>
-                            <td className={`p-2 ${getColorClass(lineup.defPointsPerPossession,'defPointsPerPossession',lineupAnalytics)} ${darkMode?'text-white':'text-gray-900'}`}>{lineup.defPointsPerPossession.toFixed(2)}</td>
-                            <td className={`p-2 ${getColorClass(lineup.offRebRate,'offRebRate',lineupAnalytics)} ${darkMode?'text-white':'text-gray-900'}`}>{lineup.offRebRate.toFixed(1)}%</td>
-                            <td className={`p-2 ${getColorClass(lineup.defRebRate,'defRebRate',lineupAnalytics)} ${darkMode?'text-white':'text-gray-900'}`}>{lineup.defRebRate.toFixed(1)}%</td>
-                            <td className={`p-2 ${getColorClass(lineup.turnoverRate,'turnoverRate',lineupAnalytics)} ${darkMode?'text-white':'text-gray-900'}`}>{lineup.turnoverRate.toFixed(1)}%</td>
-                            <td className={`p-2 ${getColorClass(lineup.defTurnoverRate,'defTurnoverRate',lineupAnalytics)} ${darkMode?'text-white':'text-gray-900'}`}>{lineup.defTurnoverRate.toFixed(1)}%</td>
-                            <td className={`p-2 ${getColorClass(lineup.minutes,'minutes',lineupAnalytics)} ${darkMode?'text-white':'text-gray-900'}`}>{lineup.minutes}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {sortedAnalytics.length===0 && (<div className={`${darkMode?'text-gray-400':'text-gray-500'} text-center py-8`}>No lineup data available for selected range{selectedPlayers.length > 0 ? ' and filters' : ''}</div>)}
+              <div className="flex-1 p-4">
+                <Warnings warnings={warnings} darkMode={darkMode} />
+                <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+                    <h3 className={`text-lg font-semibold ${textMain}`}>Lineup Analytics</h3>
+                    <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{record}</div>
                   </div>
+                  <StatsTable rows={rows} darkMode={darkMode} {...sort}
+                    emptyText={gameOptions.length === 0
+                      ? `No games tracked yet for ${CFG.SEASONS[season]?.label || 'this season'}`
+                      : `No lineup data for the selected range${selectedPlayers.length ? ' and filters' : ''}`} />
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* <div className="p-6 space-y-8">
-            <div>
-              <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode?'text-white':'text-gray-900'}`}>2-Player Combos</h2>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <h3 className={`text-xl font-semibold mb-3 ${darkMode?'text-green-400':'text-green-600'}`}>Top 5 2s</h3>
-                  <div className="space-y-3">
-                    {top5Twos.map((c,i)=>(
-                      <div key={i} className={`p-4 rounded-lg ${darkMode?'bg-gray-800':'bg-white'} shadow`}>
-                        <div className={`font-bold text-lg ${darkMode?'text-white':'text-gray-900'}`}>{c.names}</div>
-                        <div className="flex justify-between mt-2">
-                          <span className="text-green-500 font-semibold">+{c.totalPlusMinus} ({c.pmPerMinute.toFixed(2)}/min)</span>
-                          <span className={`${darkMode?'text-gray-400':'text-gray-600'}`}>{c.totalMinutes.toFixed(1)} min</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <h3 className={`text-xl font-semibold mb-3 ${darkMode?'text-red-400':'text-red-600'}`}>Bottom 5 2s</h3>
-                  <div className="space-y-3">
-                    {bottom5Twos.map((c,i)=>(
-                      <div key={i} className={`p-4 rounded-lg ${darkMode?'bg-gray-800':'bg-white'} shadow`}>
-                        <div className={`font-bold text-lg ${darkMode?'text-white':'text-gray-900'}`}>{c.names}</div>
-                        <div className="flex justify-between mt-2">
-                          <span className="text-red-500 font-semibold">{c.totalPlusMinus} ({c.pmPerMinute.toFixed(2)}/min)</span>
-                          <span className={`${darkMode?'text-gray-400':'text-gray-600'}`}>{c.totalMinutes.toFixed(1)} min</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h2 className={`text-2xl font-bold mb-4 text-center ${darkMode?'text-white':'text-gray-900'}`}>3-Player Combos</h2>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <h3 className={`text-xl font-semibold mb-3 ${darkMode?'text-green-400':'text-green-600'}`}>Top 5 3s</h3>
-                  <div className="space-y-3">
-                    {top5Threes.map((c,i)=>(
-                      <div key={i} className={`p-4 rounded-lg ${darkMode?'bg-gray-800':'bg-white'} shadow`}>
-                        <div className={`font-bold text-lg ${darkMode?'text-white':'text-gray-900'}`}>{c.names}</div>
-                        <div className="flex justify-between mt-2">
-                          <span className="text-green-500 font-semibold">+{c.totalPlusMinus} ({c.pmPerMinute.toFixed(2)}/min)</span>
-                          <span className={`${darkMode?'text-gray-400':'text-gray-600'}`}>{c.totalMinutes.toFixed(1)} min</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <h3 className={`text-xl font-semibold mb-3 ${darkMode?'text-red-400':'text-red-600'}`}>Bottom 5 3s</h3>
-                  <div className="space-y-3">
-                    {bottom5Threes.map((c,i)=>(
-                      <div key={i} className={`p-4 rounded-lg ${darkMode?'bg-gray-800':'bg-white'} shadow`}>
-                        <div className={`font-bold text-lg ${darkMode?'text-white':'text-gray-900'}`}>{c.names}</div>
-                        <div className="flex justify-between mt-2">
-                          <span className="text-red-500 font-semibold">{c.totalPlusMinus} ({c.pmPerMinute.toFixed(2)}/min)</span>
-                          <span className={`${darkMode?'text-gray-400':'text-gray-600'}`}>{c.totalMinutes.toFixed(1)} min</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div> */}
+          )}
         </div>
       );
     };
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<ComboAnalysisViewer />);
+    ReactDOM.createRoot(document.getElementById('root')).render(<SeasonDashboard />);
   </script>
 </body>
 </html>

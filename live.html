@@ -6,1139 +6,163 @@
     <title>VT Basketball Gameday Analytics</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .custom-green-100 {
-            background-color: #00A327;
-        }
-        .custom-green-50 {
-            background-color: #66C47E;
-        }
-        .custom-red-50 {
-            background-color: #E06060;
-        }
-        .custom-red-100 {
-            background-color: #DB2800;
-        }
+        .custom-green-100 { background-color: #00A327; }
+        .custom-green-50 { background-color: #66C47E; }
+        .custom-red-50 { background-color: #E06060; }
+        .custom-red-100 { background-color: #DB2800; }
     </style>
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
-        
-        const firebaseConfig = {
-            apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
-            authDomain: "vtmbb-gameday.firebaseapp.com",
-            databaseURL: "https://vtmbb-gameday-default-rtdb.firebaseio.com",
-            projectId: "vtmbb-gameday",
-            storageBucket: "vtmbb-gameday.firebasestorage.app",
-            messagingSenderId: "1012073356538",
-            appId: "1:1012073356538:web:7a41a93d00920d4d00bd43"
-        };
-        
-        const app = initializeApp(firebaseConfig);
-        const database = getDatabase(app);
-        
-        window.firebaseDb = {
-            ref: (path) => ref(database, path),
-            onValue: (dbRef, callback) => onValue(dbRef, callback),
-            off: (dbRef, callback) => off(dbRef, callback)
-        };
-        
-        console.log('Firebase initialized successfully');
-    </script>
+    <script type="module" src="firebase.js"></script>
+    <script src="config.js"></script>
+    <script src="lineup-core.js"></script>
 </head>
 <body>
     <div id="root"></div>
 
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+    <script type="text/babel" src="ui.jsx"></script>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useMemo } = React;
+        const C = window.LineupCore;
+        const CFG = window.VT_CONFIG;
+        const { Nav, DarkToggle, Toggle, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability } = window.UI;
+
+        const TIMEFRAMES = [
+            { value: 'this-game', label: 'This Game' },
+            { value: 'last-5', label: 'Last 5 Games + This Game' },
+            { value: 'last-10', label: 'Last 10 Games + This Game' },
+            { value: 'conference', label: 'ACC Games + This Game' },
+            { value: 'season', label: 'Season + This Game' }
+        ];
+
+        // Subscribe to a database path; returns its latest value (null until loaded / if empty).
+        const useWatch = (path) => {
+            const [value, setValue] = useState(null);
+            useEffect(() => {
+                setValue(null);
+                if (!path) return;
+                let unsub;
+                C.db().then(db => { unsub = db.watch(path, setValue); });
+                return () => unsub && unsub();
+            }, [path]);
+            return value;
+        };
 
         const GamedayAnalyticsDisplay = () => {
             const [darkMode, setDarkMode] = useState(true);
-            const [liveGameDate, setLiveGameDate] = useState(null);
-            const [liveGameOpponent, setLiveGameOpponent] = useState(null);
             const [timeframe, setTimeframe] = useState('this-game');
-            const [sortColumn, setSortColumn] = useState('plusMinus');
-            const [sortDirection, setSortDirection] = useState('desc');
-            
-            const [gameData, setGameData] = useState(null);
-            const [liveGameData, setLiveGameData] = useState(null);
-            const [lineupHistory, setLineupHistory] = useState([]);
-            const [currentLineup, setCurrentLineup] = useState([]);
-            const [playerAvailability, setPlayerAvailability] = useState({});
-            const [playerStats, setPlayerStats] = useState({});
-            const [lineupAnalytics, setLineupAnalytics] = useState([]);
-            const [sortedAnalytics, setSortedAnalytics] = useState([]);
-            const [baselineLineupStats, setBaselineLineupStats] = useState(new Map());
-            const [currentStats, setCurrentStats] = useState({
-                vt: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 },
-                opponent: { possessions: 0, offensiveRebounds: 0, defensiveRebounds: 0, turnovers: 0 }
-            });
+            const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
+            const [priorGames, setPriorGames] = useState([]);
+            const sort = useSort('plusMinus');
+            const { availability, toggle, isAvailable } = useAvailability();
 
-            const capPPP = (ppp) => Math.min(ppp, 3.0);
+            // Find the game that's currently in progress (latest date if somehow more than one).
+            // Games with no activity for STALE_HOURS are ignored, so a game someone forgot to
+            // end doesn't take over this page forever.
+            const allInfo = useWatch('game-info');
+            const [now, setNow] = useState(Date.now());
+            useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60 * 1000); return () => clearInterval(t); }, []);
+            const liveDate = useMemo(() => {
+                const STALE_HOURS = 12;
+                const lastActivity = (i) => Math.max(Date.parse(i.lastUpdated) || 0, Date.parse(i.startTime) || 0);
+                const live = Object.entries(allInfo || {})
+                    .filter(([, i]) => i?.started && !i.ended && now - lastActivity(i) < STALE_HOURS * 3600 * 1000)
+                    .map(([d]) => d).sort();
+                return live.length ? live[live.length - 1] : null;
+            }, [allInfo, now]);
 
-            const roster = [
-                { id: 3, name: 'Ben Hammond', position: 'G' },
-                { id: 17, name: 'Neo Avdalas', position: 'G' },
-                { id: 4, name: 'Izaiah Pasha', position: 'G' },
-                { id: 7, name: 'Brett Freeman', position: 'G' },
-                { id: 0, name: 'Jailen Bedford', position: 'G' },
-                { id: 2, name: 'Jaden Schutt', position: 'G' },
-                { id: 10, name: 'Tyler Johnson', position: 'F' },
-                { id: 5, name: 'Sin\'Cere Jones', position: 'F' },
-                { id: 1, name: 'Tobi Lawal', position: 'F' },
-                { id: 13, name: 'Amani Hansberry', position: 'F' },
-                { id: 22, name: 'Solomon Davis', position: 'C' },
-                { id: 32, name: 'Christian Gurdak', position: 'C' },
-                { id: 77, name: 'Antonio Dorn', position: 'C' }
-            ];
+            const info = allInfo?.[liveDate] || null;
+            const live = useWatch(liveDate && `live-game/${liveDate}`);
+            const rawHistory = useWatch(liveDate && `lineup-changes/${liveDate}`);
+            const currentStats = useWatch(liveDate && `current-stats/${liveDate}`);
 
-            const gameSchedule = [
-                { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall' },
-                { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne' },
-                { date: '2025-11-03', opponent: 'Charleston Southern', displayName: 'Nov 4 vs Charleston Southern' },
-                { date: '2025-11-08', opponent: 'Providence', displayName: 'Nov 8 vs Providence' },
-                { date: '2025-11-12', opponent: 'Saint Joseph\'s', displayName: 'Nov 12 vs Saint Joseph\'s' },
-                { date: '2025-11-16', opponent: 'Charlotte', displayName: 'Nov 16 vs Charlotte' },
-                { date: '2025-11-19', opponent: 'Bryant', displayName: 'Nov 19 vs Bryant' },
-                { date: '2025-11-26', opponent: 'Colorado State', displayName: 'Nov 26 vs Colorado State' },
-                { date: '2025-11-27', opponent: 'Saint Mary\'s', displayName: 'Nov 27 vs Saint Mary\'s' },
-                { date: '2025-11-28', opponent: 'VCU', displayName: 'Nov 28 vs VCU' },
-                { date: '2025-12-02', opponent: 'South Carolina', displayName: 'Dec 2 vs South Carolina' },
-                { date: '2025-12-06', opponent: 'George Mason', displayName: 'Dec 6 vs George Mason' },
-                { date: '2025-12-11', opponent: 'Western Carolina', displayName: 'Dec 11 vs Western Carolina' },
-                { date: '2025-12-14', opponent: 'Maryland-Eastern Shore', displayName: 'Dec 14 vs Maryland-Eastern Shore' },
-                { date: '2025-12-20', opponent: 'Elon', displayName: 'Dec 20 vs Elon' },
-                { date: '2025-12-31', opponent: 'Virginia', displayName: 'Dec 31 vs Virginia' },
-                { date: '2026-01-03', opponent: 'Wake Forest', displayName: 'Jan 3 vs Wake Forest' },
-                { date: '2026-01-07', opponent: 'Stanford', displayName: 'Jan 7 vs Stanford' },
-                { date: '2026-01-10', opponent: 'California', displayName: 'Jan 10 vs California' },
-                { date: '2026-01-14', opponent: 'SMU', displayName: 'Jan 14 vs SMU' },
-                { date: '2026-01-17', opponent: 'Notre Dame', displayName: 'Jan 17 vs Notre Dame' },
-                { date: '2026-01-21', opponent: 'Syracuse', displayName: 'Jan 21 vs Syracuse' },
-                { date: '2026-01-24', opponent: 'Louisville', displayName: 'Jan 24 vs Louisville' },
-                { date: '2026-01-27', opponent: 'Georgia Tech', displayName: 'Jan 27 vs Georgia Tech' },
-                { date: '2026-01-31', opponent: 'Duke', displayName: 'Jan 31 vs Duke' },
-                { date: '2026-02-07', opponent: 'NC State', displayName: 'Feb 7 vs NC State' },
-                { date: '2026-02-11', opponent: 'Clemson', displayName: 'Feb 11 vs Clemson' },
-                { date: '2026-02-14', opponent: 'Florida State', displayName: 'Feb 14 vs Florida State' },
-                { date: '2026-02-17', opponent: 'Miami', displayName: 'Feb 17 vs Miami' },
-                { date: '2026-02-21', opponent: 'Wake Forest', displayName: 'Feb 21 vs Wake Forest' },
-                { date: '2026-02-28', opponent: 'North Carolina', displayName: 'Feb 28 vs North Carolina' },
-                { date: '2026-03-03', opponent: 'Boston College', displayName: 'Mar 3 vs Boston College' },
-                { date: '2026-03-07', opponent: 'Virginia', displayName: 'Mar 7 vs Virginia' },
-                { date: '2026-03-10', opponent: 'Wake Forest', displayName: 'Mar 10 vs Wake Forest' }
-            ];
+            const game = liveDate ? CFG.findGame(liveDate) : null;
+            const opponent = game?.opponent || info?.opponent || 'Opponent';
+            const roster = useMemo(() => CFG.rosterForDate(liveDate), [liveDate]);
 
-            const timeframes = [
-                { value: 'this-game', label: 'This Game' },
-                { value: 'last-5', label: 'Last 5 Games' },
-                { value: 'last-10', label: 'Last 10 Games' },
-                { value: 'acc-games', label: 'ACC Games' },
-                { value: 'season', label: 'Season' }
-            ];
-
+            // Earlier games this season, for the multi-game timeframes.
             useEffect(() => {
-                const availability = {};
-                roster.forEach(player => {
-                    availability[player.id] = true;
-                });
-                setPlayerAvailability(availability);
-            }, []);
+                setPriorGames([]);
+                if (!liveDate) return;
+                const season = CFG.seasonForDate(liveDate) || CFG.CURRENT_SEASON;
+                const earlier = CFG.gamesForSeason(season).filter(g => g.date < liveDate);
+                C.loadGames(earlier).then(games => setPriorGames(C.filterGames(games)));
+            }, [liveDate]);
 
-            useEffect(() => {
-                if (!window.firebaseDb) return;
+            const currentLineupStr = live?.currentLineup || info?.currentLineup;
+            const currentIds = C.namesToIds(currentLineupStr, roster);
+            const vtScore = live?.vtScore ?? info?.vtScore ?? 0;
+            const oppScore = live?.oppScore ?? info?.oppScore ?? 0;
 
-                const listeners = [];
-                
-                gameSchedule.forEach(game => {
-                    const gameInfoRef = window.firebaseDb.ref(`game-info/${game.date}`);
-                    
-                    const unsubscribe = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
-                        if (snapshot.exists()) {
-                            const data = snapshot.val();
-                            if (data.started && !data.ended) {
-                                setLiveGameDate(game.date);
-                                setLiveGameOpponent(game.opponent);
-                            } else if (data.ended) {
-                                setLiveGameDate(prev => prev === game.date ? null : prev);
-                                setLiveGameOpponent(prev => prev === game.opponent ? null : prev);
-                            }
-                        }
-                    });
-                    
-                    listeners.push({ ref: gameInfoRef, unsubscribe });
-                });
-                
-                return () => {
-                    listeners.forEach(({ ref, unsubscribe }) => {
-                        window.firebaseDb.off(ref, unsubscribe);
-                    });
-                };
-            }, []);
+            const { segments, warnings } = useMemo(() => C.buildSegments(rawHistory, roster, {
+                startingLineup: info?.startingLineup,
+                current: { lineup: currentLineupStr, vtScore, oppScore, stats: currentStats }
+            }), [rawHistory, roster, info?.startingLineup, currentLineupStr, vtScore, oppScore, currentStats]);
 
-            useEffect(() => {
-                if (!window.firebaseDb || !liveGameDate) return;
+            const keep = (seg) => (includeGarbageTime || !seg.isGarbageTime) && seg.lineup.every(isAvailable);
+            const gameSegments = segments.filter(s => includeGarbageTime || !s.isGarbageTime);
+            const playerTotals = C.playerTotals(gameSegments);
 
-                const gameInfoRef = window.firebaseDb.ref(`game-info/${liveGameDate}`);
-                const liveGameRef = window.firebaseDb.ref(`live-game/${liveGameDate}`);
-                const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${liveGameDate}`);
-                const playerStatsRef = window.firebaseDb.ref(`player-stats/${liveGameDate}`);
-                const currentStatsRef = window.firebaseDb.ref(`current-stats/${liveGameDate}`);
-
-                const unsubscribeGameInfo = window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
-                    if (snapshot.exists()) {
-                        const data = snapshot.val();
-                        setGameData(data);
-                        
-                        if (data.currentLineup) {
-                            const lineupIds = data.currentLineup.split(', ').map(name => 
-                                roster.find(p => p.name === name)?.id
-                            ).filter(id => id !== undefined);
-                            setCurrentLineup(lineupIds);
-                        }
-                    }
-                });
-
-                const unsubscribeLiveGame = window.firebaseDb.onValue(liveGameRef, (snapshot) => {
-                    if (snapshot.exists()) {
-                        setLiveGameData(snapshot.val());
-                    }
-                });
-
-                const unsubscribePlayerStats = window.firebaseDb.onValue(playerStatsRef, (snapshot) => {
-                    if (snapshot.exists()) {
-                        setPlayerStats(snapshot.val());
-                    }
-                });
-
-                const unsubscribeCurrentStats = window.firebaseDb.onValue(currentStatsRef, (snapshot) => {
-                    if (snapshot.exists()) {
-                        setCurrentStats(snapshot.val());
-                    }
-                });
-
-                const unsubscribeLineupChanges = window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
-                    if (snapshot.exists()) {
-                        const changes = Object.values(snapshot.val()).sort((a, b) => {
-                            const parseTime = (timeStr) => {
-                                const match = timeStr.match(/(\d+):(\d+)\s+(1st|2nd|OT)/);
-                                if (!match) return 0;
-                                const mins = parseInt(match[1]);
-                                const secs = parseInt(match[2]);
-                                const period = match[3] === '1st' ? 0 : match[3] === '2nd' ? 1 : 2;
-                                return period * 10000 + (mins * 60 + secs);
-                            };
-                            
-                            const aTime = a.timestamp || a.gameTime || '';
-                            const bTime = b.timestamp || b.gameTime || '';
-                            return parseTime(bTime) - parseTime(aTime); // descending (newest first)
-                        });
-                        setLineupHistory(changes);
-                    } else {
-                        setLineupHistory([]);
-                    }
-                });
-
-                return () => {
-                    window.firebaseDb.off(gameInfoRef, unsubscribeGameInfo);
-                    window.firebaseDb.off(liveGameRef, unsubscribeLiveGame);
-                    window.firebaseDb.off(playerStatsRef, unsubscribePlayerStats);
-                    window.firebaseDb.off(currentStatsRef, unsubscribeCurrentStats);
-                    window.firebaseDb.off(lineupChangesRef, unsubscribeLineupChanges);
-                };
-            }, [liveGameDate]);
-
-            useEffect(() => {
-                if (liveGameDate) {
-                    calculateAnalytics();
+            const rows = useMemo(() => {
+                let baseline = [];
+                if (timeframe !== 'this-game') {
+                    let games = priorGames;
+                    if (timeframe === 'conference') games = games.filter(g => g.conference);
+                    if (timeframe === 'last-5') games = games.slice(-5);
+                    if (timeframe === 'last-10') games = games.slice(-10);
+                    baseline = games.flatMap(g => C.buildSegments(g.history, CFG.rosterForDate(g.date)).segments);
                 }
-            }, [lineupHistory, playerAvailability, timeframe, liveGameData, currentStats, liveGameDate, baselineLineupStats]);
+                return C.aggregateLineups([...baseline, ...segments].filter(keep), roster);
+            }, [timeframe, priorGames, segments, includeGarbageTime, availability, roster]);
 
-            useEffect(() => {
-                if (timeframe === 'this-game' || !liveGameDate) {
-                    setBaselineLineupStats(new Map());
-                    return;
-                }
+            const half = live?.currentHalf || info?.currentHalf || 1;
+            const textMain = darkMode ? 'text-white' : 'text-gray-900';
 
-                loadBaselineStats();
-            }, [timeframe, liveGameDate]);
-
-            const loadBaselineStats = async () => {
-                if (!window.firebaseDb || !liveGameDate) return;
-
-                const currentGameIndex = gameSchedule.findIndex(g => g.date === liveGameDate);
-                if (currentGameIndex === -1) return;
-
-                let gamesToLoad = [];
-                
-                if (timeframe === 'last-5') {
-                    gamesToLoad = gameSchedule.slice(Math.max(0, currentGameIndex - 5), currentGameIndex);
-                } else if (timeframe === 'last-10') {
-                    gamesToLoad = gameSchedule.slice(Math.max(0, currentGameIndex - 10), currentGameIndex);
-                } else if (timeframe === 'season') {
-                    gamesToLoad = gameSchedule.slice(0, currentGameIndex);
-                } else if (timeframe === 'acc-games') {
-                    gamesToLoad = [];
-                }
-
-                const baselineMap = new Map();
-
-                for (const game of gamesToLoad) {
-                    const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${game.date}`);
-                    
-                    await new Promise((resolve) => {
-                        window.firebaseDb.onValue(lineupChangesRef, (snapshot) => {
-                            if (snapshot.exists()) {
-                                const changes = Object.values(snapshot.val());
-                                const segments = buildSegmentsForGame(changes, game.date);
-                                
-                                segments.forEach(segment => {
-                                    const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
-                                    
-                                    if (!baselineMap.has(lineupKey)) {
-                                        baselineMap.set(lineupKey, {
-                                            players: segment.lineup,
-                                            totalMinutesSeconds: 0,
-                                            totalPlusMinus: 0,
-                                            totalPossessions: 0,
-                                            totalOffReb: 0,
-                                            totalDefReb: 0,
-                                            totalTurnovers: 0,
-                                            totalOppPossessions: 0,
-                                            totalOppOffReb: 0,
-                                            totalOppDefReb: 0,
-                                            totalOppTurnovers: 0,
-                                            totalPoints: 0,
-                                            totalOppPoints: 0
-                                        });
-                                    }
-
-                                    const lineup = baselineMap.get(lineupKey);
-                                    
-                                    const vtPoints = segment.endScore.vt - segment.startScore.vt;
-                                    const oppPoints = segment.endScore.opp - segment.startScore.opp;
-                                    const plusMinus = vtPoints - oppPoints;
-                                    
-                                    const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
-                                    if (minutesStr !== '--:--') {
-                                        const [mins, secs] = minutesStr.split(':').map(Number);
-                                        lineup.totalMinutesSeconds += (mins * 60 + secs);
-                                    }
-                                    
-                                    lineup.totalPlusMinus += plusMinus;
-                                    lineup.totalPoints += vtPoints;
-                                    lineup.totalOppPoints += oppPoints;
-                                    
-                                    const vtStats = segment.stats.vt || {};
-                                    const oppStats = segment.stats.opponent || {};
-                                    
-                                    lineup.totalPossessions += vtStats.possessions || 0;
-                                    lineup.totalOffReb += vtStats.offensiveRebounds || 0;
-                                    lineup.totalDefReb += vtStats.defensiveRebounds || 0;
-                                    lineup.totalTurnovers += vtStats.turnovers || 0;
-                                    
-                                    lineup.totalOppPossessions += oppStats.possessions || 0;
-                                    lineup.totalOppOffReb += oppStats.offensiveRebounds || 0;
-                                    lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
-                                    lineup.totalOppTurnovers += oppStats.turnovers || 0;
-                                });
-                            }
-                            resolve();
-                        }, { onlyOnce: true });
-                    });
-                }
-
-                setBaselineLineupStats(baselineMap);
-            };
-
-            const buildSegmentsForGame = (lineupHistory, gameDate) => {
-                const segments = [];
-                
-                const sortedHistory = [...lineupHistory].sort((a, b) => {
-                    const parseTime = (timeStr) => {
-                        const match = timeStr.match(/(\d+):(\d+)\s+(1st|2nd|OT|2OT|3OT|4OT)/);
-                        if (!match) return 0;
-                        const mins = parseInt(match[1]);
-                        const secs = parseInt(match[2]);
-                        const per = match[3];
-                        const timeInPeriod = mins * 60 + secs;
-                        
-                        if (per === '1st') return (20 * 60) - timeInPeriod;
-                        if (per === '2nd') return (40 * 60) - timeInPeriod;
-                        if (per === 'OT') return (45 * 60) - timeInPeriod;
-                        if (per === '2OT') return (50 * 60) - timeInPeriod;
-                        if (per === '3OT') return (55 * 60) - timeInPeriod;
-                        if (per === '4OT') return (60 * 60) - timeInPeriod;
-                        
-                        return 0;
-                    };
-                    
-                    const aTime = a.timestamp || a.gameTime || '';
-                    const bTime = b.timestamp || b.gameTime || '';
-                    return parseTime(aTime) - parseTime(bTime);
-                });
-
-                const realChanges = sortedHistory.filter(record => 
-                    record.changes !== 'End of 1st Half' && record.changes !== 'Start of 2nd Half'
-                );
-                
-                const endOf1stHalf = sortedHistory.find(r => r.changes === 'End of 1st Half');
-                const startOf2ndHalf = sortedHistory.find(r => r.changes === 'Start of 2nd Half');
-
-                if (realChanges.length === 0) return segments;
-
-                const firstChange = realChanges[0];
-                const isStartOf2ndHalf = firstChange.changes === 'Start of 2nd Half';
-                
-                if (!isStartOf2ndHalf) {
-                    const firstSegmentLineup = firstChange.previousLineup
-                        ? firstChange.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                        : [];
-                    
-                    if (firstSegmentLineup.length === 5) {
-                        segments.push({
-                            lineup: firstSegmentLineup,
-                            startScore: { vt: 0, opp: 0 },
-                            endScore: { vt: firstChange.vtScore, opp: firstChange.oppScore },
-                            startTime: '20:00 1st',
-                            endTime: firstChange.gameTime,
-                            stats: firstChange.completedSegmentStats || { vt: {}, opponent: {} }
-                        });
-                    }
-                }
-                
-                for (let i = 1; i < realChanges.length; i++) {
-                    const thisChange = realChanges[i];
-                    const prevChange = realChanges[i - 1];
-                    
-                    const segmentLineup = prevChange.newLineup
-                        ? prevChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                        : [];
-
-                    if (segmentLineup.length === 5) {
-                        const prevIsInFirstHalf = prevChange.half === 1;
-                        const thisIsInSecondHalf = thisChange.half === 2;
-                        
-                        if (prevIsInFirstHalf && thisIsInSecondHalf && endOf1stHalf) {
-                            const lineupContinued = endOf1stHalf.newLineup === prevChange.newLineup;
-                            
-                            segments.push({
-                                lineup: segmentLineup,
-                                startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
-                                endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore },
-                                startTime: prevChange.gameTime,
-                                endTime: '0:00 1st',
-                                stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} }
-                            });
-                            
-                            if (lineupContinued && startOf2ndHalf) {
-                                segments.push({
-                                    lineup: segmentLineup,
-                                    startScore: { vt: startOf2ndHalf.vtScore || endOf1stHalf.vtScore, opp: startOf2ndHalf.oppScore || endOf1stHalf.oppScore },
-                                    endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
-                                    startTime: '20:00 2nd',
-                                    endTime: thisChange.gameTime,
-                                    stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
-                                });
-                            } else if (!lineupContinued) {
-                                const newLineup = thisChange.previousLineup
-                                    ? thisChange.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                    : [];
-                                if (newLineup.length === 5) {
-                                    segments.push({
-                                        lineup: newLineup,
-                                        startScore: { vt: startOf2ndHalf?.vtScore || endOf1stHalf.vtScore, opp: startOf2ndHalf?.oppScore || endOf1stHalf.oppScore },
-                                        endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
-                                        startTime: '20:00 2nd',
-                                        endTime: thisChange.gameTime,
-                                        stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
-                                    });
-                                }
-                            }
-                        } else {
-                            segments.push({
-                                lineup: segmentLineup,
-                                startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
-                                endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
-                                startTime: prevChange.gameTime,
-                                endTime: thisChange.gameTime,
-                                stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
-                            });
-                        }
-                    }
-                }
-                
-                if (!isStartOf2ndHalf && realChanges.length > 0) {
-                    const lastChange = realChanges[realChanges.length - 1];
-                    const lastSegmentLineup = lastChange.newLineup
-                        ? lastChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                        : [];
-                    
-                    if (lastSegmentLineup.length === 5 && endOf1stHalf && lastChange.half === 1) {
-                        segments.push({
-                            lineup: lastSegmentLineup,
-                            startScore: { vt: lastChange.vtScore, opp: lastChange.oppScore },
-                            endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore },
-                            startTime: lastChange.gameTime,
-                            endTime: '0:00 1st',
-                            stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} }
-                        });
-                    }
-                }
-
-                return segments;
-            };
-
-            const calculateMinutesPlayed = (startTime, endTime) => {
-                if (endTime === 'Current') {
-                    return '--:--';
-                }
-                
-                const parseTime = (timeString) => {
-                    if (!timeString) return null;
-                    const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT|2OT|3OT|4OT)/);
-                    if (!match) return null;
-                    
-                    const minutes = parseInt(match[1]);
-                    const seconds = parseInt(match[2]);
-                    const period = match[3];
-                    
-                    const timeInPeriod = minutes * 60 + seconds;
-                    
-                    if (period === '1st') return (20 * 60) - timeInPeriod;
-                    if (period === '2nd') return (40 * 60) - timeInPeriod;
-                    if (period === 'OT') return (45 * 60) - timeInPeriod;
-                    if (period === '2OT') return (50 * 60) - timeInPeriod;
-                    if (period === '3OT') return (55 * 60) - timeInPeriod;
-                    if (period === '4OT') return (60 * 60) - timeInPeriod;
-                    
-                    return null;
-                };
-                
-                const startGameSeconds = parseTime(startTime);
-                const endGameSeconds = parseTime(endTime);
-                
-                if (startGameSeconds === null || endGameSeconds === null) return '--:--';
-                
-                const playedSeconds = endGameSeconds - startGameSeconds;
-                
-                if (playedSeconds < 0) {
-                    console.error('Negative time calculated:', { startTime, endTime });
-                    return '--:--';
-                }
-                
-                const mins = Math.floor(playedSeconds / 60);
-                const secs = playedSeconds % 60;
-                
-                return `${mins}:${secs.toString().padStart(2, '0')}`;
-            };
-
-            // Helper: convert game time string to elapsed seconds from tip-off (chronological order)
-            const parseTimeToElapsed = (timeStr) => {
-                const match = timeStr.match(/(\d+):(\d+)\s+(1st|2nd|OT|2OT|3OT|4OT)/);
-                if (!match) return 0;
-                const mins = parseInt(match[1]);
-                const secs = parseInt(match[2]);
-                const per = match[3];
-                const timeInPeriod = mins * 60 + secs;
-                if (per === '1st') return (20 * 60) - timeInPeriod;
-                if (per === '2nd') return (40 * 60) - timeInPeriod;
-                if (per === 'OT') return (45 * 60) - timeInPeriod;
-                if (per === '2OT') return (50 * 60) - timeInPeriod;
-                if (per === '3OT') return (55 * 60) - timeInPeriod;
-                if (per === '4OT') return (60 * 60) - timeInPeriod;
-                return 0;
-            };
-
-            const calculatePlayerMinutes = (playerId) => {
-                // Player is currently on the floor — minutes are live, show dashes
-                if (currentLineup.includes(playerId)) {
-                    return '--:--';
-                }
-
-                let startingLineupIds = [3, 2, 17, 1, 13];
-                if (gameData && gameData.startingLineup) {
-                    startingLineupIds = gameData.startingLineup.split(', ').map(name =>
-                        roster.find(p => p.name === name)?.id
-                    ).filter(id => id !== undefined);
-                }
-
-                if (lineupHistory.length === 0) {
-                    return startingLineupIds.includes(playerId) ? '--:--' : '0:00';
-                }
-
-                // Sort ALL history chronologically (oldest first) — this is the key fix.
-                // lineupHistory from Firebase is sorted newest-first, so iterating it
-                // directly processes exits before entries, producing inflated totals.
-                const sortedHistory = [...lineupHistory].sort((a, b) =>
-                    parseTimeToElapsed(a.timestamp || a.gameTime || '') -
-                    parseTimeToElapsed(b.timestamp || b.gameTime || '')
-                );
-
-                let totalSeconds = 0;
-                let currentlyIn = startingLineupIds.includes(playerId);
-                let entryTime = currentlyIn ? '20:00 1st' : null;
-
-                for (const change of sortedHistory) {
-                    // Handle halftime marker: check if player's status changes at halftime
-                    if (change.changes === 'Start of 2nd Half') {
-                        const newLineup = change.newLineup
-                            ? change.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                            : [];
-                        const inNewLineup = newLineup.includes(playerId);
-
-                        if (!currentlyIn && inNewLineup) {
-                            // Player enters at start of 2nd half
-                            currentlyIn = true;
-                            entryTime = '20:00 2nd';
-                        } else if (currentlyIn && !inNewLineup) {
-                            // Player sat out 2nd half — credit through end of 1st half
-                            if (entryTime) {
-                                const minutes = calculateMinutesPlayed(entryTime, '0:00 1st');
-                                if (minutes !== '--:--') {
-                                    const [mins, secs] = minutes.split(':').map(Number);
-                                    totalSeconds += (mins * 60 + secs);
-                                }
-                            }
-                            currentlyIn = false;
-                            entryTime = null;
-                        }
-                        // If currentlyIn && inNewLineup: player continues, entryTime stays
-                        continue;
-                    }
-
-                    // Skip end-of-half marker (stats already captured in record)
-                    if (change.changes === 'End of 1st Half') continue;
-
-                    const previousLineup = change.previousLineup
-                        ? change.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                        : [];
-                    const newLineup = change.newLineup
-                        ? change.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                        : [];
-
-                    const wasIn = previousLineup.includes(playerId);
-                    const isIn = newLineup.includes(playerId);
-
-                    if (wasIn && !isIn) {
-                        // Player subbed out
-                        if (entryTime) {
-                            const minutes = calculateMinutesPlayed(entryTime, change.gameTime);
-                            if (minutes !== '--:--') {
-                                const [mins, secs] = minutes.split(':').map(Number);
-                                totalSeconds += (mins * 60 + secs);
-                            }
-                        }
-                        currentlyIn = false;
-                        entryTime = null;
-                    } else if (!wasIn && isIn) {
-                        // Player subbed in
-                        currentlyIn = true;
-                        entryTime = change.gameTime;
-                    }
-                    // wasIn && isIn: player stayed through a multi-sub — no change needed
-                }
-
-                const totalMins = Math.floor(totalSeconds / 60);
-                const totalSecs = totalSeconds % 60;
-                return `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
-            };
-
-            const calculateAnalytics = () => {
-                const segments = [];
-                
-                let startingLineupIds = [3, 2, 17, 1, 13];
-                if (gameData && gameData.startingLineup) {
-                    startingLineupIds = gameData.startingLineup.split(', ').map(name => 
-                        roster.find(p => p.name === name)?.id
-                    ).filter(id => id !== undefined);
-                }
-                
-                if (lineupHistory.length === 0) {
-                    segments.push({
-                        lineup: startingLineupIds,
-                        startScore: { vt: 0, opp: 0 },
-                        endScore: { vt: liveGameData?.vtScore || gameData?.vtScore || 0, opp: liveGameData?.oppScore || gameData?.oppScore || 0 },
-                        startTime: '20:00 1st',
-                        endTime: 'Current',
-                        stats: currentStats
-                    });
-                } else {
-                    const realChanges = lineupHistory.filter(record => 
-                        record.changes !== 'End of 1st Half' && record.changes !== 'Start of 2nd Half'
-                    );
-                    
-                    const endOf1stHalf = lineupHistory.find(r => r.changes === 'End of 1st Half');
-                    const startOf2ndHalf = lineupHistory.find(r => r.changes === 'Start of 2nd Half');
-                    
-                    if (realChanges.length === 0) {
-                        if (startOf2ndHalf) {
-                            const firstHalfLineup = startOf2ndHalf.previousLineup
-                                ? startOf2ndHalf.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                : startingLineupIds;
-                            
-                            segments.push({
-                                lineup: firstHalfLineup,
-                                startScore: { vt: 0, opp: 0 },
-                                endScore: { vt: endOf1stHalf?.vtScore || 0, opp: endOf1stHalf?.oppScore || 0 },
-                                startTime: '20:00 1st',
-                                endTime: '0:00 1st',
-                                stats: endOf1stHalf?.completedSegmentStats || { vt: {}, opponent: {} }
-                            });
-                            
-                            const secondHalfLineup = startOf2ndHalf.newLineup
-                                ? startOf2ndHalf.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                : firstHalfLineup;
-                            
-                            segments.push({
-                                lineup: secondHalfLineup,
-                                startScore: { vt: startOf2ndHalf.vtScore, opp: startOf2ndHalf.oppScore },
-                                endScore: { vt: liveGameData?.vtScore || startOf2ndHalf.vtScore, opp: liveGameData?.oppScore || startOf2ndHalf.oppScore },
-                                startTime: '20:00 2nd',
-                                endTime: 'Current',
-                                stats: currentStats
-                            });
-                        }
-                    } else {
-                        const firstHalfChanges = realChanges.filter(c => c.half === 1);
-                        const secondHalfChanges = realChanges.filter(c => c.half === 2);
-                        
-                        if (firstHalfChanges.length > 0) {
-                            const firstHalfFirstChange = firstHalfChanges[0];
-                            const firstSegmentLineup = firstHalfFirstChange.previousLineup
-                                ? firstHalfFirstChange.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                : startingLineupIds;
-                            
-                            segments.push({
-                                lineup: firstSegmentLineup,
-                                startScore: { vt: 0, opp: 0 },
-                                endScore: { vt: firstHalfFirstChange.vtScore, opp: firstHalfFirstChange.oppScore },
-                                startTime: '20:00 1st',
-                                endTime: firstHalfFirstChange.gameTime,
-                                stats: firstHalfFirstChange.completedSegmentStats || { vt: {}, opponent: {} }
-                            });
-                            
-                            for (let i = 1; i < firstHalfChanges.length; i++) {
-                                const thisChange = firstHalfChanges[i];
-                                const prevChange = firstHalfChanges[i - 1];
-                                
-                                const segmentLineup = prevChange.newLineup
-                                    ? prevChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                    : [];
-
-                                if (segmentLineup.length === 5) {
-                                    segments.push({
-                                        lineup: segmentLineup,
-                                        startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
-                                        endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
-                                        startTime: prevChange.gameTime,
-                                        endTime: thisChange.gameTime,
-                                        stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
-                                    });
-                                }
-                            }
-                            
-                            if (endOf1stHalf) {
-                                const lastFirstHalfChange = firstHalfChanges[firstHalfChanges.length - 1];
-                                const endOf1stSegmentLineup = lastFirstHalfChange.newLineup
-                                    ? lastFirstHalfChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                    : [];
-                                
-                                if (endOf1stSegmentLineup.length === 5) {
-                                    segments.push({
-                                        lineup: endOf1stSegmentLineup,
-                                        startScore: { vt: lastFirstHalfChange.vtScore, opp: lastFirstHalfChange.oppScore },
-                                        endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore },
-                                        startTime: lastFirstHalfChange.gameTime,
-                                        endTime: '0:00 1st',
-                                        stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} }
-                                    });
-                                }
-                            }
-                        } else if (endOf1stHalf && startOf2ndHalf) {
-                            const firstHalfLineup = startOf2ndHalf.previousLineup
-                                ? startOf2ndHalf.previousLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                : startingLineupIds;
-                            
-                            segments.push({
-                                lineup: firstHalfLineup,
-                                startScore: { vt: 0, opp: 0 },
-                                endScore: { vt: endOf1stHalf.vtScore, opp: endOf1stHalf.oppScore },
-                                startTime: '20:00 1st',
-                                endTime: '0:00 1st',
-                                stats: endOf1stHalf.completedSegmentStats || { vt: {}, opponent: {} }
-                            });
-                        }
-                        
-                        if (!endOf1stHalf && firstHalfChanges.length > 0) {
-                            const lastFirstHalfChange = firstHalfChanges[firstHalfChanges.length - 1];
-                            const currentLineupIds = lastFirstHalfChange.newLineup 
-                                ? lastFirstHalfChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                : [];
-                            
-                            if (currentLineupIds.length === 5) {
-                                segments.push({
-                                    lineup: currentLineupIds,
-                                    startScore: { vt: lastFirstHalfChange.vtScore, opp: lastFirstHalfChange.oppScore },
-                                    endScore: { vt: liveGameData?.vtScore || gameData?.vtScore || lastFirstHalfChange.vtScore, opp: liveGameData?.oppScore || gameData?.oppScore || lastFirstHalfChange.oppScore },
-                                    startTime: lastFirstHalfChange.gameTime,
-                                    endTime: 'Current',
-                                    stats: currentStats
-                                });
-                            }
-                        }
-                        
-                        if (startOf2ndHalf) {
-                            if (secondHalfChanges.length > 0) {
-                                const startOf2ndSegmentLineup = startOf2ndHalf.newLineup
-                                    ? startOf2ndHalf.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                    : [];
-                                
-                                if (startOf2ndSegmentLineup.length === 5) {
-                                    const firstSecondHalfChange = secondHalfChanges[0];
-                                    segments.push({
-                                        lineup: startOf2ndSegmentLineup,
-                                        startScore: { vt: startOf2ndHalf.vtScore, opp: startOf2ndHalf.oppScore },
-                                        endScore: { vt: firstSecondHalfChange.vtScore, opp: firstSecondHalfChange.oppScore },
-                                        startTime: '20:00 2nd',
-                                        endTime: firstSecondHalfChange.gameTime,
-                                        stats: firstSecondHalfChange.completedSegmentStats || { vt: {}, opponent: {} }
-                                    });
-                                    
-                                    for (let i = 1; i < secondHalfChanges.length; i++) {
-                                        const thisChange = secondHalfChanges[i];
-                                        const prevChange = secondHalfChanges[i - 1];
-                                        
-                                        const segmentLineup = prevChange.newLineup
-                                            ? prevChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                            : [];
-
-                                        if (segmentLineup.length === 5) {
-                                            segments.push({
-                                                lineup: segmentLineup,
-                                                startScore: { vt: prevChange.vtScore, opp: prevChange.oppScore },
-                                                endScore: { vt: thisChange.vtScore, opp: thisChange.oppScore },
-                                                startTime: prevChange.gameTime,
-                                                endTime: thisChange.gameTime,
-                                                stats: thisChange.completedSegmentStats || { vt: {}, opponent: {} }
-                                            });
-                                        }
-                                    }
-                                    
-                                    const lastSecondHalfChange = secondHalfChanges[secondHalfChanges.length - 1];
-                                    const currentLineupIds = lastSecondHalfChange.newLineup 
-                                        ? lastSecondHalfChange.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                        : [];
-                                    
-                                    if (currentLineupIds.length === 5) {
-                                        segments.push({
-                                            lineup: currentLineupIds,
-                                            startScore: { vt: lastSecondHalfChange.vtScore, opp: lastSecondHalfChange.oppScore },
-                                            endScore: { vt: liveGameData?.vtScore || gameData?.vtScore || lastSecondHalfChange.vtScore, opp: liveGameData?.oppScore || gameData?.oppScore || lastSecondHalfChange.oppScore },
-                                            startTime: lastSecondHalfChange.gameTime,
-                                            endTime: 'Current',
-                                            stats: currentStats
-                                        });
-                                    }
-                                }
-                            } else {
-                                const startOf2ndSegmentLineup = startOf2ndHalf.newLineup
-                                    ? startOf2ndHalf.newLineup.split(', ').map(name => roster.find(p => p.name === name)?.id).filter(id => id !== undefined)
-                                    : [];
-                                
-                                if (startOf2ndSegmentLineup.length === 5) {
-                                    segments.push({
-                                        lineup: startOf2ndSegmentLineup,
-                                        startScore: { vt: startOf2ndHalf.vtScore, opp: startOf2ndHalf.oppScore },
-                                        endScore: { vt: liveGameData?.vtScore || gameData?.vtScore || startOf2ndHalf.vtScore, opp: liveGameData?.oppScore || gameData?.oppScore || startOf2ndHalf.oppScore },
-                                        startTime: '20:00 2nd',
-                                        endTime: 'Current',
-                                        stats: currentStats
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-
-                const lineupMap = new Map();
-                
-                baselineLineupStats.forEach((baselineData, lineupKey) => {
-                    const hasUnavailablePlayer = baselineData.players.some(playerId => !playerAvailability[playerId]);
-                    if (!hasUnavailablePlayer) {
-                        lineupMap.set(lineupKey, {
-                            players: baselineData.players,
-                            segments: [],
-                            totalMinutesSeconds: baselineData.totalMinutesSeconds,
-                            totalPlusMinus: baselineData.totalPlusMinus,
-                            totalPossessions: baselineData.totalPossessions,
-                            totalOffReb: baselineData.totalOffReb,
-                            totalDefReb: baselineData.totalDefReb,
-                            totalTurnovers: baselineData.totalTurnovers,
-                            totalOppPossessions: baselineData.totalOppPossessions,
-                            totalOppOffReb: baselineData.totalOppOffReb,
-                            totalOppDefReb: baselineData.totalOppDefReb,
-                            totalOppTurnovers: baselineData.totalOppTurnovers,
-                            totalPoints: baselineData.totalPoints,
-                            totalOppPoints: baselineData.totalOppPoints
-                        });
-                    }
-                });
-                
-                segments.forEach(segment => {
-                    const lineupKey = segment.lineup.sort((a, b) => a - b).join('-');
-                    
-                    const hasUnavailablePlayer = segment.lineup.some(playerId => !playerAvailability[playerId]);
-                    if (hasUnavailablePlayer) return;
-
-                    if (!lineupMap.has(lineupKey)) {
-                        lineupMap.set(lineupKey, {
-                            players: segment.lineup,
-                            segments: [],
-                            totalMinutesSeconds: 0,
-                            totalPlusMinus: 0,
-                            totalPossessions: 0,
-                            totalOffReb: 0,
-                            totalDefReb: 0,
-                            totalTurnovers: 0,
-                            totalOppPossessions: 0,
-                            totalOppOffReb: 0,
-                            totalOppDefReb: 0,
-                            totalOppTurnovers: 0,
-                            totalPoints: 0,
-                            totalOppPoints: 0
-                        });
-                    }
-
-                    const lineup = lineupMap.get(lineupKey);
-                    lineup.segments.push(segment);
-                    
-                    const vtPoints = segment.endScore.vt - segment.startScore.vt;
-                    const oppPoints = segment.endScore.opp - segment.startScore.opp;
-                    const plusMinus = vtPoints - oppPoints;
-                    
-                    if (segment.endTime !== 'Current') {
-                        const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
-                        if (minutesStr !== '--:--') {
-                            const [mins, secs] = minutesStr.split(':').map(Number);
-                            lineup.totalMinutesSeconds += (mins * 60 + secs);
-                        }
-                    }
-                    
-                    lineup.totalPlusMinus += plusMinus;
-                    lineup.totalPoints += vtPoints;
-                    lineup.totalOppPoints += oppPoints;
-                    
-                    const vtStats = segment.stats.vt || {};
-                    const oppStats = segment.stats.opponent || {};
-                    
-                    lineup.totalPossessions += vtStats.possessions || 0;
-                    lineup.totalOffReb += vtStats.offensiveRebounds || 0;
-                    lineup.totalDefReb += vtStats.defensiveRebounds || 0;
-                    lineup.totalTurnovers += vtStats.turnovers || 0;
-                    
-                    lineup.totalOppPossessions += oppStats.possessions || 0;
-                    lineup.totalOppOffReb += oppStats.offensiveRebounds || 0;
-                    lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
-                    lineup.totalOppTurnovers += oppStats.turnovers || 0;
-                });
-
-                const analytics = Array.from(lineupMap.values())
-                    .filter(lineup => {
-                        if (timeframe === 'this-game') {
-                            return lineup.segments.length > 0;
-                        }
-                        return true;
-                    })
-                    .map(lineup => {
-                    const orderedIds = lineup.players.slice().sort(
-                        (a, b) => roster.findIndex(p => p.id === a) - roster.findIndex(p => p.id === b)
-                    );
-                    const playerNames = orderedIds.map(id => {
-                        const player = roster.find(p => p.id === id);
-                        return player ? player.name.split(' ').pop() : '';
-                    }).join(', ');
-                    
-                    const offPossessions = lineup.totalPossessions || 1;
-                    const defPossessions = lineup.totalOppPossessions || 1;
-                    const availableOffReb = lineup.totalOffReb + lineup.totalOppDefReb;
-                    const availableDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
-                    
-                    const hasCurrentSegment = lineup.segments.length > 0 && lineup.segments[lineup.segments.length - 1]?.endTime === 'Current';
-                    let minutesDisplay;
-                    if (hasCurrentSegment) {
-                        minutesDisplay = '--:--';
-                    } else {
-                        const totalMins = Math.floor(lineup.totalMinutesSeconds / 60);
-                        const totalSecs = lineup.totalMinutesSeconds % 60;
-                        minutesDisplay = `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
-                    }
-                    
-                    return {
-                        id: lineup.players.sort((a, b) => a - b).join('-'),
-                        players: playerNames,
-                        plusMinus: lineup.totalPlusMinus,
-                        pointsPerPossession: offPossessions > 0 ? capPPP(lineup.totalPoints / offPossessions) : 0,
-                        defPointsPerPossession: defPossessions > 0 ? capPPP(lineup.totalOppPoints / defPossessions) : 0,
-                        offRebRate: availableOffReb > 0 ? (lineup.totalOffReb / availableOffReb) * 100 : 0,
-                        defRebRate: availableDefReb > 0 ? (lineup.totalDefReb / availableDefReb) * 100 : 0,
-                        turnoverRate: offPossessions > 0 ? (lineup.totalTurnovers / offPossessions) * 100 : 0,
-                        defTurnoverRate: defPossessions > 0 ? (lineup.totalOppTurnovers / defPossessions) * 100 : 0,
-                        minutes: minutesDisplay,
-                        totalMinutesSeconds: lineup.totalMinutesSeconds
-                    };
-                });
-
-                setLineupAnalytics(analytics);
-            };
-
-            useEffect(() => {
-                const sorted = [...lineupAnalytics].sort((a, b) => {
-                    let aVal = a[sortColumn];
-                    let bVal = b[sortColumn];
-                    
-                    if (sortColumn === 'minutes') {
-                        aVal = a.totalMinutesSeconds;
-                        bVal = b.totalMinutesSeconds;
-                    }
-                    
-                    return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
-                });
-                setSortedAnalytics(sorted);
-            }, [lineupAnalytics, sortColumn, sortDirection]);
-
-            const getColorClass = (value, column, analytics) => {
-                if (analytics.length < 2) return '';
-                
-                if (column === 'plusMinus') {
-                    if (value === 0) return '';
-                    
-                    const positives = analytics.map(x => x.plusMinus).filter(v => v > 0);
-                    const negatives = analytics.map(x => x.plusMinus).filter(v => v < 0);
-                    
-                    if (value > 0) {
-                        if (positives.length === 0) return 'custom-green-100';
-                        if (positives.length === 1) return 'custom-green-100';
-                        positives.sort((a,b) => a-b);
-                        const idx = positives.indexOf(value);
-                        const pct = idx / (positives.length - 1);
-                        return pct >= 0.5 ? 'custom-green-100' : 'custom-green-50';
-                    } else {
-                        if (negatives.length === 0) return 'custom-red-100';
-                        if (negatives.length === 1) return 'custom-red-100';
-                        negatives.sort((a,b) => b-a);
-                        const idx = negatives.indexOf(value);
-                        const pct = idx / (negatives.length - 1);
-                        return pct >= 0.5 ? 'custom-red-100' : 'custom-red-50';
-                    }
-                }
-                
-                const vals = analytics.map(x => x[column]).filter(v => !isNaN(v) && isFinite(v));
-                if (vals.length < 2) return '';
-                
-                const uniqueVals = [...new Set(vals)].sort((a,b) => a-b);
-                if (uniqueVals.length === 1) return '';
-                
-                const uniqueIdx = uniqueVals.indexOf(value);
-                if (uniqueIdx === -1) return '';
-                
-                const percentile = uniqueIdx / (uniqueVals.length - 1);
-                
-                const up = ['pointsPerPossession','offRebRate','defRebRate','defTurnoverRate'];
-                const down = ['defPointsPerPossession','turnoverRate'];
-                
-                const goodPercentile = up.includes(column) ? percentile : down.includes(column) ? 1-percentile : 0.5;
-                
-                if (goodPercentile >= 0.8) return 'custom-green-100';
-                if (goodPercentile >= 0.6) return 'custom-green-50';
-                if (goodPercentile >= 0.4) return '';
-                if (goodPercentile >= 0.2) return 'custom-red-50';
-                return 'custom-red-100';
-            };
-
-            const handleSort = (column) => {
-                if (sortColumn === column) {
-                    setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc');
-                } else {
-                    setSortColumn(column);
-                    setSortDirection('desc');
-                }
-            };
-
-            const togglePlayerAvailability = (playerId) => {
-                setPlayerAvailability(prev => ({
-                    ...prev,
-                    [playerId]: !prev[playerId]
-                }));
-            };
-
-            if (!liveGameDate) {
+            if (!liveDate) {
                 return (
-                    <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+                    <div className={`min-h-screen flex flex-col items-center justify-center gap-6 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
                         <div className="text-center">
-                            <h1 className={`text-4xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                No Game Live
-                            </h1>
-                            <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                Start a game from the input app to view live analytics
-                            </p>
+                            <h1 className={`text-4xl font-bold mb-4 ${textMain}`}>{allInfo === null ? 'Loading…' : 'No Game Live'}</h1>
+                            <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Start a game from the input app to view live analytics</p>
                         </div>
+                        <Nav current="live.html" darkMode={darkMode} />
                     </div>
                 );
             }
 
             return (
                 <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                    <div className="p-4 border-b border-gray-300 dark:border-gray-700">
-                        <div className="flex justify-between items-center">
+                    <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}>
+                        <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
                             <div>
-                                <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    VT Basketball Analytics
-                                </h1>
+                                <h1 className={`text-2xl font-bold ${textMain}`}>VT Basketball Analytics</h1>
                                 <p className={`text-sm mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                                    Live: vs {liveGameOpponent}
+                                    Live vs {opponent} — VT {vtScore}, {opponent} {oppScore} · {live?.gameTime || info?.gameTime || '20:00'} {C.periodLabel(half)}
                                 </p>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <select
-                                    value={timeframe}
-                                    onChange={(e) => setTimeframe(e.target.value)}
-                                    className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                                >
-                                    {timeframes.map(tf => (
-                                        <option key={tf.value} value={tf.value}>{tf.label}</option>
-                                    ))}
-                                </select>
-                                <button
-                                    onClick={() => setDarkMode(!darkMode)}
-                                    className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}
-                                >
-                                    {darkMode ? 'Light' : 'Dark'}
-                                </button>
-                            </div>
+                            <Nav current="live.html" darkMode={darkMode} />
+                        </div>
+                        <div className="flex flex-wrap justify-end items-center gap-4">
+                            <Select value={timeframe} onChange={setTimeframe} darkMode={darkMode}>
+                                {TIMEFRAMES.map(tf => <option key={tf.value} value={tf.value}>{tf.label}</option>)}
+                            </Select>
+                            <Toggle label="Garbage Time" value={includeGarbageTime} onChange={setIncludeGarbageTime} darkMode={darkMode} />
+                            <DarkToggle darkMode={darkMode} setDarkMode={setDarkMode} />
                         </div>
                     </div>
 
-                    <div className="p-4 border-b border-gray-300 dark:border-gray-700">
-                        <h2 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                            Current Lineup +/-
-                        </h2>
+                    <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}>
+                        <h2 className={`text-lg font-semibold mb-3 ${textMain}`}>On the Floor — game +/-</h2>
                         <div className="grid grid-cols-5 gap-4">
-                            {currentLineup.map(playerId => {
-                                const player = roster.find(p => p.id === playerId);
-                                const stats = playerStats[playerId] || { plusMinus: 0 };
-                                
+                            {currentIds.map(id => {
+                                const t = playerTotals[id] || { plusMinus: 0, seconds: 0 };
                                 return (
-                                    <div key={playerId} className={`p-3 rounded-lg text-center ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
-                                        <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                            #{player?.id ?? '?'} {player?.name.split(' ').pop()}
-                                        </div>
-                                        <div className={`text-xl font-bold ${stats.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                            {stats.plusMinus >= 0 ? '+' : ''}{stats.plusMinus}
-                                        </div>
+                                    <div key={id} className={`p-3 rounded-lg text-center shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                        <div className={`text-lg font-bold ${textMain}`}>#{id} {C.lastName(id, roster)}</div>
+                                        <div className={`text-xl font-bold ${t.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>{C.fmtPM(t.plusMinus)}</div>
+                                        <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{C.formatSeconds(t.seconds)}+ min</div>
                                     </div>
                                 );
                             })}
@@ -1146,127 +170,17 @@
                     </div>
 
                     <div className="flex">
-                        <div className={`w-64 p-4 border-r border-gray-300 dark:border-gray-700 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                Bench Players
-                            </h3>
-                            <div className="space-y-2">
-                                {roster.filter(player => !currentLineup.includes(player.id)).map(player => {
-                                    const stats = playerStats[player.id] || { plusMinus: 0 };
-                                    const isAvailable = playerAvailability[player.id];
-                                    const minutesPlayed = calculatePlayerMinutes(player.id);
-                                    
-                                    return (
-                                        <div key={player.id} className={`p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} ${!isAvailable ? 'opacity-50' : ''}`}>
-                                            <div className="flex justify-between items-center">
-                                                <div className="flex-1">
-                                                    <div className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {player.name}
-                                                    </div>
-                                                    <div className="flex gap-3 items-center">
-                                                        <div className={`text-sm ${stats.plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                            {stats.plusMinus >= 0 ? '+' : ''}{stats.plusMinus}
-                                                        </div>
-                                                        <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                                            {minutesPlayed}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isAvailable ?? true}
-                                                    onChange={() => togglePlayerAvailability(player.id)}
-                                                    className="ml-2"
-                                                />
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                        <div className={`w-64 p-4 border-r ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'}`}>
+                            <PlayerList title="Bench" players={roster.filter(p => !currentIds.includes(p.id))}
+                                totals={playerTotals} availability={availability} onToggle={toggle} darkMode={darkMode} />
                         </div>
                         <div className="flex-1 p-4">
-                            <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                <div className="p-4">
-                                    <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        Lineup Analytics - {timeframes.find(tf => tf.value === timeframe)?.label}
-                                    </h3>
-                                    
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full">
-                                            <thead>
-                                                <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                                    <th className={`text-left p-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Lineup
-                                                    </th>
-                                                    {[
-                                                        { key: 'plusMinus', label: '+/-' },
-                                                        { key: 'pointsPerPossession', label: 'PPP' },
-                                                        { key: 'defPointsPerPossession', label: 'Def PPP' },
-                                                        { key: 'offRebRate', label: 'OReb%' },
-                                                        { key: 'defRebRate', label: 'DReb%' },
-                                                        { key: 'turnoverRate', label: 'TO%' },
-                                                        { key: 'defTurnoverRate', label: 'Def TO%' },
-                                                        { key: 'minutes', label: 'Min' }
-                                                    ].map(col => (
-                                                        <th
-                                                            key={col.key}
-                                                            onClick={() => handleSort(col.key)}
-                                                            className={`text-left p-2 cursor-pointer hover:bg-opacity-50 ${
-                                                                darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
-                                                            } ${sortColumn === col.key ? 'font-bold' : ''}`}
-                                                        >
-                                                            {col.label}
-                                                            {sortColumn === col.key && (
-                                                                <span className="ml-1">
-                                                                    {sortDirection === 'desc' ? '↓' : '↑'}
-                                                                </span>
-                                                            )}
-                                                        </th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {sortedAnalytics.map((lineup) => (
-                                                    <tr key={lineup.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                                        <td className={`p-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {lineup.players}
-                                                        </td>
-                                                        <td className={`p-2 ${getColorClass(lineup.plusMinus, 'plusMinus', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {lineup.plusMinus >= 0 ? '+' : ''}{lineup.plusMinus}
-                                                        </td>
-                                                        <td className={`p-2 ${getColorClass(lineup.pointsPerPossession, 'pointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {lineup.pointsPerPossession.toFixed(2)}
-                                                        </td>
-                                                        <td className={`p-2 ${getColorClass(lineup.defPointsPerPossession, 'defPointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {lineup.defPointsPerPossession.toFixed(2)}
-                                                        </td>
-                                                        <td className={`p-2 ${getColorClass(lineup.offRebRate, 'offRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {lineup.offRebRate.toFixed(1)}%
-                                                        </td>
-                                                        <td className={`p-2 ${getColorClass(lineup.defRebRate, 'defRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {lineup.defRebRate.toFixed(1)}%
-                                                        </td>
-                                                        <td className={`p-2 ${getColorClass(lineup.turnoverRate, 'turnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {lineup.turnoverRate.toFixed(1)}%
-                                                        </td>
-                                                        <td className={`p-2 ${getColorClass(lineup.defTurnoverRate, 'defTurnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {lineup.defTurnoverRate.toFixed(1)}%
-                                                        </td>
-                                                        <td className={`p-2 ${getColorClass(lineup.minutes, 'minutes', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                            {lineup.minutes}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                        
-                                        {lineupAnalytics.length === 0 && (
-                                            <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                No lineup data available
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                            <Warnings warnings={warnings} darkMode={darkMode} />
+                            <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                <h3 className={`text-lg font-semibold mb-4 ${textMain}`}>
+                                    Lineup Analytics — {TIMEFRAMES.find(tf => tf.value === timeframe)?.label}
+                                </h3>
+                                <StatsTable rows={rows} darkMode={darkMode} {...sort} />
                             </div>
                         </div>
                     </div>
@@ -1274,8 +188,7 @@
             );
         };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<GamedayAnalyticsDisplay />);
+        ReactDOM.createRoot(document.getElementById('root')).render(<GamedayAnalyticsDisplay />);
     </script>
 </body>
 </html>

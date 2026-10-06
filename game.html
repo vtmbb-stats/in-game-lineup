@@ -11,620 +11,118 @@
         .custom-red-50 { background-color: #E06060; }
         .custom-red-100 { background-color: #DB2800; }
     </style>
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
-        
-        const firebaseConfig = {
-            apiKey: "AIzaSyDnW_VGhEjObMYYRHGsEDo76EH9y3ebJgo",
-            authDomain: "vtmbb-gameday.firebaseapp.com",
-            databaseURL: "https://vtmbb-gameday-default-rtdb.firebaseio.com",
-            projectId: "vtmbb-gameday",
-            storageBucket: "vtmbb-gameday.firebasestorage.app",
-            messagingSenderId: "1012073356538",
-            appId: "1:1012073356538:web:7a41a93d00920d4d00bd43"
-        };
-        
-        const app = initializeApp(firebaseConfig);
-        const database = getDatabase(app);
-        
-        window.firebaseDb = {
-            ref: (path) => ref(database, path),
-            onValue: (dbRef, callback) => onValue(dbRef, callback),
-            off: (dbRef, callback) => off(dbRef, callback)
-        };
-        
-        console.log('Firebase initialized successfully');
-    </script>
+    <script type="module" src="firebase.js"></script>
+    <script src="config.js"></script>
+    <script src="lineup-core.js"></script>
 </head>
 <body>
     <div id="root"></div>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+    <script type="text/babel" src="ui.jsx"></script>
+
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useMemo } = React;
+        const C = window.LineupCore;
+        const CFG = window.VT_CONFIG;
+        const { Nav, DarkToggle, Toggle, StatsTable, PlayerList, Warnings, useSort, useAvailability } = window.UI;
 
         const SingleGameViewer = () => {
             const [darkMode, setDarkMode] = useState(true);
             const [selectedGame, setSelectedGame] = useState('');
-            const [sortColumn, setSortColumn] = useState('plusMinus');
-            const [sortDirection, setSortDirection] = useState('desc');
-            const [lineupHistory, setLineupHistory] = useState([]);
-            const [playerAvailability, setPlayerAvailability] = useState({});
-            const [lineupAnalytics, setLineupAnalytics] = useState([]);
-            const [sortedAnalytics, setSortedAnalytics] = useState([]);
-            const [gameEnded, setGameEnded] = useState(null);
+            const [allInfo, setAllInfo] = useState(null);
+            const [info, setInfo] = useState(null);
+            const [rawHistory, setRawHistory] = useState(null);
             const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
+            const sort = useSort('plusMinus');
+            const { availability, toggle, isAvailable } = useAvailability();
 
-            const capPPP = (ppp) => {
-              return Math.min(ppp, 3.0);
-            };
-
-            const roster = [
-                { id: 3, name: 'Ben Hammond', position: 'G' },
-                { id: 17, name: 'Neo Avdalas', position: 'G' },
-                { id: 4, name: 'Izaiah Pasha', position: 'G' },
-                { id: 7, name: 'Brett Freeman', position: 'G' },
-                { id: 0, name: 'Jailen Bedford', position: 'G' },
-                { id: 2, name: 'Jaden Schutt', position: 'G' },
-                { id: 10, name: 'Tyler Johnson', position: 'F' },
-                { id: 5, name: 'Sin\'Cere Jones', position: 'F' },
-                { id: 1, name: 'Tobi Lawal', position: 'F' },
-                { id: 13, name: 'Amani Hansberry', position: 'F' },
-                { id: 22, name: 'Solomon Davis', position: 'C' },
-                { id: 32, name: 'Christian Gurdak', position: 'C' },
-                { id: 77, name: 'Antonio Dorn', position: 'C' }
-            ];
-
-            const gameSchedule = [
-                { date: '2025-10-11', opponent: 'Seton Hall', displayName: 'Oct 11 vs Seton Hall' },
-                { date: '2025-10-25', opponent: 'Duquesne', displayName: 'Oct 25 vs Duquesne' },
-                { date: '2025-11-03', opponent: 'Charleston Southern', displayName: 'Nov 4 vs Charleston Southern' },
-                { date: '2025-11-08', opponent: 'Providence', displayName: 'Nov 8 vs Providence' },
-                { date: '2025-11-12', opponent: 'Saint Joseph\'s', displayName: 'Nov 12 vs Saint Joseph\'s' },
-                { date: '2025-11-16', opponent: 'Charlotte', displayName: 'Nov 16 vs Charlotte' },
-                { date: '2025-11-19', opponent: 'Bryant', displayName: 'Nov 19 vs Bryant' },
-                { date: '2025-11-26', opponent: 'Colorado State', displayName: 'Nov 26 vs Colorado State' },
-                { date: '2025-11-27', opponent: 'Saint Mary\'s', displayName: 'Nov 27 vs Saint Mary\'s' },
-                { date: '2025-11-28', opponent: 'VCU', displayName: 'Nov 28 vs VCU' },
-                { date: '2025-12-02', opponent: 'South Carolina', displayName: 'Dec 2 vs South Carolina' },
-                { date: '2025-12-06', opponent: 'George Mason', displayName: 'Dec 6 vs George Mason' },
-                { date: '2025-12-11', opponent: 'Western Carolina', displayName: 'Dec 11 vs Western Carolina' },
-                { date: '2025-12-14', opponent: 'Maryland-Eastern Shore', displayName: 'Dec 14 vs Maryland-Eastern Shore' },
-                { date: '2025-12-20', opponent: 'Elon', displayName: 'Dec 20 vs Elon' },
-                { date: '2025-12-31', opponent: 'Virginia', displayName: 'Dec 31 vs Virginia' },
-                { date: '2026-01-03', opponent: 'Wake Forest', displayName: 'Jan 3 vs Wake Forest' },
-                { date: '2026-01-07', opponent: 'Stanford', displayName: 'Jan 7 vs Stanford' },
-                { date: '2026-01-10', opponent: 'California', displayName: 'Jan 10 vs California' },
-                { date: '2026-01-14', opponent: 'SMU', displayName: 'Jan 14 vs SMU' },
-                { date: '2026-01-17', opponent: 'Notre Dame', displayName: 'Jan 17 vs Notre Dame' },
-                { date: '2026-01-21', opponent: 'Syracuse', displayName: 'Jan 21 vs Syracuse' },
-                { date: '2026-01-24', opponent: 'Louisville', displayName: 'Jan 24 vs Louisville' },
-                { date: '2026-01-27', opponent: 'Georgia Tech', displayName: 'Jan 27 vs Georgia Tech' },
-                { date: '2026-01-31', opponent: 'Duke', displayName: 'Jan 31 vs Duke' },
-                { date: '2026-02-07', opponent: 'NC State', displayName: 'Feb 7 vs NC State' },
-                { date: '2026-02-11', opponent: 'Clemson', displayName: 'Feb 11 vs Clemson' },
-                { date: '2026-02-14', opponent: 'Florida State', displayName: 'Feb 14 vs Florida State' },
-                { date: '2026-02-17', opponent: 'Miami', displayName: 'Feb 17 vs Miami' },
-                { date: '2026-02-21', opponent: 'Wake Forest', displayName: 'Feb 21 vs Wake Forest' },
-                { date: '2026-02-28', opponent: 'North Carolina', displayName: 'Feb 28 vs North Carolina' },
-                { date: '2026-03-03', opponent: 'Boston College', displayName: 'Mar 3 vs Boston College' },
-                { date: '2026-03-07', opponent: 'Virginia', displayName: 'Mar 7 vs Virginia' },
-                { date: '2026-03-10', opponent: 'Wake Forest', displayName: 'Mar 10 vs Wake Forest' }
-            ];
-
+            // Default to the most recent game that has data.
             useEffect(() => {
-                const availability = {};
-                roster.forEach(player => { availability[player.id] = true; });
-                setPlayerAvailability(availability);
+                C.db().then(db => db.read('game-info')).then(all => {
+                    setAllInfo(all || {});
+                    const withData = CFG.allGames().filter(g => all?.[g.date]?.started);
+                    const fallback = CFG.allGames()[0];
+                    setSelectedGame((withData[withData.length - 1] || fallback)?.date || '');
+                });
             }, []);
 
             useEffect(() => {
-                // Find the most recent game with data
-                if (!window.firebaseDb || selectedGame !== '') return;
-                
-                const checkGamesForData = async () => {
-                    // Check games in reverse order (most recent first)
-                    for (let i = gameSchedule.length - 1; i >= 0; i--) {
-                        const game = gameSchedule[i];
-                        const gameInfoRef = window.firebaseDb.ref(`game-info/${game.date}`);
-                        
-                        const hasData = await new Promise((resolve) => {
-                            window.firebaseDb.onValue(gameInfoRef, (snapshot) => {
-                                if (snapshot.exists() && snapshot.val().started) {
-                                    resolve(true);
-                                } else {
-                                    resolve(false);
-                                }
-                                window.firebaseDb.off(gameInfoRef);
-                            });
-                        });
-                        
-                        if (hasData) {
-                            setSelectedGame(game.date);
-                            return;
-                        }
-                    }
-                    
-                    // If no game has data, default to first game
-                    if (gameSchedule.length > 0) {
-                        setSelectedGame(gameSchedule[0].date);
-                    }
-                };
-                
-                checkGamesForData();
-            }, []);
-
-            useEffect(() => {
-                if (!window.firebaseDb || !selectedGame) return;
-                const gameInfoRef = window.firebaseDb.ref(`game-info/${selectedGame}`);
-                const lineupChangesRef = window.firebaseDb.ref(`lineup-changes/${selectedGame}`);
-                
-                const u1 = window.firebaseDb.onValue(gameInfoRef, (s) => {
-                    setGameEnded(s.exists() ? (s.val().ended || false) : false);
+                if (!selectedGame) return;
+                let u1, u2;
+                C.db().then(db => {
+                    u1 = db.watch(`game-info/${selectedGame}`, setInfo);
+                    u2 = db.watch(`lineup-changes/${selectedGame}`, setRawHistory);
                 });
-                const u2 = window.firebaseDb.onValue(lineupChangesRef, (s) => {
-                    setLineupHistory(s.exists() ? Object.values(s.val()) : []);
-                });
-                return () => { window.firebaseDb.off(gameInfoRef, u1); window.firebaseDb.off(lineupChangesRef, u2); };
+                return () => { u1 && u1(); u2 && u2(); setInfo(null); setRawHistory(null); };
             }, [selectedGame]);
 
-            useEffect(() => { calculateAnalytics(); }, [lineupHistory, playerAvailability, includeGarbageTime]);
-            useEffect(() => {
-                const sorted = [...lineupAnalytics].sort((a, b) => {
-                    let aVal = a[sortColumn], bVal = b[sortColumn];
-                    if (sortColumn === 'minutes') { aVal = a.totalMinutesSeconds; bVal = b.totalMinutesSeconds; }
-                    return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
-                });
-                setSortedAnalytics(sorted);
-            }, [lineupAnalytics, sortColumn, sortDirection]);
+            const roster = useMemo(() => CFG.rosterForDate(selectedGame), [selectedGame]);
+            const game = CFG.findGame(selectedGame);
 
-            const buildSegments = (lineupHistory) => {
-                if (!lineupHistory || lineupHistory.length === 0) return [];
-                
-                const segments = [];
-                
-                // Sort all records by time
-                const sorted = [...lineupHistory].sort((a, b) => {
-                    return parseGameTime(a.timestamp || a.gameTime || '') - parseGameTime(b.timestamp || b.gameTime || '');
-                });
-                
-                // Track lineup for NEXT segment as we go
-                let nextSegmentLineup = null;
-                
-                for (let i = 0; i < sorted.length; i++) {
-                    const curr = sorted[i];
-                    
-                    let segmentLineup;
-                    
-                    // Handle all period starts (2nd Half, OT, 2OT, 3OT, etc.)
-                    if (curr.changes?.startsWith('Start of')) {
-                        nextSegmentLineup = curr.newLineup;
-                        continue;
-                    } else if (i === 0) {
-                        segmentLineup = curr.previousLineup;
-                        nextSegmentLineup = curr.newLineup;
-                    } else if (curr.changes?.startsWith('End of')) {
-                        segmentLineup = nextSegmentLineup || curr.previousLineup;
-                        nextSegmentLineup = curr.newLineup;
-                    } else {
-                        segmentLineup = curr.previousLineup;
-                        nextSegmentLineup = curr.newLineup;
-                    }
-                    
-                    if (!segmentLineup) continue;
-                    
-                    // Determine segment times/scores
-                    let startTime, startScore, endTime, endScore, stats;
-                    
-                    if (i === 0) {
-                        startTime = '20:00 1st';
-                        startScore = { vt: 0, opp: 0 };
-                        endTime = curr.gameTime;
-                        endScore = { vt: curr.vtScore, opp: curr.oppScore };
-                        stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
-                    } else {
-                        const prev = sorted[i - 1];
-                        if (prev.changes?.startsWith('Start of')) {
-                            startTime = prev.gameTime;
-                            startScore = { vt: prev.vtScore, opp: prev.oppScore };
-                        } else {
-                            startTime = prev.gameTime;
-                            startScore = { vt: prev.vtScore, opp: prev.oppScore };
-                        }
-                        endTime = curr.gameTime;
-                        endScore = { vt: curr.vtScore, opp: curr.oppScore };
-                        stats = curr.completedSegmentStats || { vt: {}, opponent: {} };
-                    }
-                    
-                    // Skip 0:00 segments (simultaneous subs)
-                    if (startTime === endTime) continue;
-                    
-                    // Convert lineup string to IDs
-                    const lineupIds = segmentLineup.split(', ')
-                        .map(name => roster.find(p => p.name === name)?.id)
-                        .filter(id => id !== undefined);
-                    
-                    if (lineupIds.length === 5) {
-                        segments.push({
-                            lineup: lineupIds,
-                            startTime,
-                            endTime,
-                            startScore,
-                            endScore,
-                            stats
-                        });
-                    }
-                }
-                
-                // Mark garbage time
-                const garbageTimeStart = sorted.find(r => r.garbageTime === true);
-                if (garbageTimeStart) {
-                    const garbageTimeValue = parseGameTime(garbageTimeStart.gameTime || garbageTimeStart.timestamp);
-                    segments.forEach(segment => {
-                        const segmentStartValue = parseGameTime(segment.startTime);
-                        if (segmentStartValue >= garbageTimeValue) {
-                            segment.isGarbageTime = true;
-                        }
-                    });
-                }
-                
-                return segments;
-            };
-            
-            const parseGameTime = (timeString) => {
-                if (!timeString) return 0;
-                const match = timeString.match(/(\d+):(\d+)\s+(1st|2nd|OT|2OT|3OT|4OT)/);
-                if (!match) return 0;
-                const minutes = parseInt(match[1]);
-                const seconds = parseInt(match[2]);
-                const period = match[3];
-                const timeInPeriod = minutes * 60 + seconds;
-                
-                if (period === '1st') return (20 * 60) - timeInPeriod;
-                if (period === '2nd') return (40 * 60) - timeInPeriod;
-                if (period === 'OT') return (45 * 60) - timeInPeriod;
-                if (period === '2OT') return (50 * 60) - timeInPeriod;
-                if (period === '3OT') return (55 * 60) - timeInPeriod;
-                if (period === '4OT') return (60 * 60) - timeInPeriod;
-                
-                return 0;
-            };
+            const { segments, warnings } = useMemo(
+                () => C.buildSegments(rawHistory, roster, { startingLineup: info?.startingLineup }),
+                [rawHistory, roster, info?.startingLineup]
+            );
+            const counted = segments.filter(s => includeGarbageTime || !s.isGarbageTime);
+            const rows = C.aggregateLineups(counted.filter(s => s.lineup.every(isAvailable)), roster);
+            const totals = C.playerTotals(counted);
+            const result = C.gameResult(rawHistory, info);
+            const hasGarbage = segments.some(s => s.isGarbageTime);
 
-            const calculateMinutesPlayed = (startTime, endTime) => {
-                if (endTime === 'Current') return '--:--';
-                
-                const startGameSeconds = parseGameTime(startTime);
-                const endGameSeconds = parseGameTime(endTime);
-                
-                if (startGameSeconds === null || endGameSeconds === null) return '--:--';
-                
-                const playedSeconds = endGameSeconds - startGameSeconds;
-                
-                if (playedSeconds < 0) return '--:--';
-                
-                return `${Math.floor(playedSeconds / 60)}:${(playedSeconds % 60).toString().padStart(2, '0')}`;
-            };
-
-            const calculatePlayerMinutes = (playerId) => {
-                let totalSeconds = 0;
-                
-                // Get all segments from the analytics
-                const segments = buildSegments(lineupHistory);
-                
-                // Filter segments where this player was in the lineup
-                const playerSegments = segments.filter(segment => 
-                    segment.lineup.includes(playerId) &&
-                    (includeGarbageTime || !segment.isGarbageTime)
-                );
-                
-                // Sum up the minutes from each segment
-                playerSegments.forEach(segment => {
-                    if (segment.endTime !== 'Current') {
-                        const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
-                        if (minutesStr !== '--:--') {
-                            const [mins, secs] = minutesStr.split(':').map(Number);
-                            totalSeconds += (mins * 60 + secs);
-                        }
-                    }
-                });
-                
-                const totalMins = Math.floor(totalSeconds / 60);
-                const totalSecs = totalSeconds % 60;
-                return `${totalMins}:${totalSecs.toString().padStart(2, '0')}`;
-            };
-
-            const calculateAnalytics = () => {
-                // Don't calculate if we don't have data yet
-                if (!lineupHistory || lineupHistory.length === 0) {
-                    console.log('No lineup history yet, skipping analytics calculation');
-                    setLineupAnalytics([]);
-                    return;
-                }
-                
-                const segments = buildSegments(lineupHistory);
-                console.log(`Built ${segments.length} segments`);
-                
-                const lineupMap = new Map();
-                let totalMinutes = 0;
-                
-                segments.forEach(segment => {
-                    const lineupKey = [...segment.lineup].sort((a, b) => a - b).join('-');
-                    if (segment.lineup.some(pid => !playerAvailability[pid])) return;
-                    if (!includeGarbageTime && segment.isGarbageTime) return;
-                    
-                    if (!lineupMap.has(lineupKey)) {
-                        lineupMap.set(lineupKey, { 
-                            players: segment.lineup, 
-                            segments: [], 
-                            totalMinutesSeconds: 0, 
-                            totalPlusMinus: 0, 
-                            totalPossessions: 0, 
-                            totalOffReb: 0, 
-                            totalDefReb: 0, 
-                            totalTurnovers: 0, 
-                            totalOppPossessions: 0, 
-                            totalOppOffReb: 0, 
-                            totalOppDefReb: 0, 
-                            totalOppTurnovers: 0, 
-                            totalPoints: 0, 
-                            totalOppPoints: 0 
-                        });
-                    }
-                    
-                    const lineup = lineupMap.get(lineupKey);
-                    lineup.segments.push(segment);
-                    
-                    const vtPoints = segment.endScore.vt - segment.startScore.vt;
-                    const oppPoints = segment.endScore.opp - segment.startScore.opp;
-                    lineup.totalPlusMinus += vtPoints - oppPoints;
-                    
-                    if (segment.endTime !== 'Current') {
-                        const minutesStr = calculateMinutesPlayed(segment.startTime, segment.endTime);
-                        if (minutesStr !== '--:--') {
-                            const [mins, secs] = minutesStr.split(':').map(Number);
-                            const seconds = mins * 60 + secs;
-                            lineup.totalMinutesSeconds += seconds;
-                            totalMinutes += seconds;
-                        }
-                    }
-                    
-                    lineup.totalPoints += vtPoints;
-                    lineup.totalOppPoints += oppPoints;
-                    
-                    const vtStats = segment.stats.vt || {};
-                    const oppStats = segment.stats.opponent || {};
-                    lineup.totalPossessions += vtStats.possessions || 0;
-                    lineup.totalOffReb += vtStats.offensiveRebounds || 0;
-                    lineup.totalDefReb += vtStats.defensiveRebounds || 0;
-                    lineup.totalTurnovers += vtStats.turnovers || 0;
-                    lineup.totalOppPossessions += oppStats.possessions || 0;
-                    lineup.totalOppOffReb += oppStats.offensiveRebounds || 0;
-                    lineup.totalOppDefReb += oppStats.defensiveRebounds || 0;
-                    lineup.totalOppTurnovers += oppStats.turnovers || 0;
-                });
-                
-                console.log(`Total minutes: ${(totalMinutes / 60).toFixed(2)}`);
-                
-                const analytics = Array.from(lineupMap.values()).map(lineup => {
-                    const playerNames = [...lineup.players]
-                      .sort((a, b) =>
-                        roster.findIndex(p => p.id === a) - roster.findIndex(p => p.id === b)
-                      )
-                      .map(id => roster.find(p => p.id === id)?.name.split(' ').pop() || '')
-                      .join(', ');
-                    const offPoss = lineup.totalPossessions || 1;
-                    const defPoss = lineup.totalOppPossessions || 1;
-                    const availOffReb = lineup.totalOffReb + lineup.totalOppDefReb;
-                    const availDefReb = lineup.totalDefReb + lineup.totalOppOffReb;
-                    const hasCurrent = lineup.segments.length > 0 && lineup.segments[lineup.segments.length - 1]?.endTime === 'Current';
-                    const minutesDisplay = hasCurrent ? '--:--' : `${Math.floor(lineup.totalMinutesSeconds / 60)}:${(lineup.totalMinutesSeconds % 60).toString().padStart(2, '0')}`;
-                    
-                    return {
-                        id: [...lineup.players].sort((a, b) => a - b).join('-'),
-                        players: playerNames,
-                        playerIds: lineup.players,
-                        plusMinus: lineup.totalPlusMinus,
-                        pointsPerPossession: offPoss > 0 ? capPPP(lineup.totalPoints / offPoss) : 0,
-                        defPointsPerPossession: defPoss > 0 ? capPPP(lineup.totalOppPoints / defPoss) : 0,
-                        offRebRate: availOffReb > 0 ? (lineup.totalOffReb / availOffReb) * 100 : 0,
-                        defRebRate: availDefReb > 0 ? (lineup.totalDefReb / availDefReb) * 100 : 0,
-                        turnoverRate: offPoss > 0 ? (lineup.totalTurnovers / offPoss) * 100 : 0,
-                        defTurnoverRate: defPoss > 0 ? (lineup.totalOppTurnovers / defPoss) * 100 : 0,
-                        minutes: minutesDisplay,
-                        totalMinutesSeconds: lineup.totalMinutesSeconds
-                    };
-                });
-                
-                setLineupAnalytics(analytics);
-            };
-
-            const getPlayerPlusMinus = (playerId) => {
-                return lineupAnalytics.reduce((sum, lineup) => sum + (lineup.playerIds.includes(playerId) ? lineup.plusMinus : 0), 0);
-            };
-
-            const getColorClass = (value, column, analytics) => {
-                if (analytics.length < 2) return '';
-                
-                // Special handling for plusMinus
-                if (column === 'plusMinus') {
-                  if (value === 0) return '';
-                  
-                  // Separate positive and negative values
-                  const positives = analytics.map(x => x.plusMinus).filter(v => v > 0);
-                  const negatives = analytics.map(x => x.plusMinus).filter(v => v < 0);
-                  
-                  if (value > 0) {
-                    if (positives.length === 0) return 'custom-green-100';
-                    if (positives.length === 1) return 'custom-green-100';
-                    positives.sort((a,b) => a-b);
-                    const idx = positives.indexOf(value);
-                    const pct = idx / (positives.length - 1);
-                    // Higher values get darker green
-                    return pct >= 0.5 ? 'custom-green-100' : 'custom-green-50';
-                  } else {
-                    if (negatives.length === 0) return 'custom-red-100';
-                    if (negatives.length === 1) return 'custom-red-100';
-                    negatives.sort((a,b) => b-a); // Sort descending (most negative first)
-                    const idx = negatives.indexOf(value);
-                    const pct = idx / (negatives.length - 1);
-                    // More negative values get darker red
-                    return pct >= 0.5 ? 'custom-red-100' : 'custom-red-50';
-                  }
-                }
-                
-                // For other stats, use percentile-based distribution
-                const vals = analytics.map(x => x[column]).filter(v => !isNaN(v) && isFinite(v));
-                if (vals.length < 2) return '';
-                
-                // Create sorted unique values to handle duplicates properly
-                const uniqueVals = [...new Set(vals)].sort((a,b) => a-b);
-                
-                // If all values are the same, return no color
-                if (uniqueVals.length === 1) return '';
-                
-                // Find where this value ranks among unique values
-                const uniqueIdx = uniqueVals.indexOf(value);
-                if (uniqueIdx === -1) return '';
-                
-                const percentile = uniqueIdx / (uniqueVals.length - 1);
-                
-                // Determine if higher is better or lower is better
-                const up = ['pointsPerPossession','offRebRate','defRebRate','defTurnoverRate'];
-                const down = ['defPointsPerPossession','turnoverRate'];
-                
-                const goodPercentile = up.includes(column) ? percentile : down.includes(column) ? 1-percentile : 0.5;
-                
-                // Distribute colors evenly based on percentile
-                if (goodPercentile >= 0.8) return 'custom-green-100';
-                if (goodPercentile >= 0.6) return 'custom-green-50';
-                if (goodPercentile >= 0.4) return '';
-                if (goodPercentile >= 0.2) return 'custom-red-50';
-                return 'custom-red-100';
-            };
-
-            const handleSort = (column) => {
-                if (sortColumn === column) { setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc'); }
-                else { setSortColumn(column); setSortDirection('desc'); }
-            };
-
-            const togglePlayerAvailability = (playerId) => {
-                setPlayerAvailability(prev => ({ ...prev, [playerId]: !prev[playerId] }));
-            };
-
-            const currentOpponent = gameSchedule.find(g => g.date === selectedGame)?.opponent || 'Opponent';
+            const textMain = darkMode ? 'text-white' : 'text-gray-900';
+            const textSub = darkMode ? 'text-gray-400' : 'text-gray-500';
+            const endRecord = C.historyList(rawHistory).find(r => r.changes === 'End of Game');
+            const finalScore = info?.finalVtScore !== undefined ? `${info.finalVtScore}-${info.finalOppScore}`
+                : endRecord ? `${endRecord.vtScore}-${endRecord.oppScore}` : null;
 
             return (
                 <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                    <div className="p-4 border-b border-gray-300 dark:border-gray-700">
-                        <div className="flex justify-between items-center mb-4">
-                            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>VT Basketball Game Viewer</h1>
+                    <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}>
+                        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+                            <h1 className={`text-2xl font-bold ${textMain}`}>VT Basketball Game Viewer</h1>
                             <div className="flex items-center gap-3">
-                                <a href="live.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'} transition-colors`}>
-                                    Live Game Viewer
-                                </a>
-                                <a href="combinations.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'} transition-colors`}>
-                                    Guard/Big Combinations
-                                </a>
-                                <a href="display.html" className={`px-4 py-2 rounded-md ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'} transition-colors`}>
-                                    Full Season Dashboard
-                                </a>
-                                <button onClick={() => setDarkMode(!darkMode)} className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 text-white'}`}>{darkMode ? 'Light' : 'Dark'}</button>
+                                <Nav current="game.html" darkMode={darkMode} />
+                                <DarkToggle darkMode={darkMode} setDarkMode={setDarkMode} />
                             </div>
                         </div>
-                        <div className="flex justify-end items-center gap-4">
-                            <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-                                {gameSchedule.map(game => (<option key={game.date} value={game.date}>{game.displayName}</option>))}
+                        <div className="flex flex-wrap justify-end items-center gap-4">
+                            <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)}
+                                className={`px-3 py-2 border rounded-md ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                                {CFG.seasonKeys.map(key => (
+                                    <optgroup key={key} label={CFG.SEASONS[key].label}>
+                                        {CFG.gamesForSeason(key).map(g => (
+                                            <option key={g.date} value={g.date}>
+                                                {g.displayName}{g.exhibition ? ' (exh)' : ''}{allInfo && !allInfo[g.date]?.started ? ' — no data' : ''}
+                                            </option>
+                                        ))}
+                                    </optgroup>
+                                ))}
                             </select>
-                            <div className="flex items-center gap-2">
-                                <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Garbage Time:</label>
-                                <button 
-                                    onClick={() => setIncludeGarbageTime(!includeGarbageTime)} 
-                                    className={`px-4 py-2 rounded-md ${includeGarbageTime ? (darkMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white') : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-300 text-gray-700')}`}
-                                >
-                                    {includeGarbageTime ? 'Included' : 'Excluded'}
-                                </button>
-                            </div>
+                            <Toggle label="Garbage Time" value={includeGarbageTime} onChange={setIncludeGarbageTime} darkMode={darkMode} />
                         </div>
                     </div>
+
                     <div className="flex">
-                        <div className={`w-64 p-4 border-r border-gray-300 dark:border-gray-700 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Players</h3>
-                            <div className="space-y-2">
-                                {roster.map(player => {
-                                    const plusMinus = getPlayerPlusMinus(player.id);
-                                    const isAvailable = playerAvailability[player.id];
-                                    const minutesPlayed = calculatePlayerMinutes(player.id);
-                                    
-                                    return (
-                                        <div key={player.id} className={`p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} ${!isAvailable ? 'opacity-50' : ''}`}>
-                                            <div className="flex justify-between items-center">
-                                                <div className="flex-1">
-                                                    <div className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                        {player.name}
-                                                    </div>
-                                                    <div className="flex gap-3 items-center">
-                                                        <div className={`text-sm ${plusMinus >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                            {plusMinus >= 0 ? '+' : ''}{plusMinus}
-                                                        </div>
-                                                        <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                                            {minutesPlayed}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={isAvailable ?? true} 
-                                                    onChange={() => togglePlayerAvailability(player.id)} 
-                                                    className="ml-2" 
-                                                />
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                        <div className={`w-64 p-4 border-r ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'}`}>
+                            <PlayerList players={roster} totals={totals} availability={availability} onToggle={toggle} darkMode={darkMode} />
                         </div>
                         <div className="flex-1 p-4">
-                            {!gameEnded ? (
-                                <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'} p-8`}>
-                                    <div className={`text-center text-xl ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Game not yet completed</div>
-                                </div>
+                            <Warnings warnings={warnings} darkMode={darkMode} />
+                            {!info?.started ? (
+                                <div className={`rounded-lg shadow p-8 text-center text-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} ${textSub}`}>No data recorded for this game</div>
                             ) : (
-                                <div className={`rounded-lg shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <div className="p-4">
-                                        <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Lineup Analytics - vs {currentOpponent}</h3>
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full">
-                                                <thead>
-                                                    <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                                        <th className={`text-left p-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Lineup</th>
-                                                        {[{ key: 'plusMinus', label: '+/-' }, { key: 'pointsPerPossession', label: 'PPP' }, { key: 'defPointsPerPossession', label: 'Def PPP' }, { key: 'offRebRate', label: 'OReb%' }, { key: 'defRebRate', label: 'DReb%' }, { key: 'turnoverRate', label: 'TO%' }, { key: 'defTurnoverRate', label: 'Def TO%' }, { key: 'minutes', label: 'Min' }].map(col => (
-                                                            <th key={col.key} onClick={() => handleSort(col.key)} className={`text-left p-2 cursor-pointer hover:bg-opacity-50 ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'} ${sortColumn === col.key ? 'font-bold' : ''}`}>
-                                                                {col.label}{sortColumn === col.key && (<span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>)}
-                                                            </th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {sortedAnalytics.map(lineup => (
-                                                        <tr key={lineup.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                                            <td className={`p-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.players}</td>
-                                                            <td className={`p-2 ${getColorClass(lineup.plusMinus, 'plusMinus', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.plusMinus >= 0 ? '+' : ''}{lineup.plusMinus}</td>
-                                                            <td className={`p-2 ${getColorClass(lineup.pointsPerPossession, 'pointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.pointsPerPossession.toFixed(2)}</td>
-                                                            <td className={`p-2 ${getColorClass(lineup.defPointsPerPossession, 'defPointsPerPossession', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defPointsPerPossession.toFixed(2)}</td>
-                                                            <td className={`p-2 ${getColorClass(lineup.offRebRate, 'offRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.offRebRate.toFixed(1)}%</td>
-                                                            <td className={`p-2 ${getColorClass(lineup.defRebRate, 'defRebRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defRebRate.toFixed(1)}%</td>
-                                                            <td className={`p-2 ${getColorClass(lineup.turnoverRate, 'turnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.turnoverRate.toFixed(1)}%</td>
-                                                            <td className={`p-2 ${getColorClass(lineup.defTurnoverRate, 'defTurnoverRate', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.defTurnoverRate.toFixed(1)}%</td>
-                                                            <td className={`p-2 ${getColorClass(lineup.minutes, 'minutes', lineupAnalytics)} ${darkMode ? 'text-white' : 'text-gray-900'}`}>{lineup.minutes}</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                            {lineupAnalytics.length === 0 && (<div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No lineup data available for this game</div>)}
+                                <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                    <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+                                        <h3 className={`text-lg font-semibold ${textMain}`}>Lineup Analytics — {game?.displayName || selectedGame}</h3>
+                                        <div className={`text-sm ${textSub}`}>
+                                            {!info.ended ? 'Game in progress' : result ? `${result === 'W' ? 'Win' : 'Loss'} ${finalScore || ''}` : 'Final'}
+                                            {hasGarbage && !includeGarbageTime ? ' · garbage time excluded' : ''}
                                         </div>
                                     </div>
+                                    <StatsTable rows={rows} darkMode={darkMode} emptyText="No lineup data available for this game" {...sort} />
                                 </div>
                             )}
                         </div>
@@ -633,8 +131,7 @@
             );
         };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<SingleGameViewer />);
+        ReactDOM.createRoot(document.getElementById('root')).render(<SingleGameViewer />);
     </script>
 </body>
 </html>
