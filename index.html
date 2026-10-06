@@ -58,7 +58,12 @@
             const [garbageMarked, setGarbageMarked] = useState(false);
 
             const roster = useMemo(() => CFG.rosterForDate(selectedGame), [selectedGame]);
-            const defaultLineup = useMemo(() => roster.slice(0, 5).map(p => p.id), [roster]);
+            // The season's defaultStarters if they're all on the roster, otherwise the first five listed.
+            const defaultLineup = useMemo(() => {
+                const starters = CFG.SEASONS[CFG.seasonForDate(selectedGame)]?.defaultStarters || [];
+                const valid = starters.length === 5 && starters.every(id => roster.some(p => p.id === id));
+                return valid ? [...starters] : roster.slice(0, 5).map(p => p.id);
+            }, [roster, selectedGame]);
             const currentOpponent = CFG.findGame(selectedGame)?.opponent || 'Opponent';
             const names = (ids) => C.idsToNames(ids, roster);
             const playerName = (id) => roster.find(p => p.id === id)?.name;

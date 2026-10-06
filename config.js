@@ -10,6 +10,9 @@
 //   flexBig   true for a forward who only counts as a "big" in a big pairing when
 //             exactly one other true big is on the floor (last year's Tyler Johnson rule)
 //
+// The roster's ORDER is the display order everywhere (lineup names, player lists, dropdowns).
+// defaultStarters: jersey numbers pre-filled when Start Game is pressed.
+//
 // Game fields:
 //   date        'YYYY-MM-DD' — also the database key for the game, so never change it
 //               once a game has been tracked
@@ -26,23 +29,26 @@
   const SEASONS = {
     '2026-27': {
       label: '2026-27',
+      // Listed in display order (lineup names, player lists, and dropdowns all follow it).
       roster: [
-        { id: 0,  name: 'Jaylen Curry',      position: 'G' },
-        { id: 1,  name: 'Ethan Copeland',    position: 'G' },
-        { id: 2,  name: 'Isaiah Elohim',     position: 'G' },
         { id: 3,  name: 'Ben Hammond',       position: 'G' },
-        { id: 4,  name: 'Ned Hull',          position: 'G' },
+        { id: 0,  name: 'Jaylen Curry',      position: 'G' },
         { id: 11, name: 'James Caldarella',  position: 'G' },
         { id: 33, name: 'Butta Johnson',     position: 'G' },
-        { id: 5,  name: "Sin'Cere Jones",    position: 'F', flexBig: true },
-        { id: 7,  name: 'Kuol Atak',         position: 'F', flexBig: true },
+        { id: 1,  name: 'Ethan Copeland',    position: 'G' },
+        { id: 2,  name: 'Isaiah Elohim',     position: 'G' },
+        { id: 4,  name: 'Ned Hull',          position: 'G' },
         { id: 8,  name: 'Eltayeb Eltayeb',   position: 'F' },
         { id: 10, name: 'Tyler Johnson',     position: 'F', flexBig: true },
+        { id: 7,  name: 'Kuol Atak',         position: 'F', flexBig: true },
+        { id: 5,  name: "Sin'Cere Jones",    position: 'F', flexBig: true },
         { id: 13, name: 'Amani Hansberry',   position: 'F' },
         { id: 31, name: 'Musa Sagnia',       position: 'F' },
         { id: 6,  name: 'Miles Heide',       position: 'C' },
         { id: 22, name: 'Solomon Davis',     position: 'C' }
       ],
+      // Pre-filled when you press Start Game (jersey numbers). Can be changed in the picker.
+      defaultStarters: [3, 2, 10, 13, 6], // Hammond, Elohim, T. Johnson, Hansberry, Heide
       schedule: [
         { date: '2026-10-06', opponent: 'Liberty', exhibition: true },
         { date: '2026-10-16', opponent: 'Wofford', site: 'away', exhibition: true },
