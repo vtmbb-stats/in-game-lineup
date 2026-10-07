@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VT Basketball Shot Charts</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="module" src="firebase.js"></script>
+  <script src="config.js"></script>
+  <script src="lineup-core.js"></script>
+  <script src="play-log.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+  <script type="text/babel" src="ui.jsx"></script>
+
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+    const C = window.LineupCore;
+    const { PageHeader, RangeFilters, Card, Select, ShotChart, Warnings, useSeasonGames, collectSelected } = window.UI;
+
+    const ShotsPage = () => {
+      const [darkMode, setDarkMode] = useState(true);
+      const sg = useSeasonGames();
+      const [player, setPlayer] = useState('all');
+      const [kind, setKind] = useState('all');      // all | 2 | 3
+      const [result, setResult] = useState('all');  // all | made | missed
+      const roster = sg.roster;
+
+      const { shots: allShots, warnings } = useMemo(() => collectSelected(sg), [sg.selected, sg.filters.includeGarbageTime]);
+      const shots = allShots.filter(s => (kind === 'all' || s.pts === +kind) && (result === 'all' || (result === 'made') === s.made));
+
+      // One row per shooter, for comparing and picking a player
+      const byPlayer = useMemo(() => roster.map(p => {
+        const mine = shots.filter(s => s.shooter === p.id);
+        if (!mine.length) return null;
+        const z = Object.fromEntries(C.zoneSummary(mine).map(r => [r.zone, r]));
+        const made = mine.filter(s => s.made), threes = mine.filter(s => s.pts === 3);
+        return { p, fga: mine.length, fgm: made.length, tpa: threes.length, tpm: threes.filter(s => s.made).length,
+          pts: made.reduce((a, s) => a + s.pts, 0), rim: z['At the rim'], mid: z['Midrange'], unseen: mine.filter(s => s.x === null).length };
+      }).filter(Boolean), [shots, roster]);
+
+      const textMain = darkMode ? 'text-white' : 'text-gray-900';
+      const th = `text-right p-2 text-xs uppercase tracking-wide ${darkMode ? 'text-gray-300' : 'text-gray-600'}`;
+      const td = `text-right p-2 ${darkMode ? 'text-white' : 'text-gray-900'}`;
+      const pct = (m, a) => (a ? `${Math.round(100 * m / a)}%` : '—');
+
+      return (
+        <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+          <PageHeader title="Shot Charts" current="shots.html" darkMode={darkMode} setDarkMode={setDarkMode}>
+            <RangeFilters sg={sg} darkMode={darkMode} />
+          </PageHeader>
+
+          {sg.loading ? (
+            <div className={`flex justify-center items-center h-64 text-xl ${textMain}`}>Loading games…</div>
+          ) : (
+            <div className="p-4 grid gap-4">
+              <Warnings warnings={warnings} darkMode={darkMode} />
+              <Card darkMode={darkMode} title={player === 'all' ? 'All players' : roster.find(p => p.id === +player)?.name}
+                right={<div className="flex flex-wrap items-center gap-3">
+                  <Select label="Shots" value={kind} onChange={setKind} darkMode={darkMode}>
+                    <option value="all">All</option><option value="2">2-pointers</option><option value="3">3-pointers</option>
+                  </Select>
+                  <Select label="Result" value={result} onChange={setResult} darkMode={darkMode}>
+                    <option value="all">Makes and misses</option><option value="made">Makes</option><option value="missed">Misses</option>
+                  </Select>
+                </div>}>
+                <ShotChart shots={shots} roster={roster} darkMode={darkMode} player={player} onPlayer={setPlayer} />
+              </Card>
+
+              <Card darkMode={darkMode} title="By player" right="Click a player to show his chart">
+                {byPlayer.length === 0 ? <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No tracked shots in these games yet. Shot tracking started with the 2026-27 season.</div> : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <thead><tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <th className={`${th} !text-left`}>Player</th><th className={th}>FG</th><th className={th}>FG%</th><th className={th}>3PT</th><th className={th}>3P%</th>
+                        <th className={th}>At rim</th><th className={th}>Midrange</th><th className={th}>Pts/shot</th><th className={th}>No spot</th>
+                      </tr></thead>
+                      <tbody>
+                        {byPlayer.map(r => {
+                          const sel = player !== 'all' && +player === r.p.id;
+                          return (
+                            <tr key={r.p.id} onClick={() => setPlayer(sel ? 'all' : r.p.id)}
+                              className={`border-b cursor-pointer ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'border-gray-200 hover:bg-gray-50'} ${sel ? (darkMode ? 'bg-gray-700' : 'bg-orange-50') : ''}`}>
+                              <td className={`${td} !text-left`}>{sel ? '▶ ' : ''}#{r.p.id} {r.p.name}</td>
+                              <td className={td}>{r.fgm}-{r.fga}</td><td className={td}>{pct(r.fgm, r.fga)}</td>
+                              <td className={td}>{r.tpm}-{r.tpa}</td><td className={td}>{pct(r.tpm, r.tpa)}</td>
+                              <td className={td}>{r.rim.fgm}-{r.rim.fga}</td><td className={td}>{r.mid.fgm}-{r.mid.fga}</td>
+                              <td className={td}>{(r.pts / r.fga).toFixed(2)}</td><td className={td}>{r.unseen || ''}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<ShotsPage />);
+  </script>
+</body>
+</html>

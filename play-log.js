@@ -45,6 +45,27 @@
         return Math.hypot(x - BASKET.x, y - BASKET.y) >= ARC_R;
     };
 
+    // Shot zones for the zone tables. Shots logged as a 2 or 3 keep that value even if the spot is near the line.
+    const ZONES = ['At the rim', 'Paint', 'Midrange', 'Corner 3', 'Above-break 3'];
+    const shotZone = (s) => {
+        if (s.x === null || s.x === undefined) return null;
+        if (s.pts === 3) return s.y <= CORNER_Y + 4 && Math.abs(s.x - BASKET.x) >= CORNER_X - 1 ? 'Corner 3' : 'Above-break 3';
+        const d = Math.hypot(s.x - BASKET.x, s.y - BASKET.y);
+        if (d <= 4.5) return 'At the rim';
+        if (s.x >= 19 && s.x <= 31 && s.y <= 19) return 'Paint';
+        return 'Midrange';
+    };
+    const zoneSummary = (shots) => {
+        const rows = ZONES.map(zone => ({ zone, fga: 0, fgm: 0, pts: 0 }));
+        shots.forEach(s => {
+            const z = shotZone(s); if (!z) return;
+            const r = rows.find(x => x.zone === z);
+            r.fga++; if (s.made) { r.fgm++; r.pts += s.pts; }
+        });
+        const total = rows.reduce((a, r) => a + r.fga, 0);
+        return rows.map(r => ({ ...r, pct: r.fga ? r.fgm / r.fga : null, pps: r.fga ? r.pts / r.fga : null, share: total ? r.fga / total : 0 }));
+    };
+
     const emptyPlayer = () => ({ fga: 0, fgm: 0, tpa: 0, tpm: 0, fta: 0, ftm: 0, tov: 0, pts: 0 });
 
     /**
@@ -215,5 +236,5 @@
     };
 
     Object.assign(C, { sortEvents, STANDARD_PERIODS, periodLabelOf, clockText, isThree, BASKET, ARC_R, CORNER_X, CORNER_Y,
-        buildPlayLog, buildGame, dataPath, usageRows });
+        buildPlayLog, buildGame, dataPath, usageRows, ZONES, shotZone, zoneSummary });
 })();

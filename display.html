@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>VT Basketball Lineup Analysis</title>
+  <title>VT Basketball Lineups</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .custom-green-100{background-color:#00A327}
@@ -25,162 +25,70 @@
   <script type="text/babel" src="ui.jsx"></script>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo } = React;
+    const { useState, useMemo } = React;
     const C = window.LineupCore;
-    const CFG = window.VT_CONFIG;
-    const { Nav, DarkToggle, Toggle, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability, UsageTable, ShotChart } = window.UI;
+    const { PageHeader, RangeFilters, Card, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability, useSeasonGames, collectSelected } = window.UI;
 
-    // Most recent season that has at least one tracked game (falls back to the current season).
-    const pickDefaultSeason = (allInfo) =>
-      CFG.seasonKeys.find(key => CFG.gamesForSeason(key).some(g => allInfo?.[g.date]?.started)) || CFG.CURRENT_SEASON;
-
-    const SeasonDashboard = () => {
+    const LineupsPage = () => {
       const [darkMode, setDarkMode] = useState(true);
-      const [season, setSeason] = useState(null);
-      const [games, setGames] = useState(null);       // loaded games for the season
-      const [from, setFrom] = useState('');
-      const [to, setTo] = useState('');
-      const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
-      const [includeLosses, setIncludeLosses] = useState(true);
-      const [highMajorOnly, setHighMajorOnly] = useState(false);
-      const [conferenceOnly, setConferenceOnly] = useState(false);
+      const sg = useSeasonGames();
       const [selectedPlayers, setSelectedPlayers] = useState([]);
+      const [minMinutes, setMinMinutes] = useState('0');
       const sort = useSort('plusMinus');
       const { availability, toggle, isAvailable } = useAvailability();
+      const roster = sg.roster;
 
-      useEffect(() => {
-        C.db().then(db => db.read('game-info')).then(all => setSeason(pickDefaultSeason(all)));
-      }, []);
-
-      useEffect(() => {
-        if (!season) return;
-        setGames(null);
-        setSelectedPlayers([]);
-        C.loadGames(CFG.gamesForSeason(season)).then(loaded => {
-          const real = loaded.filter(g => !g.exhibition);
-          setGames(loaded);
-          setFrom(real[0]?.date || '');
-          setTo(real[real.length - 1]?.date || '');
-        });
-      }, [season]);
-
-      const roster = CFG.rosterForSeason(season);
-      const rangeGames = useMemo(
-        () => C.filterGames(games || [], { from, to, includeLosses, highMajorOnly, conferenceOnly }),
-        [games, from, to, includeLosses, highMajorOnly, conferenceOnly]
-      );
-
-      const { segments, warnings, shots } = useMemo(() => {
-        const segs = [], warns = [], shotList = [];
-        rangeGames.forEach(g => {
-          const built = g.built;
-          segs.push(...built.segments);
-          shotList.push(...(built.shots || []));
-          warns.push(...built.warnings.map(w => `${g.displayName}: ${w}`));
-        });
-        return { segments: segs, warnings: warns, shots: shotList };
-      }, [rangeGames, roster]);
-
-      const counted = segments.filter(s => includeGarbageTime || !s.isGarbageTime);
-      const totals = C.playerTotals(counted);
-      const usage = C.usageRows(counted, roster);
-      const seasonShots = shots.filter(s => includeGarbageTime || !s.garbage);
-      const rows = C.aggregateLineups(counted.filter(s => s.lineup.every(isAvailable)), roster)
+      const { segments, warnings } = useMemo(() => collectSelected(sg), [sg.selected, sg.filters.includeGarbageTime]);
+      const totals = C.playerTotals(segments);
+      const allRows = C.aggregateLineups(segments.filter(s => s.lineup.every(isAvailable)), roster)
         .filter(r => selectedPlayers.every(id => r.playerIds.includes(id)));
-
-      const togglePlayerFilter = (id) =>
-        setSelectedPlayers(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
-
+      const rows = allRows.filter(r => r.seconds >= +minMinutes * 60 || r.hasCurrent);
+      const togglePlayerFilter = (id) => setSelectedPlayers(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
       const textMain = darkMode ? 'text-white' : 'text-gray-900';
-      const gameOptions = (games || []).filter(g => !g.exhibition);
-      const record = (() => {
-        const w = rangeGames.filter(g => g.result === 'W').length;
-        const l = rangeGames.filter(g => g.result === 'L').length;
-        return `${rangeGames.length} game${rangeGames.length === 1 ? '' : 's'} (${w}-${l})`;
-      })();
 
       return (
         <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-          <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}>
-            <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-              <h1 className={`text-2xl font-bold ${textMain}`}>Virginia Tech Basketball Lineup Analysis</h1>
-              <div className="flex items-center gap-3">
-                <Nav current="display.html" darkMode={darkMode} />
-                <DarkToggle darkMode={darkMode} setDarkMode={setDarkMode} />
-              </div>
-            </div>
-            <div className="flex flex-wrap justify-end items-center gap-4">
-              <Select label="Season" value={season || ''} onChange={setSeason} darkMode={darkMode}>
-                {CFG.seasonKeys.map(k => <option key={k} value={k}>{CFG.SEASONS[k].label}</option>)}
-              </Select>
-              <Select label="From" value={from} onChange={setFrom} darkMode={darkMode}>
-                {gameOptions.map(g => <option key={g.date} value={g.date}>{g.displayName}</option>)}
-              </Select>
-              <Select label="To" value={to} onChange={setTo} darkMode={darkMode}>
-                {gameOptions.map(g => <option key={g.date} value={g.date}>{g.displayName}</option>)}
-              </Select>
-              <Toggle label="Garbage Time" value={includeGarbageTime} onChange={setIncludeGarbageTime} darkMode={darkMode} />
-              <Toggle label="Losses" value={includeLosses} onChange={setIncludeLosses} darkMode={darkMode} />
-              <Toggle label="High Major Only" value={highMajorOnly} onChange={setHighMajorOnly} onText="Yes" offText="No" darkMode={darkMode} />
-              <Toggle label="ACC Only" value={conferenceOnly} onChange={setConferenceOnly} onText="Yes" offText="No" darkMode={darkMode} />
-            </div>
-          </div>
+          <PageHeader title="Lineups" current="display.html" darkMode={darkMode} setDarkMode={setDarkMode}>
+            <RangeFilters sg={sg} darkMode={darkMode} />
+          </PageHeader>
 
-          {games === null ? (
-            <div className={`flex justify-center items-center h-64 text-xl ${textMain}`}>Loading season data…</div>
+          {sg.loading ? (
+            <div className={`flex justify-center items-center h-64 text-xl ${textMain}`}>Loading games…</div>
           ) : (
             <div className="flex">
-              <div className={`w-80 p-4 border-r ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'}`}>
+              <div className={`w-80 p-4 border-r shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'}`}>
                 <div className="mb-6">
                   <div className="flex justify-between items-center mb-2">
-                    <h3 className={`text-lg font-semibold ${textMain}`}>Filter Lineups</h3>
-                    {selectedPlayers.length > 0 && (
-                      <button onClick={() => setSelectedPlayers([])} className="text-xs px-2 py-1 rounded bg-red-600 text-white">Clear</button>
-                    )}
+                    <h3 className={`text-lg font-semibold ${textMain}`}>Lineups with…</h3>
+                    {selectedPlayers.length > 0 && <button onClick={() => setSelectedPlayers([])} className="text-xs px-2 py-1 rounded bg-red-600 text-white">Clear</button>}
                   </div>
-                  <div className="grid grid-cols-4 gap-1 mb-3">
-                    {[...roster].sort((a, b) => a.id - b.id).map(p => (
-                      <div key={p.id} onClick={() => togglePlayerFilter(p.id)} title={p.name}
-                        className={`p-1 rounded cursor-pointer text-xs text-center font-medium ${selectedPlayers.includes(p.id)
+                  <div className="grid grid-cols-5 gap-1 mb-3">
+                    {roster.map(p => (
+                      <button key={p.id} onClick={() => togglePlayerFilter(p.id)} title={p.name}
+                        className={`p-1 rounded text-xs text-center font-medium ${selectedPlayers.includes(p.id)
                           ? 'bg-blue-600 text-white'
                           : (darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700')}`}>
                         #{p.id}
-                      </div>
+                      </button>
                     ))}
                   </div>
-                  {selectedPlayers.length > 0 && (
-                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                      Showing lineups with: {selectedPlayers.map(id => C.lastName(id, roster)).join(', ')}
-                    </div>
-                  )}
+                  {selectedPlayers.length > 0 && <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Showing lineups with: {selectedPlayers.map(id => C.lastName(id, roster)).join(', ')}</div>}
                 </div>
                 <PlayerList players={roster} totals={totals} availability={availability} onToggle={toggle} darkMode={darkMode} />
               </div>
 
-              <div className="flex-1 p-4">
+              <div className="flex-1 p-4 min-w-0">
                 <Warnings warnings={warnings} darkMode={darkMode} />
-                <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                  <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
-                    <h3 className={`text-lg font-semibold ${textMain}`}>Lineup Analytics</h3>
-                    <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{record}</div>
-                  </div>
+                <Card darkMode={darkMode} title="Five-man lineups"
+                  right={<div className="flex items-center gap-3">
+                    <span>{rows.length} of {allRows.length} lineups</span>
+                    <Select label="Min. minutes" value={minMinutes} onChange={setMinMinutes} darkMode={darkMode}>
+                      {['0', '1', '2', '5', '10', '20'].map(m => <option key={m} value={m}>{m}</option>)}
+                    </Select>
+                  </div>}>
                   <StatsTable rows={rows} darkMode={darkMode} {...sort}
-                    emptyText={gameOptions.length === 0
-                      ? `No games tracked yet for ${CFG.SEASONS[season]?.label || 'this season'}`
-                      : `No lineup data for the selected range${selectedPlayers.length ? ' and filters' : ''}`} />
-                </div>
-                {usage.tracked && (
-                  <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' }}>
-                    <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                      <h3 className={`text-lg font-semibold mb-3 ${textMain}`}>Usage</h3>
-                      <UsageTable usage={usage} darkMode={darkMode} />
-                    </div>
-                    <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                      <h3 className={`text-lg font-semibold mb-3 ${textMain}`}>Shot chart</h3>
-                      <ShotChart shots={seasonShots} roster={roster} darkMode={darkMode} />
-                    </div>
-                  </div>
-                )}
+                    emptyText={sg.selected.length === 0 ? 'No tracked games match these filters' : 'No lineups match these filters'} />
+                </Card>
               </div>
             </div>
           )}
@@ -188,7 +96,7 @@
       );
     };
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<SeasonDashboard />);
+    ReactDOM.createRoot(document.getElementById('root')).render(<LineupsPage />);
   </script>
 </body>
 </html>

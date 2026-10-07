@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VT Basketball Usage</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="module" src="firebase.js"></script>
+  <script src="config.js"></script>
+  <script src="lineup-core.js"></script>
+  <script src="play-log.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+  <script type="text/babel" src="ui.jsx"></script>
+
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+    const C = window.LineupCore;
+    const { PageHeader, RangeFilters, Card, Select, UsageTable, Warnings, useSeasonGames, collectSelected } = window.UI;
+
+    const UsagePage = () => {
+      const [darkMode, setDarkMode] = useState(true);
+      const sg = useSeasonGames();
+      const [player, setPlayer] = useState(null);
+      const [minMinutes, setMinMinutes] = useState('0');
+      const roster = sg.roster;
+
+      const { segments, warnings } = useMemo(() => collectSelected(sg), [sg.selected, sg.filters.includeGarbageTime]);
+      const usage = useMemo(() => C.usageRows(segments, roster), [segments, roster]);
+
+      // Game-by-game for the selected player: each game's usage on its own
+      const games = useMemo(() => {
+        if (player === null) return [];
+        return sg.selected.map(g => {
+          const segs = g.built.segments.filter(s => sg.filters.includeGarbageTime || !s.isGarbageTime);
+          const u = C.usageRows(segs, roster);
+          const r = u.rows.find(x => +x.id === player);
+          return { g, r, tracked: u.tracked };
+        });
+      }, [player, sg.selected, sg.filters.includeGarbageTime, roster]);
+
+      const textMain = darkMode ? 'text-white' : 'text-gray-900';
+      const th = `text-right p-2 text-xs uppercase tracking-wide ${darkMode ? 'text-gray-300' : 'text-gray-600'}`;
+      const td = `text-right p-2 ${darkMode ? 'text-white' : 'text-gray-900'}`;
+      const sel = roster.find(p => p.id === player);
+
+      return (
+        <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+          <PageHeader title="Usage" current="usage.html" darkMode={darkMode} setDarkMode={setDarkMode}>
+            <RangeFilters sg={sg} darkMode={darkMode} />
+          </PageHeader>
+
+          {sg.loading ? (
+            <div className={`flex justify-center items-center h-64 text-xl ${textMain}`}>Loading games…</div>
+          ) : (
+            <div className="p-4 grid gap-4">
+              <Warnings warnings={warnings} darkMode={darkMode} />
+              <Card darkMode={darkMode} title="Usage rate" right={<div className="flex items-center gap-3">
+                <span>Click a player for his game-by-game numbers</span>
+                <Select label="Min. minutes" value={minMinutes} onChange={setMinMinutes} darkMode={darkMode}>
+                  {['0', '5', '10', '20', '40', '100'].map(m => <option key={m} value={m}>{m}</option>)}
+                </Select>
+              </div>}>
+                <UsageTable usage={usage} darkMode={darkMode} minMinutes={+minMinutes}
+                  selectedId={player ?? undefined} onRowClick={(id) => setPlayer(player === id ? null : id)} />
+              </Card>
+
+              {sel && (
+                <Card darkMode={darkMode} title={`#${sel.id} ${sel.name}, game by game`} right={<button className="underline" onClick={() => setPlayer(null)}>Close</button>}>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <thead><tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <th className={`${th} !text-left`}>Game</th><th className={th}>Min</th><th className={th}>Pts</th><th className={th}>FG</th>
+                        <th className={th}>3PT</th><th className={th}>FT</th><th className={th}>TO</th><th className={th}>USG%</th>
+                      </tr></thead>
+                      <tbody>
+                        {games.map(({ g, r, tracked }) => (
+                          <tr key={g.date} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                            <td className={`${td} !text-left`}><a className="underline" href={`game.html#${g.date}`}>{g.displayName}</a>{g.exhibition ? ' (exh)' : ''}</td>
+                            {!tracked ? <td className={`${td} !text-left`} colSpan={7}>Not tracked (before shot tracking)</td>
+                              : !r ? <td className={`${td} !text-left`} colSpan={7}>Did not play</td>
+                              : <>
+                                <td className={td}>{C.formatSeconds(r.seconds)}</td><td className={td}>{r.pts}</td>
+                                <td className={td}>{r.fgm}-{r.fga}</td><td className={td}>{r.tpm}-{r.tpa}</td><td className={td}>{r.ftm}-{r.fta}</td>
+                                <td className={td}>{r.tov}</td><td className={`${td} font-semibold`}>{r.usg === null ? '—' : r.usg.toFixed(1)}</td>
+                              </>}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<UsagePage />);
+  </script>
+</body>
+</html>

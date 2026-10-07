@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>VT Basketball Specific Combos</title>
+  <title>VT Basketball Combinations</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .custom-green-100{background-color:#00A327}
@@ -25,165 +25,103 @@
   <script type="text/babel" src="ui.jsx"></script>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo } = React;
+    const { useState, useMemo } = React;
     const C = window.LineupCore;
-    const CFG = window.VT_CONFIG;
-    const { Nav, DarkToggle, Toggle, Select, StatsTable, Warnings, useSort, minutesText } = window.UI;
+    const { PageHeader, RangeFilters, Card, Select, StatsTable, Warnings, useSort, useSeasonGames, collectSelected, LINEUP_COLUMNS } = window.UI;
 
     const pairs = (list) => list.flatMap((a, i) => list.slice(i + 1).map(b => [a, b]));
-
-    const COL = {
-      plusMinus: { key: 'plusMinus', label: '+/-', render: r => C.fmtPM(r.plusMinus) },
-      pmPerMinute: { key: 'pmPerMinute', label: '+/- per min', render: r => C.fmt(r.pmPerMinute, 2) },
-      offRebRate: { key: 'offRebRate', label: 'OReb%', render: r => C.fmt(r.offRebRate, 1, '%') },
-      defRebRate: { key: 'defRebRate', label: 'DReb%', render: r => C.fmt(r.defRebRate, 1, '%') },
-      turnoverRate: { key: 'turnoverRate', label: 'TO%', render: r => C.fmt(r.turnoverRate, 1, '%') },
-      defTurnoverRate: { key: 'defTurnoverRate', label: 'Def TO%', render: r => C.fmt(r.defTurnoverRate, 1, '%') },
-      minutes: { key: 'minutes', label: 'Min', render: minutesText }
-    };
-    const GUARD_COLUMNS = [COL.plusMinus, COL.pmPerMinute, COL.minutes];
+    const PM_PER_MIN = { key: 'pmPerMinute', label: '+/- per min', render: r => C.fmt(r.pmPerMinute, 2) };
+    const COMBO_COLUMNS = [LINEUP_COLUMNS[0], PM_PER_MIN, ...LINEUP_COLUMNS.slice(1)];
+    const COL = Object.fromEntries(COMBO_COLUMNS.map(c => [c.key, c]));
+    const GUARD_COLUMNS = [COL.plusMinus, COL.pmPerMinute, COL.pointsPerPossession, COL.defPointsPerPossession, COL.turnoverRate, COL.minutes];
     const BIG_COLUMNS = [COL.plusMinus, COL.pmPerMinute, COL.offRebRate, COL.defRebRate, COL.minutes];
-    const THREE_COLUMNS = [COL.plusMinus, COL.pmPerMinute, COL.offRebRate, COL.defRebRate, COL.turnoverRate, COL.defTurnoverRate, COL.minutes];
 
-    const MIN_THREE_MAN_SECONDS = 5 * 60;
-
-    const pickDefaultSeason = (allInfo) =>
-      CFG.seasonKeys.find(key => CFG.gamesForSeason(key).some(g => allInfo?.[g.date]?.started)) || CFG.CURRENT_SEASON;
-
-    const Section = ({ title, note, darkMode, children }) => (
-      <div>
-        <div className="flex items-baseline justify-between mb-3">
-          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{title}</h2>
-          {note && <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{note}</span>}
-        </div>
-        <div className={`rounded-lg shadow p-2 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>{children}</div>
-      </div>
-    );
-
-    const SpecificCombosViewer = () => {
+    const CombinationsPage = () => {
       const [darkMode, setDarkMode] = useState(true);
-      const [season, setSeason] = useState(null);
-      const [games, setGames] = useState(null);
-      const [from, setFrom] = useState('');
-      const [to, setTo] = useState('');
-      const [includeGarbageTime, setIncludeGarbageTime] = useState(true);
-      const [includeLosses, setIncludeLosses] = useState(true);
-      const [highMajorOnly, setHighMajorOnly] = useState(false);
-      const [conferenceOnly, setConferenceOnly] = useState(false);
+      const sg = useSeasonGames();
+      const [size, setSize] = useState('2');
+      const [mustInclude, setMustInclude] = useState([]);
+      const [minMinutes, setMinMinutes] = useState('5');
+      const comboSort = useSort('plusMinus');
       const guardSort = useSort('plusMinus');
       const bigSort = useSort('plusMinus');
-      const threeSort = useSort('plusMinus');
-
-      useEffect(() => {
-        C.db().then(db => db.read('game-info')).then(all => setSeason(pickDefaultSeason(all)));
-      }, []);
-
-      useEffect(() => {
-        if (!season) return;
-        setGames(null);
-        C.loadGames(CFG.gamesForSeason(season)).then(loaded => {
-          const real = loaded.filter(g => !g.exhibition);
-          setGames(loaded);
-          setFrom(real[0]?.date || '');
-          setTo(real[real.length - 1]?.date || '');
-        });
-      }, [season]);
-
-      const roster = CFG.rosterForSeason(season);
+      const roster = sg.roster;
       const name = (id) => roster.find(p => p.id === id)?.name || `#${id}`;
+      const shortNames = (ids) => [...ids].sort((a, b) => roster.findIndex(p => p.id === a) - roster.findIndex(p => p.id === b)).map(id => C.lastName(id, roster)).join(', ');
 
-      const { segments, warnings } = useMemo(() => {
-        const segs = [], warns = [];
-        C.filterGames(games || [], { from, to, includeLosses, highMajorOnly, conferenceOnly }).forEach(g => {
-          const built = g.built;
-          segs.push(...built.segments);
-          warns.push(...built.warnings.map(w => `${g.displayName}: ${w}`));
-        });
-        return { segments: segs.filter(s => includeGarbageTime || !s.isGarbageTime), warnings: warns };
-      }, [games, roster, from, to, includeLosses, highMajorOnly, conferenceOnly, includeGarbageTime]);
+      const { segments, warnings } = useMemo(() => collectSelected(sg), [sg.selected, sg.filters.includeGarbageTime]);
 
-      const { guardRows, bigRows, hiddenGuards, hiddenBigs } = useMemo(() => {
-        const guards = roster.filter(p => p.position === 'G').map(p => p.id);
-        const bigs = roster.filter(p => p.position === 'F' || p.position === 'C');
+      // Any k-man group that shared the floor
+      const comboRows = useMemo(() => C.comboTotals(segments, +size)
+        .map(r => ({ ...r, id: r.players.join('-'), names: shortNames(r.players) }))
+        .filter(r => mustInclude.every(id => r.players.includes(id))), [segments, size, mustInclude, roster]);
+      const shownCombos = comboRows.filter(r => r.seconds >= +minMinutes * 60);
+
+      // Guard pairs and big pairs (flex forwards count as bigs only per LineupCore.isBigInLineup)
+      const { guardRows, bigRows } = useMemo(() => {
         const row = (pair, include) => ({ ...C.groupTotals(segments, pair, include), id: pair.join('-'), names: pair.map(name).join(' & ') });
-
-        const g = pairs(guards).map(pair => row(pair));
-        // A big pairing counts only when both players are playing as bigs in that five
-        // (flex forwards: exactly one teammate below them on the roster — see LineupCore.isBigInLineup).
-        const b = pairs(bigs.map(p => p.id)).map(pair => row(pair, (lineup) =>
-          pair.every(id => lineup.includes(id) && C.isBigInLineup(id, lineup, roster))
-        ));
+        const guards = roster.filter(p => p.position === 'G').map(p => p.id);
+        const bigs = roster.filter(p => p.position !== 'G').map(p => p.id);
         return {
-          guardRows: g.filter(r => r.seconds > 0), hiddenGuards: g.filter(r => r.seconds === 0).length,
-          bigRows: b.filter(r => r.seconds > 0), hiddenBigs: b.filter(r => r.seconds === 0).length
+          guardRows: pairs(guards).map(pair => row(pair)).filter(r => r.seconds > 0),
+          bigRows: pairs(bigs).map(pair => row(pair, (lineup) => pair.every(id => lineup.includes(id) && C.isBigInLineup(id, lineup, roster)))).filter(r => r.seconds > 0)
         };
       }, [segments, roster]);
 
-      const threeRows = useMemo(() =>
-        C.comboTotals(segments, 3)
-          .filter(r => r.seconds >= MIN_THREE_MAN_SECONDS)
-          .map(r => ({ ...r, id: r.players.join('-'), names: r.players.map(name).join(', ') })),
-      [segments, roster]);
-
+      const toggleInclude = (id) => setMustInclude(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id].slice(0, +size));
       const textMain = darkMode ? 'text-white' : 'text-gray-900';
-      const gameOptions = (games || []).filter(g => !g.exhibition);
-      const flexNames = roster.filter(p => p.flexBig).map(p => p.name).join(', ');
+      const flexNames = roster.filter(p => p.flexBig).map(p => C.lastName(p.id, roster)).join(', ');
 
       return (
         <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-          <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}>
-            <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-              <h1 className={`text-2xl font-bold ${textMain}`}>Virginia Tech Basketball Guard/Big Combinations</h1>
-              <div className="flex items-center gap-3">
-                <Nav current="combinations.html" darkMode={darkMode} />
-                <DarkToggle darkMode={darkMode} setDarkMode={setDarkMode} />
-              </div>
-            </div>
-            <div className="flex flex-wrap justify-end items-center gap-4">
-              <Select label="Season" value={season || ''} onChange={setSeason} darkMode={darkMode}>
-                {CFG.seasonKeys.map(k => <option key={k} value={k}>{CFG.SEASONS[k].label}</option>)}
-              </Select>
-              <Select label="From" value={from} onChange={setFrom} darkMode={darkMode}>
-                {gameOptions.map(g => <option key={g.date} value={g.date}>{g.displayName}</option>)}
-              </Select>
-              <Select label="To" value={to} onChange={setTo} darkMode={darkMode}>
-                {gameOptions.map(g => <option key={g.date} value={g.date}>{g.displayName}</option>)}
-              </Select>
-              <Toggle label="Garbage Time" value={includeGarbageTime} onChange={setIncludeGarbageTime} darkMode={darkMode} />
-              <Toggle label="Losses" value={includeLosses} onChange={setIncludeLosses} darkMode={darkMode} />
-              <Toggle label="High Major Only" value={highMajorOnly} onChange={setHighMajorOnly} onText="Yes" offText="No" darkMode={darkMode} />
-              <Toggle label="ACC Only" value={conferenceOnly} onChange={setConferenceOnly} onText="Yes" offText="No" darkMode={darkMode} />
-            </div>
-          </div>
+          <PageHeader title="Combinations" current="combinations.html" darkMode={darkMode} setDarkMode={setDarkMode}>
+            <RangeFilters sg={sg} darkMode={darkMode} />
+          </PageHeader>
 
-          {games === null ? (
-            <div className={`flex justify-center items-center h-64 text-xl ${textMain}`}>Loading data…</div>
+          {sg.loading ? (
+            <div className={`flex justify-center items-center h-64 text-xl ${textMain}`}>Loading games…</div>
           ) : (
-            <div className="p-6 space-y-6">
+            <div className="p-4 grid gap-4">
               <Warnings warnings={warnings} darkMode={darkMode} />
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <Section title="Guard Combinations" darkMode={darkMode}
-                  note={hiddenGuards ? `${hiddenGuards} pair${hiddenGuards > 1 ? 's' : ''} with no minutes hidden` : null}>
-                  <StatsTable rows={guardRows} columns={GUARD_COLUMNS} nameLabel="Combo" darkMode={darkMode}
-                    emptyText="No data available for selected range" {...guardSort} />
-                </Section>
-                <Section title="Big Combinations" darkMode={darkMode}
-                  note={[flexNames && `${flexNames}: counted as a big unless two or more teammates listed below them are on the floor`, hiddenBigs && `${hiddenBigs} pairs with no minutes hidden`].filter(Boolean).join(' · ')}>
-                  <StatsTable rows={bigRows} columns={BIG_COLUMNS} nameLabel="Combo" darkMode={darkMode}
-                    emptyText="No data available for selected range" {...bigSort} />
-                </Section>
+              <Card darkMode={darkMode} title="Player combinations within lineups"
+                right={`${shownCombos.length} of ${comboRows.length} groups`}>
+                <div className="flex flex-wrap items-center gap-4 mb-4">
+                  <Select label="Group size" value={size} onChange={(v) => { setSize(v); setMustInclude(m => m.slice(0, +v)); }} darkMode={darkMode}>
+                    <option value="2">2 players</option><option value="3">3 players</option><option value="4">4 players</option>
+                  </Select>
+                  <Select label="Min. minutes together" value={minMinutes} onChange={setMinMinutes} darkMode={darkMode}>
+                    {['0', '2', '5', '10', '20', '40'].map(m => <option key={m} value={m}>{m}</option>)}
+                  </Select>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className={`text-sm mr-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Must include:</span>
+                    {roster.map(p => (
+                      <button key={p.id} onClick={() => toggleInclude(p.id)} title={p.name}
+                        className={`px-2 py-1 rounded text-xs font-medium ${mustInclude.includes(p.id) ? 'bg-blue-600 text-white' : (darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}`}>
+                        #{p.id} {C.lastName(p.id, roster)}
+                      </button>
+                    ))}
+                    {mustInclude.length > 0 && <button onClick={() => setMustInclude([])} className="text-xs px-2 py-1 rounded bg-red-600 text-white ml-1">Clear</button>}
+                  </div>
+                </div>
+                <StatsTable rows={shownCombos} columns={COMBO_COLUMNS} nameLabel="Players" darkMode={darkMode} {...comboSort}
+                  emptyText="No groups match these filters" />
+              </Card>
+
+              <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(520px, 1fr))' }}>
+                <Card darkMode={darkMode} title="Guard pairs">
+                  <StatsTable rows={guardRows} columns={GUARD_COLUMNS} nameLabel="Pair" darkMode={darkMode} {...guardSort} emptyText="No guard pairs in these games" />
+                </Card>
+                <Card darkMode={darkMode} title="Big pairs" right={flexNames ? `${flexNames} count as bigs unless two or more players listed below them on the roster are on the floor` : null}>
+                  <StatsTable rows={bigRows} columns={BIG_COLUMNS} nameLabel="Pair" darkMode={darkMode} {...bigSort} emptyText="No big pairs in these games" />
+                </Card>
               </div>
-              <Section title="All 3-Player Combinations (5+ minutes)" darkMode={darkMode}>
-                <StatsTable rows={threeRows} columns={THREE_COLUMNS} nameLabel="Combo" darkMode={darkMode}
-                  emptyText="No 3-player combinations with 5+ minutes found" {...threeSort} />
-              </Section>
             </div>
           )}
         </div>
       );
     };
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<SpecificCombosViewer />);
+    ReactDOM.createRoot(document.getElementById('root')).render(<CombinationsPage />);
   </script>
 </body>
 </html>

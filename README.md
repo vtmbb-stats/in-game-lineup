@@ -9,9 +9,14 @@ the game on a laptop; the dashboards update live from a shared Firebase database
 |---|---|---|
 | `index.html` | Bench operator (laptop) | Subs, shots by location, rebounds, free throws, turnovers, periods, garbage time, review/fixes |
 | `live.html` | Staff during the game | Current five's +/-, bench minutes, live lineup table (optionally combined with earlier games) |
-| `game.html` | After the game | Lineups, usage, and shot chart for any single game; choose which periods count (scrimmage formats) |
-| `display.html` | Season review | Lineups, usage, and shot chart over a date range with filters |
-| `combinations.html` | Season review | Guard pairs, big pairs, and all 3-man combos |
+| `game.html` | Game Report | One game: lineups, shot chart, usage — click a player or lineup to filter the rest; choose which periods count. Link to a game with `game.html#YYYY-MM-DD` |
+| `display.html` | Lineups | Five-man lineups over any range of games, with player and minimum-minutes filters |
+| `combinations.html` | Combinations | Any 2-, 3- or 4-man group (with "must include" players), plus guard pairs and big pairs |
+| `shots.html` | Shot Charts | Shot chart + zone table for any range of games, by player, 2s/3s, makes/misses |
+| `usage.html` | Usage | Usage table for any range of games; click a player for game-by-game numbers |
+
+The multi-game pages share one filter bar (season, from/to, exhibitions, garbage time, losses, high-major, ACC).
+Exhibitions switch on automatically until a regular-season game has been tracked.
 
 ## Files
 

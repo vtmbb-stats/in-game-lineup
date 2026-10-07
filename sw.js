@@ -4,8 +4,8 @@
 //
 // Site files: network first (so updates show up when online), cached copy when offline.
 // Library files (pinned CDN versions): cached copy first.
-const CACHE = 'vtlt-v3';
-const SITE = ['./', 'index.html', 'live.html', 'game.html', 'display.html', 'combinations.html',
+const CACHE = 'vtlt-v4';
+const SITE = ['./', 'index.html', 'live.html', 'game.html', 'display.html', 'combinations.html', 'shots.html', 'usage.html',
     'config.js', 'lineup-core.js', 'play-log.js', 'ui.jsx', 'firebase.js'];
 const LIBS = [
     'https://cdn.tailwindcss.com',

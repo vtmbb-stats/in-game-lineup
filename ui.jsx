@@ -7,9 +7,11 @@
 
     const NAV = [
         ['live.html', 'Live Game'],
-        ['game.html', 'Single Game'],
-        ['display.html', 'Season Lineups'],
-        ['combinations.html', 'Guard/Big Combos']
+        ['game.html', 'Game Report'],
+        ['display.html', 'Lineups'],
+        ['combinations.html', 'Combinations'],
+        ['shots.html', 'Shot Charts'],
+        ['usage.html', 'Usage']
     ];
 
     const Nav = ({ current, darkMode }) => (
@@ -71,7 +73,7 @@
     // Sortable, color-coded stats table. `rows` come from LineupCore.aggregateLineups or the like.
     const StatsTable = ({ rows, columns = LINEUP_COLUMNS, nameLabel = 'Lineup', nameKey = 'names',
                           sortColumn, sortDirection, onSort, darkMode, emptyText = 'No lineup data available',
-                          dimRow }) => {
+                          dimRow, onRowClick, selectedId }) => {
         const sorted = C.sortRows(rows, sortColumn, sortDirection);
         const th = `text-left p-2 cursor-pointer whitespace-nowrap ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'}`;
         const td = darkMode ? 'text-white' : 'text-gray-900';
@@ -90,8 +92,10 @@
                     </thead>
                     <tbody>
                         {sorted.map(row => (
-                            <tr key={row.id || row[nameKey]} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${dimRow && dimRow(row) ? 'opacity-30' : ''}`}>
-                                <td className={`p-2 font-medium ${td}`}>{row[nameKey]}</td>
+                            <tr key={row.id || row[nameKey]} onClick={onRowClick ? () => onRowClick(row) : undefined}
+                                className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${dimRow && dimRow(row) ? 'opacity-30' : ''} ${onRowClick ? 'cursor-pointer' : ''} ${selectedId && selectedId === row.id ? (darkMode ? 'outline outline-2 outline-orange-400' : 'outline outline-2 outline-orange-500') : ''}`}
+                                title={onRowClick ? 'Click to filter the shot chart to this group (click again to clear)' : undefined}>
+                                <td className={`p-2 font-medium ${td}`}>{selectedId && selectedId === row.id ? '▶ ' : ''}{row[nameKey]}</td>
                                 {columns.map(col => (
                                     <td key={col.key} className={`p-2 ${C.colorClass(row[col.key], col.key, rows)} ${td}`}
                                         title={col.key === 'minutes' && row.hasCurrent ? 'Plus the stint currently on the floor' : undefined}>
@@ -257,15 +261,21 @@
             className={className} style={{ width: size, height: size, objectFit: 'contain', display: 'inline-block' }} />;
     };
 
-    // Shot chart with a player filter and make/miss counts.
-    const ShotChart = ({ shots, roster, darkMode }) => {
-        const [player, setPlayer] = React.useState('all');
+    // Shot chart with make/miss counts. The player filter can be controlled by the page (player/onPlayer)
+    // so it stays in sync with other tables, or left to manage itself.
+    const ShotChart = ({ shots, roster, darkMode, player: playerProp, onPlayer, caption, showZones = true }) => {
+        const [own, setOwn] = React.useState('all');
+        const player = playerProp !== undefined ? String(playerProp) : own;
+        const setPlayer = (v) => (onPlayer ? onPlayer(v === 'all' ? 'all' : +v) : setOwn(v));
         const shown = shots.filter(s => player === 'all' || s.shooter === +player);
         const placed = shown.filter(s => s.x !== null && s.x !== undefined);
         const made = shown.filter(s => s.made).length;
         const threes = shown.filter(s => s.pts === 3);
-        const shooters = roster.filter(p => shots.some(s => s.shooter === p.id));
+        const pts = shown.reduce((a, s) => a + (s.made ? s.pts : 0), 0);
+        // Players with shots here, plus the selected player even if he has none (so the menu shows the real filter)
+        const shooters = roster.filter(p => shots.some(s => s.shooter === p.id) || (player !== 'all' && +player === p.id));
         const name = (id) => roster.find(p => p.id === id)?.name || `#${id}`;
+        const sub = darkMode ? 'text-gray-400' : 'text-gray-600';
         return (
             <div className="grid gap-3">
                 <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -273,63 +283,210 @@
                         <option value="all">All players</option>
                         {shooters.map(p => <option key={p.id} value={p.id}>#{p.id} {p.name}</option>)}
                     </Select>
-                    <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
-                        {made}-{shown.length} FG · {threes.filter(s => s.made).length}-{threes.length} 3PT
-                        {shown.length - placed.length > 0 && ` · ${shown.length - placed.length} without a location`}
+                    <span className={darkMode ? 'text-gray-200' : 'text-gray-800'}>
+                        <b>{made}-{shown.length}</b> FG{shown.length ? ` (${Math.round(100 * made / shown.length)}%)` : ''} · <b>{threes.filter(s => s.made).length}-{threes.length}</b> 3PT · {shown.length ? (pts / shown.length).toFixed(2) : '—'} pts/shot
                     </span>
+                    {shown.length - placed.length > 0 && <span className={sub}>{shown.length - placed.length} without a spot</span>}
                 </div>
-                <div style={{ maxWidth: 520 }}>
-                    <Court darkMode={darkMode} depth={shotDepth(placed)} shots={placed.map(s => ({ ...s, key: s.id, title: `${name(s.shooter)}: ${s.made ? 'made' : 'missed'} ${s.pts}` }))} />
-                </div>
-                <div className={`flex gap-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    <span><span style={{ color: darkMode ? "#34c27a" : "#15913f" }}>○</span> Make</span><span><span style={{ color: darkMode ? '#e66767' : '#e34948' }}>✕</span> Miss</span>
+                {caption && <div className={`text-sm ${sub}`}>{caption}</div>}
+                {/* Chart and zone table side by side when there's room; the zones drop below on narrow cards. */}
+                <div className="flex flex-wrap gap-4 items-start">
+                    <div style={{ flex: '1 1 340px', maxWidth: 560 }}>
+                        <Court darkMode={darkMode} depth={shotDepth(placed)} shots={placed.map(s => ({ ...s, key: s.id + (s.date || ''), title: `${name(s.shooter)}: ${s.made ? 'made' : 'missed'} ${s.pts}${s.opponent ? ` vs ${s.opponent}` : ''}` }))} />
+                        <div className={`flex gap-4 text-xs mt-2 ${sub}`}>
+                            <span><span style={{ color: darkMode ? '#34c27a' : '#15913f' }}>○</span> Make</span>
+                            <span><span style={{ color: darkMode ? '#e66767' : '#e34948' }}>✕</span> Miss</span>
+                        </div>
+                    </div>
+                    {showZones && <div style={{ flex: '1 1 320px', minWidth: 0 }}><ShotZones shots={shown} darkMode={darkMode} /></div>}
                 </div>
             </div>
         );
     };
 
-    // Usage table from LineupCore.usageRows.
-    const UsageTable = ({ usage, darkMode }) => {
+    // FG by zone: rim, paint, midrange, corner 3, above-break 3.
+    const ShotZones = ({ shots, darkMode }) => {
+        const rows = C.zoneSummary(shots);
         const th = `text-right p-2 text-xs uppercase tracking-wide ${darkMode ? 'text-gray-300' : 'text-gray-600'}`;
         const td = `text-right p-2 ${darkMode ? 'text-white' : 'text-gray-900'}`;
-        const pct = (m, a) => (a ? `${m}-${a}` : '—');
+        return (
+            <table className="w-full text-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                <thead><tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <th className={`${th} !text-left`}>Zone</th><th className={th}>FG</th><th className={th}>FG%</th><th className={th}>Pts/shot</th><th className={th}>Share</th>
+                </tr></thead>
+                <tbody>
+                    {rows.map(r => (
+                        <tr key={r.zone} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                            <td className={`${td} !text-left`}>{r.zone}</td>
+                            <td className={td}>{r.fgm}-{r.fga}</td>
+                            <td className={td}>{r.pct === null ? '—' : `${Math.round(r.pct * 100)}%`}</td>
+                            <td className={td}>{r.pps === null ? '—' : r.pps.toFixed(2)}</td>
+                            <td className={td}>{r.fga ? `${Math.round(r.share * 100)}%` : '—'}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        );
+    };
+
+    // Usage table from LineupCore.usageRows. Click a row to select a player (onRowClick/selectedId).
+    const USAGE_COLUMNS = [
+        { key: 'seconds', label: 'Min', render: r => C.formatSeconds(r.seconds) },
+        { key: 'pts', label: 'Pts', render: r => r.pts },
+        { key: 'fga', label: 'FG', render: r => (r.fga ? `${r.fgm}-${r.fga}` : '—') },
+        { key: 'tpa', label: '3PT', render: r => (r.tpa ? `${r.tpm}-${r.tpa}` : '—') },
+        { key: 'fta', label: 'FT', render: r => (r.fta ? `${r.ftm}-${r.fta}` : '—') },
+        { key: 'tov', label: 'TO', render: r => r.tov },
+        { key: 'usg', label: 'USG%', render: r => (r.usg === null ? '—' : r.usg.toFixed(1)) }
+    ];
+    const UsageTable = ({ usage, darkMode, onRowClick, selectedId, minMinutes = 0 }) => {
+        const [sort, setSort] = React.useState({ key: 'usg', dir: 'desc' });
+        const th = `text-right p-2 text-xs uppercase tracking-wide cursor-pointer select-none ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`;
+        const td = `text-right p-2 ${darkMode ? 'text-white' : 'text-gray-900'}`;
         if (!usage.tracked) return <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Usage needs shot tracking, which started with the 2026-27 season.</div>;
+        const rows = usage.rows.filter(r => r.seconds >= minMinutes * 60);
+        const sorted = [...rows].sort((a, b) => {
+            const av = a[sort.key] ?? -1, bv = b[sort.key] ?? -1;
+            return sort.dir === 'desc' ? bv - av : av - bv;
+        });
+        const onSort = (key) => setSort(s => ({ key, dir: s.key === key && s.dir === 'desc' ? 'asc' : 'desc' }));
+        const hidden = usage.rows.length - rows.length;
         return (
             <div className="overflow-x-auto">
                 <table className="w-full text-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
                     <thead><tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                        <th className={`${th} text-left`}>Player</th><th className={th}>Min</th><th className={th}>Pts</th>
-                        <th className={th}>FG</th><th className={th}>3PT</th><th className={th}>FT</th><th className={th}>TO</th><th className={th}>USG%</th>
+                        <th className={`${th} text-left cursor-default`}>Player</th>
+                        {USAGE_COLUMNS.map(c => <th key={c.key} className={`${th} ${sort.key === c.key ? 'font-bold' : ''}`} onClick={() => onSort(c.key)}>{c.label}{sort.key === c.key ? (sort.dir === 'desc' ? ' ↓' : ' ↑') : ''}</th>)}
                     </tr></thead>
                     <tbody>
-                        {usage.rows.map(r => (
-                            <tr key={r.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                <td className={`${td} text-left`}>#{r.id} {r.name}</td>
-                                <td className={td}>{window.LineupCore.formatSeconds(r.seconds)}</td>
-                                <td className={td}>{r.pts}</td>
-                                <td className={td}>{pct(r.fgm, r.fga)}</td>
-                                <td className={td}>{pct(r.tpm, r.tpa)}</td>
-                                <td className={td}>{pct(r.ftm, r.fta)}</td>
-                                <td className={td}>{r.tov}</td>
-                                <td className={`${td} font-semibold`}>{r.usg === null ? '—' : r.usg.toFixed(1)}</td>
-                            </tr>
-                        ))}
+                        {sorted.map(r => {
+                            const sel = selectedId !== undefined && selectedId !== 'all' && +selectedId === +r.id;
+                            return (
+                                <tr key={r.id} onClick={onRowClick ? () => onRowClick(+r.id) : undefined}
+                                    className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${onRowClick ? 'cursor-pointer' : ''} ${sel ? (darkMode ? 'bg-gray-700' : 'bg-orange-50') : ''}`}>
+                                    <td className={`${td} !text-left`}>{sel ? '▶ ' : ''}#{r.id} {r.name}</td>
+                                    {USAGE_COLUMNS.map(c => <td key={c.key} className={`${td} ${c.key === 'usg' ? 'font-semibold' : ''}`}>{c.render(r)}</td>)}
+                                </tr>
+                            );
+                        })}
                         <tr className={darkMode ? 'text-gray-300' : 'text-gray-600'}>
                             <td className="p-2 text-left font-medium">Team</td>
-                            <td className="p-2 text-right">{window.LineupCore.formatSeconds(usage.team.mp * 60 / 5)}</td>
+                            <td className="p-2 text-right">{C.formatSeconds(usage.team.mp * 60 / 5)}</td>
                             <td className="p-2 text-right">{usage.team.pts}</td>
-                            <td className="p-2 text-right">{pct(usage.team.fgm, usage.team.fga)}</td>
-                            <td className="p-2 text-right">{pct(usage.team.tpm, usage.team.tpa)}</td>
-                            <td className="p-2 text-right">{pct(usage.team.ftm, usage.team.fta)}</td>
+                            <td className="p-2 text-right">{usage.team.fgm}-{usage.team.fga}</td>
+                            <td className="p-2 text-right">{usage.team.tpm}-{usage.team.tpa}</td>
+                            <td className="p-2 text-right">{usage.team.ftm}-{usage.team.fta}</td>
                             <td className="p-2 text-right">{usage.team.tov}</td>
                             <td className="p-2 text-right">100.0</td>
                         </tr>
                     </tbody>
                 </table>
-                <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>USG% = 100 × (FGA + 0.44×FTA + TOV) × (Team MP ÷ 5) ÷ (MP × (Team FGA + 0.44×Team FTA + Team TOV)). Team rows count only the selected periods.</p>
+                <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    USG% = 100 × (FGA + 0.44×FTA + TOV) × (Team MP ÷ 5) ÷ (MP × (Team FGA + 0.44×Team FTA + Team TOV)), counting only the selected games and periods.
+                    {hidden > 0 && ` ${hidden} player${hidden > 1 ? 's' : ''} under ${minMinutes} min hidden.`}
+                </p>
             </div>
         );
     };
 
-    window.UI = { Nav, DarkToggle, Toggle, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability, LINEUP_COLUMNS, minutesText, Court, ShotChart, UsageTable, TeamLogo, shotDepth };
+    // ---- Multi-game pages: one shared season + game-range filter ----
+
+    // Loads a season's games and holds the filter settings. Exhibitions switch on automatically
+    // while no regular-season game has been tracked yet (otherwise the page would be empty).
+    const useSeasonGames = () => {
+        const [season, setSeason] = React.useState(null);
+        const [games, setGames] = React.useState(null);
+        const [f, setF] = React.useState({ from: '', to: '', includeLosses: true, highMajorOnly: false, conferenceOnly: false, includeExhibitions: false, includeGarbageTime: true });
+        React.useEffect(() => {
+            C.db().then(db => db.read('game-info')).then(all => {
+                const has = (key) => CFG().gamesForSeason(key).some(g => all?.[g.date]?.started);
+                setSeason(CFG().seasonKeys.find(has) || CFG().CURRENT_SEASON);
+            });
+        }, []);
+        React.useEffect(() => {
+            if (!season) return;
+            setGames(null);
+            C.loadGames(CFG().gamesForSeason(season)).then(loaded => {
+                const regular = loaded.filter(g => !g.exhibition);
+                const pool = regular.length ? regular : loaded;
+                setF(prev => ({ ...prev, includeExhibitions: regular.length === 0 && loaded.length > 0,
+                    from: pool[0]?.date || '', to: pool[pool.length - 1]?.date || '' }));
+                setGames(loaded);
+            });
+        }, [season]);
+        const set = (patch) => setF(prev => ({ ...prev, ...patch }));
+        const selected = React.useMemo(() => C.filterGames(games || [], f), [games, f]);
+        const roster = CFG().rosterForSeason(season);
+        return { season, setSeason, games, filters: f, set, selected, roster, loading: games === null };
+    };
+    const CFG = () => window.VT_CONFIG;
+
+    // The filter bar used by Lineups, Combinations, Shot Charts and Usage.
+    const RangeFilters = ({ sg, darkMode, garbage = true }) => {
+        const { season, setSeason, games, filters: f, set } = sg;
+        const options = (games || []).filter(g => f.includeExhibitions || !g.exhibition);
+        const w = sg.selected.filter(g => g.result === 'W').length, l = sg.selected.filter(g => g.result === 'L').length;
+        return (
+            <div className="flex flex-wrap justify-end items-center gap-3">
+                <Select label="Season" value={season || ''} onChange={setSeason} darkMode={darkMode}>
+                    {CFG().seasonKeys.map(k => <option key={k} value={k}>{CFG().SEASONS[k].label}</option>)}
+                </Select>
+                <Select label="From" value={f.from} onChange={(v) => set({ from: v })} darkMode={darkMode}>
+                    {options.map(g => <option key={g.date} value={g.date}>{g.displayName}{g.exhibition ? ' (exh)' : ''}</option>)}
+                </Select>
+                <Select label="To" value={f.to} onChange={(v) => set({ to: v })} darkMode={darkMode}>
+                    {options.map(g => <option key={g.date} value={g.date}>{g.displayName}{g.exhibition ? ' (exh)' : ''}</option>)}
+                </Select>
+                <Toggle label="Exhibitions" value={f.includeExhibitions} darkMode={darkMode} onChange={(v) => {
+                    const pool = (games || []).filter(g => v || !g.exhibition);
+                    set({ includeExhibitions: v, from: pool[0]?.date || '', to: pool[pool.length - 1]?.date || '' });
+                }} />
+                {garbage && <Toggle label="Garbage Time" value={f.includeGarbageTime} onChange={(v) => set({ includeGarbageTime: v })} darkMode={darkMode} />}
+                <Toggle label="Losses" value={f.includeLosses} onChange={(v) => set({ includeLosses: v })} darkMode={darkMode} />
+                <Toggle label="High Major Only" value={f.highMajorOnly} onChange={(v) => set({ highMajorOnly: v })} onText="Yes" offText="No" darkMode={darkMode} />
+                <Toggle label="ACC Only" value={f.conferenceOnly} onChange={(v) => set({ conferenceOnly: v })} onText="Yes" offText="No" darkMode={darkMode} />
+                <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{sg.selected.length} game{sg.selected.length === 1 ? '' : 's'} ({w}-{l})</span>
+            </div>
+        );
+    };
+
+    // Everything the multi-game pages need from the selected games, with garbage time applied.
+    const collectSelected = (sg) => {
+        const segments = [], shots = [], warnings = [];
+        sg.selected.forEach(g => {
+            g.built.segments.forEach(s => { if (sg.filters.includeGarbageTime || !s.isGarbageTime) segments.push({ ...s, date: g.date }); });
+            (g.built.shots || []).forEach(s => { if (sg.filters.includeGarbageTime || !s.garbage) shots.push({ ...s, date: g.date, opponent: g.opponent }); });
+            g.built.warnings.forEach(w => warnings.push(`${g.displayName}: ${w}`));
+        });
+        return { segments, shots, warnings };
+    };
+
+    // Standard page frame: title, nav, filters, then content.
+    const PageHeader = ({ title, current, darkMode, setDarkMode, children }) => (
+        <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}>
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
+                <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{title}</h1>
+                <div className="flex items-center gap-3">
+                    <Nav current={current} darkMode={darkMode} />
+                    <DarkToggle darkMode={darkMode} setDarkMode={setDarkMode} />
+                </div>
+            </div>
+            {children}
+        </div>
+    );
+
+    const Card = ({ title, right, darkMode, children, className = '' }) => (
+        <div className={`rounded-lg shadow p-4 min-w-0 ${darkMode ? 'bg-gray-800' : 'bg-white'} ${className}`}>
+            {(title || right) && (
+                <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+                    {title && <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{title}</h3>}
+                    {right && <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{right}</div>}
+                </div>
+            )}
+            {children}
+        </div>
+    );
+
+    window.UI = { Nav, DarkToggle, Toggle, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability, LINEUP_COLUMNS, minutesText,
+        Court, ShotChart, ShotZones, UsageTable, TeamLogo, shotDepth, useSeasonGames, RangeFilters, collectSelected, PageHeader, Card };
 })();

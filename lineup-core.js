@@ -348,10 +348,10 @@
         return loaded.filter(g => g && (g.info.format === 2 ? g.built.segments.length > 0 : g.history.length > 0));
     };
 
-    // Season filters shared by the multi-game pages. Exhibitions are always excluded.
-    const filterGames = (games, { from, to, includeLosses = true, highMajorOnly = false, conferenceOnly = false } = {}) =>
+    // Season filters shared by the multi-game pages. Exhibitions are left out unless includeExhibitions.
+    const filterGames = (games, { from, to, includeLosses = true, highMajorOnly = false, conferenceOnly = false, includeExhibitions = false } = {}) =>
         games.filter(g =>
-            !g.exhibition &&
+            (includeExhibitions || !g.exhibition) &&
             (!from || g.date >= from) &&
             (!to || g.date <= to) &&
             (includeLosses || g.result !== 'L') &&
