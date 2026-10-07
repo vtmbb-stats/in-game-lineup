@@ -207,17 +207,35 @@
                 <g ref={groupRef} transform={transform}>
                 <rect x="0" y="0" width="50" height={Math.min(47, D)} fill={floor} stroke={line} strokeWidth="0.2" />
                 <rect x="19" y="0" width="12" height="19" fill={paint} stroke={line} strokeWidth="0.2" />
-                <circle cx="25" cy="19" r="6" fill="none" stroke={line} strokeWidth="0.2" />
+                {/* Free-throw circle: only the half outside the lane (our floor has no dashed half inside) */}
+                <path d="M 19 19 A 6 6 0 0 0 31 19" fill="none" stroke={line} strokeWidth="0.2" />
+                {/* "ACC" across the lane just under the free-throw line, letter bottoms toward the line */}
+                <text x="25" y="17.4" textAnchor="middle" fontSize="3.6" fontWeight="800" letterSpacing="0.7"
+                    fontFamily="'Arial Black', Arial, sans-serif" fill={line} opacity="0.45" style={{ pointerEvents: 'none', userSelect: 'none' }}>ACC</text>
+                {/* Lane hash marks (NCAA spacing): block at 7–8 ft from the baseline, marks at 11, 14 and 17 ft */}
+                {[19, 31].map(lx => {
+                    const out = lx === 19 ? -0.6 : 0;
+                    return (
+                        <g key={lx} fill={line}>
+                            <rect x={lx + out} y="7" width="0.6" height="1" />
+                            {[11, 14, 17].map(y => <rect key={y} x={lx + out} y={y - 0.08} width="0.6" height="0.16" />)}
+                        </g>
+                    );
+                })}
                 <path d="M 21 5.25 A 4 4 0 0 0 29 5.25" fill="none" stroke={line} strokeWidth="0.2" />
                 <path d={threePath} fill="none" stroke={line} strokeWidth="0.25" />
                 <line x1="22" y1="4" x2="28" y2="4" stroke={line} strokeWidth="0.35" />
                 <circle cx="25" cy="5.25" r="0.75" fill="none" stroke={darkMode ? '#f08a4b' : '#c64600'} strokeWidth="0.25" />
                 {D >= 41 && <path d="M 19 47 A 6 6 0 0 1 31 47" fill="none" stroke={line} strokeWidth="0.2" />}
                 {shots.filter(s => s.x !== null && s.x !== undefined && s.y <= D).map((s, i) => s.made
-                    ? <circle key={s.key || i} cx={s.x} cy={s.y} r="0.75" fill={darkMode ? '#34c27a' : '#15913f'} stroke={floor} strokeWidth="0.2"><title>{s.title || 'Make'}</title></circle>
+                    ? <circle key={s.key || i} cx={s.x} cy={s.y} r="0.7" fill="none" stroke={darkMode ? '#34c27a' : '#15913f'} strokeWidth="0.3"><title>{s.title || 'Make'}</title></circle>
                     : <g key={s.key || i} stroke={darkMode ? '#e66767' : '#e34948'} strokeWidth="0.3"><title>{s.title || 'Miss'}</title>
                         <line x1={s.x - 0.6} y1={s.y - 0.6} x2={s.x + 0.6} y2={s.y + 0.6} /><line x1={s.x - 0.6} y1={s.y + 0.6} x2={s.x + 0.6} y2={s.y - 0.6} /></g>)}
-                {marker && <circle cx={marker.x} cy={marker.y} r="1" fill="none" stroke={darkMode ? '#f08a4b' : '#c64600'} strokeWidth="0.35" />}
+                {/* Spot just clicked, waiting for the rest of the entry: ring with a center dot (distinct from the rim and from makes) */}
+                {marker && <g fill="none" stroke={darkMode ? '#f08a4b' : '#c64600'} strokeWidth="0.3" style={{ pointerEvents: 'none' }}>
+                    <circle cx={marker.x} cy={marker.y} r="1.1" strokeDasharray="0.5 0.35" />
+                    <circle cx={marker.x} cy={marker.y} r="0.25" fill={darkMode ? '#f08a4b' : '#c64600'} stroke="none" />
+                </g>}
                 </g>
             </svg>
         );
@@ -225,7 +243,7 @@
 
     // Feet from the baseline the shooting area needs: the top of the arc plus a few feet, or further if a shot was deeper.
     const shotDepth = (shots = []) => {
-        const base = Math.ceil(window.LineupCore.BASKET.y + window.LineupCore.ARC_R + 4); // ≈ 32 ft
+        const base = Math.ceil(window.LineupCore.BASKET.y + window.LineupCore.ARC_R + 8.5); // ≈ 36 ft: room for deep threes at the top of the key
         const deepest = Math.max(0, ...shots.filter(s => s.y !== null && s.y !== undefined).map(s => s.y));
         return Math.min(47, Math.max(base, Math.ceil(deepest + 2)));
     };
@@ -264,7 +282,7 @@
                     <Court darkMode={darkMode} depth={shotDepth(placed)} shots={placed.map(s => ({ ...s, key: s.id, title: `${name(s.shooter)}: ${s.made ? 'made' : 'missed'} ${s.pts}` }))} />
                 </div>
                 <div className={`flex gap-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    <span><span style={{ color: darkMode ? '#34c27a' : '#15913f' }}>●</span> Make</span><span><span style={{ color: darkMode ? '#e66767' : '#e34948' }}>✕</span> Miss</span>
+                    <span><span style={{ color: darkMode ? "#34c27a" : "#15913f" }}>○</span> Make</span><span><span style={{ color: darkMode ? '#e66767' : '#e34948' }}>✕</span> Miss</span>
                 </div>
             </div>
         );

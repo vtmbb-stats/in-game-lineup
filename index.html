@@ -562,11 +562,13 @@
             };
 
             // ---------- rendering ----------
-            const status = !window.firebaseDb ? { text: 'Saving on this computer (database not loaded)', cls: 'bg-yellow-100 text-yellow-900' }
-                : !online ? { text: 'Offline · saved on this computer, will upload when connected', cls: 'bg-red-600 text-white' }
-                : uploadState.error ? { text: `Upload problem: ${uploadState.error}`, cls: 'bg-red-600 text-white' }
-                : game && game.version !== game.uploadedVersion ? { text: 'Saved on this computer · uploading…', cls: 'bg-yellow-100 text-yellow-900' }
-                : { text: game ? 'Saved and uploaded' : 'Online', cls: 'bg-green-100 text-green-800' };
+            // Short label (fixed width in the header, so nothing shifts) + the full explanation on hover.
+            const status = !window.firebaseDb ? { short: 'Saved here', text: 'Saving on this computer (database not loaded). It will upload when the connection is back.', cls: 'bg-yellow-100 text-yellow-900' }
+                : !online ? { short: 'Offline', text: 'Offline · saved on this computer, will upload when connected', cls: 'bg-red-600 text-white' }
+                : uploadState.error ? { short: 'Upload problem', text: `Upload problem: ${uploadState.error}`, cls: 'bg-red-600 text-white' }
+                : game && game.version !== game.uploadedVersion ? { short: 'Uploading…', text: 'Saved on this computer · uploading…', cls: 'bg-yellow-100 text-yellow-900' }
+                : { short: game ? 'Uploaded ✓' : 'Online', text: game ? 'Saved and uploaded' : 'Online', cls: 'bg-green-100 text-green-800' };
+            if (otherPending > 0) status.text += ` · ${otherPending} other game${otherPending > 1 ? 's' : ''} waiting to upload`;
 
             const Key = ({ k }) => <kbd>{k}</kbd>;
             const playerBtn = (id, i, onClick, extra = '') => (
@@ -624,37 +626,41 @@
             return (
                 <div className="min-h-screen p-3 text-gray-900">
                     {/* Header */}
-                    <div className="bg-white rounded-lg shadow p-3 mb-3 flex flex-wrap items-center gap-3">
+                    {/* One line, always: everything is no-wrap and the save status has a fixed width. */}
+                    <div className="bg-white rounded-lg shadow px-3 py-2 mb-3 flex flex-nowrap items-center gap-2 whitespace-nowrap overflow-hidden" style={{ height: 56 }}>
                         <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} disabled={live && !!flow}
-                            className="p-2 border border-gray-300 rounded-md text-sm">
+                            className="p-1.5 border border-gray-300 rounded-md text-sm shrink-0" style={{ maxWidth: 210 }}>
                             {seasonGames.map(g => <option key={g.date} value={g.date}>{g.displayName}{g.exhibition ? ' (exh)' : ''}</option>)}
                         </select>
                         {started && (
-                            <div className="flex items-center gap-2" aria-label={`Virginia Tech ${built.displayScore.vt}, ${opponent} ${built.displayScore.opp}`}>
-                                <TeamLogo name="Virginia Tech" size={36} />
-                                <span className="text-3xl font-bold tabular-nums">{built.displayScore.vt}</span>
-                                <span className="text-2xl text-gray-400">–</span>
-                                <span className="text-3xl font-bold tabular-nums">{built.displayScore.opp}</span>
-                                <TeamLogo name={opponent} size={36} />
+                            <div className="flex items-center gap-1.5 shrink-0" aria-label={`Virginia Tech ${built.displayScore.vt}, ${opponent} ${built.displayScore.opp}`}>
+                                <TeamLogo name="Virginia Tech" size={30} />
+                                <span className="text-2xl font-bold tabular-nums">{built.displayScore.vt}</span>
+                                <span className="text-xl text-gray-400">–</span>
+                                <span className="text-2xl font-bold tabular-nums">{built.displayScore.opp}</span>
+                                <TeamLogo name={opponent} size={30} />
                             </div>
                         )}
                         {live && (
-                            <div className="flex items-center gap-3 text-sm text-gray-700">
-                                {periodOpen ? <span>{periodOpen.label} · last clock {C.formatSeconds(lastClock)}</span> : <span className="text-orange-700 font-semibold">Between periods</span>}
-                                <span className="flex items-center gap-1">Possessions <TeamLogo name="Virginia Tech" size={18} /> {built.possessions.vt} <TeamLogo name={opponent} size={18} /> {built.possessions.opp}</span>
-                                {ball && <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold ${ball === 'vt' ? 'bg-orange-100 text-orange-900' : 'bg-blue-100 text-blue-900'}`}><TeamLogo name={ball === 'vt' ? 'Virginia Tech' : opponent} size={18} /> ball</span>}
+                            <div className="flex items-center gap-3 text-sm text-gray-700 min-w-0 overflow-hidden">
+                                {periodOpen
+                                    ? <span className="truncate" title={`${periodOpen.label}, last clock entered ${C.formatSeconds(lastClock)}`}>{periodOpen.label} · {C.formatSeconds(lastClock)}</span>
+                                    : <span className="text-orange-700 font-semibold">Between periods</span>}
+                                <span className="flex items-center gap-1 shrink-0" title="Possessions">Poss <TeamLogo name="Virginia Tech" size={16} /> {built.possessions.vt} <TeamLogo name={opponent} size={16} /> {built.possessions.opp}</span>
+                                {ball && <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold shrink-0 ${ball === 'vt' ? 'bg-orange-100 text-orange-900' : 'bg-blue-100 text-blue-900'}`}><TeamLogo name={ball === 'vt' ? 'Virginia Tech' : opponent} size={16} /> ball</span>}
                             </div>
                         )}
                         <div className="flex-1"></div>
-                        <span className={`text-xs px-2 py-1 rounded ${status.cls}`}>{status.text}</span>
-                        {otherPending > 0 && <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-900">{otherPending} other game{otherPending > 1 ? 's' : ''} waiting to upload</span>}
-                        {started && <button className="btn bg-amber-100 text-amber-900" onClick={() => setModal({ kind: 'review' })}>Review{reviewCount ? ` (${reviewCount})` : ''}</button>}
-                        {started && <button className="btn bg-gray-100 text-gray-800" onClick={() => setModal({ kind: 'log' })}>Full log</button>}
-                        {live && periodOpen && <button className="btn bg-gray-100 text-gray-800" onClick={() => setModal({ kind: 'garbage', clock: '' })} disabled={events.some(e => e.type === 'garbage')}>Garbage time</button>}
-                        {live && periodOpen && <button className="btn bg-purple-600 text-white" onClick={() => setModal({ kind: 'endPeriod', clock: '0:00' })}>End {periodOpen.label}</button>}
-                        {live && !periodOpen && <button className="btn bg-purple-600 text-white" onClick={openNextPeriod}>Start next period</button>}
-                        {!live && <button className="btn bg-green-600 text-white" onClick={startGame}>{started ? 'Start over' : 'Start game'}</button>}
-                        {live && <button className="btn bg-red-600 text-white" onClick={endGame}>End game</button>}
+                        <span className={`text-xs px-2 py-1 rounded shrink-0 text-center ${status.cls}`} style={{ width: 112 }} title={status.text} aria-label={status.text}>
+                            {status.short}{otherPending > 0 ? ` +${otherPending}` : ''}
+                        </span>
+                        {started && <button className="btn bg-amber-100 text-amber-900 shrink-0" onClick={() => setModal({ kind: 'review' })}>Review{reviewCount ? ` (${reviewCount})` : ''}</button>}
+                        {started && <button className="btn bg-gray-100 text-gray-800 shrink-0" onClick={() => setModal({ kind: 'log' })}>Log</button>}
+                        {live && periodOpen && <button className="btn bg-gray-100 text-gray-800 shrink-0" onClick={() => setModal({ kind: 'garbage', clock: '' })} disabled={events.some(e => e.type === 'garbage')}>Garbage time</button>}
+                        {live && periodOpen && <button className="btn bg-purple-600 text-white shrink-0 truncate" style={{ maxWidth: 170 }} title={`End ${periodOpen.label}`} onClick={() => setModal({ kind: 'endPeriod', clock: '0:00' })}>End {periodOpen.label}</button>}
+                        {live && !periodOpen && <button className="btn bg-purple-600 text-white shrink-0" onClick={openNextPeriod}>Start next period</button>}
+                        {!live && <button className="btn bg-green-600 text-white shrink-0" onClick={startGame}>{started ? 'Start over' : 'Start game'}</button>}
+                        {live && <button className="btn bg-red-600 text-white shrink-0" onClick={endGame}>End game</button>}
                     </div>
 
                     {!started ? (
@@ -669,7 +675,7 @@
                                 <Court onPick={live ? pickCourt : undefined} orientation={courtSide} depth={COURT_DEPTH}
                                     marker={flow?.k === 'vtShot' && flow.x !== null && flow.x !== undefined ? { x: flow.x, y: flow.y } : null}
                                     shots={periodShots.map(s => ({ ...s, key: s.id }))}
-                                    style={{ height: 'calc(100vh - 215px)', minHeight: 420, width: 'auto' }} />
+                                    style={{ height: 'calc(100vh - 175px)', minHeight: 420, width: 'auto' }} />
                                 <div className="flex flex-wrap items-center gap-2 text-sm">
                                     <button className="btn bg-gray-200 text-gray-900" onClick={() => setCourtSide(courtSide === 'left' ? 'right' : 'left')} title="Match the court to your view from the sideline">Flip court ⇄</button>
                                     <button className="btn bg-gray-200 text-gray-900" onClick={shotUnseen} disabled={!canPlay}>Didn't see where<Key k="Q" /></button>
@@ -677,7 +683,7 @@
                             </div>
 
                             {/* Right: what to enter next, then lineup, actions, and recent plays */}
-                            <div className="flex flex-col gap-3 min-w-0" style={{ height: 'calc(100vh - 143px)', minHeight: 492 }}>
+                            <div className="flex flex-col gap-3 min-w-0" style={{ height: 'calc(100vh - 95px)', minHeight: 492 }}>
                                 {prompt ? (
                                     <div className="rounded-lg shadow p-4 bg-orange-50 border-2 border-orange-300 grid gap-3">
                                         <div className="flex justify-between items-start gap-3">
@@ -690,7 +696,7 @@
                                 ) : (
                                     // Between plays: one line with the last entry, so a mistake is easy to spot and undo.
                                     <div className="rounded-lg shadow px-4 py-2 bg-white flex items-center gap-3 text-sm">
-                                        {!live ? <span className="text-gray-600">This game has ended. Use Review and Full log to fix anything.</span>
+                                        {!live ? <span className="text-gray-600">This game has ended. Use Review and Log to fix anything.</span>
                                             : !periodOpen ? <span className="text-orange-700 font-semibold">Start the next period to continue.</span>
                                             : events.length ? <>
                                                 <span className="text-gray-500 shrink-0">Last:</span>
