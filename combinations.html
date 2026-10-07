@@ -105,16 +105,13 @@
       const { guardRows, bigRows, hiddenGuards, hiddenBigs } = useMemo(() => {
         const guards = roster.filter(p => p.position === 'G').map(p => p.id);
         const bigs = roster.filter(p => p.position === 'F' || p.position === 'C');
-        const flex = new Set(bigs.filter(p => p.flexBig).map(p => p.id));
-        const trueBigs = new Set(bigs.filter(p => !p.flexBig).map(p => p.id));
-
         const row = (pair, include) => ({ ...C.groupTotals(segments, pair, include), id: pair.join('-'), names: pair.map(name).join(' & ') });
 
         const g = pairs(guards).map(pair => row(pair));
-        // A pairing with a flex big only counts when exactly one true big is on the floor.
+        // A big pairing counts only when both players are playing as bigs in that five
+        // (flex forwards: exactly one teammate below them on the roster — see LineupCore.isBigInLineup).
         const b = pairs(bigs.map(p => p.id)).map(pair => row(pair, (lineup) =>
-          pair.every(id => lineup.includes(id)) &&
-          (!pair.some(id => flex.has(id)) || lineup.filter(id => trueBigs.has(id)).length === 1)
+          pair.every(id => lineup.includes(id) && C.isBigInLineup(id, lineup, roster))
         ));
         return {
           guardRows: g.filter(r => r.seconds > 0), hiddenGuards: g.filter(r => r.seconds === 0).length,
@@ -171,7 +168,7 @@
                     emptyText="No data available for selected range" {...guardSort} />
                 </Section>
                 <Section title="Big Combinations" darkMode={darkMode}
-                  note={[flexNames && `${flexNames}: counted only with exactly one other true big`, hiddenBigs && `${hiddenBigs} pairs with no minutes hidden`].filter(Boolean).join(' · ')}>
+                  note={[flexNames && `${flexNames}: counted as a big only when exactly one teammate listed below them is on the floor`, hiddenBigs && `${hiddenBigs} pairs with no minutes hidden`].filter(Boolean).join(' · ')}>
                   <StatsTable rows={bigRows} columns={BIG_COLUMNS} nameLabel="Combo" darkMode={darkMode}
                     emptyText="No data available for selected range" {...bigSort} />
                 </Section>

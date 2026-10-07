@@ -251,6 +251,18 @@
         return [...map.values()].map(withRates);
     };
 
+    // Is this player playing as a big in this five? Guards: never. F/C without flexBig: always.
+    // A flexBig forward is a big only when exactly one teammate listed below him on the roster is on the floor
+    // (e.g. Atak with T. Johnson and Hansberry: only Hansberry is below him, so he's a big;
+    //  Atak with Jones and Sagnia: two below him, so he's not).
+    const isBigInLineup = (id, lineup, roster) => {
+        const p = roster.find(r => r.id === id);
+        if (!p || p.position === 'G') return false;
+        if (!p.flexBig) return true;
+        const idx = roster.indexOf(p);
+        return lineup.filter(other => other !== id && roster.findIndex(r => r.id === other) > idx).length === 1;
+    };
+
     // Final result from the log: 'W', 'L', or null if the game isn't finished.
     const gameResult = (rawHistory, gameInfo) => {
         if (gameInfo && !gameInfo.ended) return null;
@@ -350,7 +362,7 @@
     window.LineupCore = {
         EMPTY_STATS, periodLabel, periodLength, parseGameTime, formatSeconds,
         namesToIds, idsToNames, lastName, historyList, sortHistory,
-        buildSegments, aggregateLineups, mergeLineupRows, playerTotals, groupTotals, comboTotals,
+        buildSegments, aggregateLineups, mergeLineupRows, playerTotals, groupTotals, comboTotals, isBigInLineup,
         gameResult, colorClass, fmt, fmtPM, sortRows, db, loadGames, filterGames
     };
 })();
