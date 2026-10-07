@@ -173,11 +173,20 @@
                 setGame(local && local.info?.format === 2 ? local : null);
                 let cancelled = false;
                 (async () => {
-                    if (!window.firebaseDb) { setRemoteInfo(null); return; }
+                    // Wait briefly for the database connection to load (it may still be starting when the page opens).
+                    try { await withTimeout(C.db(), 5000); } catch { if (!cancelled) setRemoteInfo(null); return; }
+                    if (cancelled) return;
                     try {
                         const info = await withTimeout(window.firebaseDb.read(`game-info/${selectedGame}`), 4000);
                         if (cancelled) return;
                         setRemoteInfo(info);
+                        // The game was cleared online and this computer has nothing unsent: clear the local copy too.
+                        // (A copy with unsent plays, e.g. logged offline, is always kept.)
+                        if (!info && local?.info?.format === 2 && local.version === local.uploadedVersion) {
+                            try { localStorage.removeItem(store.key(selectedGame)); } catch {}
+                            setGame(null);
+                            return;
+                        }
                         // No copy on this computer but the game exists online (e.g. reviewing on another machine): pull it down.
                         if (!(local && local.info?.format === 2) && info?.format === 2) {
                             const events = await withTimeout(window.firebaseDb.read(`events/${selectedGame}`), 6000) || {};
