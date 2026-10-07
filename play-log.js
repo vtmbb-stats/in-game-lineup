@@ -17,6 +17,8 @@
 //   foul         { }                    — foul on the floor, no change of possession
 //   garbage      { clock }              — garbage time starts here
 //   adjust       { team, pts }          — manual score correction
+//   score_reset  { }                    — scoreboard back to 0-0 (exhibitions). Points before it still count
+//                                         toward +/- and lineup stats; only the displayed score restarts.
 // Any event that ended a team's possession carries poss: 'vt'|'opp'. possVoid: true means
 // "that possession change didn't actually happen" and it is not counted.
 
@@ -54,7 +56,8 @@
     const buildPlayLog = (info, rawEvents, roster, opts = {}) => {
         const events = sortEvents(rawEvents);
         const segments = [], warnings = [], shots = [];
-        const score = { vt: 0, opp: 0 };
+        const score = { vt: 0, opp: 0 };        // running total, used for all stats
+        let resetAt = { vt: 0, opp: 0 };        // running total at the last scoreboard reset
         const poss = { vt: 0, opp: 0 };
         let lineup = null, period = 0, garbage = false, seg = null;
         const review = { unplacedSubs: [], unseenShots: [] };
@@ -151,6 +154,9 @@
                 case 'adjust':
                     score[e.team] += e.pts;
                     break;
+                case 'score_reset':
+                    resetAt = { ...score };
+                    break;
                 default:
                     break;
             }
@@ -162,7 +168,9 @@
         }
         if (review.unplacedSubs.length) warnings.push(`${review.unplacedSubs.length} ${review.unplacedSubs.length > 1 ? 'subs still need' : 'sub still needs'} to be placed. Lineup stats near an unplaced sub are approximate until it's placed.`);
 
-        return { segments, warnings, shots, score, possessions: poss, lineup, period, review, events };
+        // displayScore is what the scoreboard shows (restarts at each reset); score is the full running total.
+        const displayScore = { vt: score.vt - resetAt.vt, opp: score.opp - resetAt.opp };
+        return { segments, warnings, shots, score, displayScore, possessions: poss, lineup, period, review, events };
     };
 
     // Works for both formats. raw = events (format 2) or lineup-changes (format 1).

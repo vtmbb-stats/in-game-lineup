@@ -214,7 +214,7 @@
                 <circle cx="25" cy="5.25" r="0.75" fill="none" stroke={darkMode ? '#f08a4b' : '#c64600'} strokeWidth="0.25" />
                 {D >= 41 && <path d="M 19 47 A 6 6 0 0 1 31 47" fill="none" stroke={line} strokeWidth="0.2" />}
                 {shots.filter(s => s.x !== null && s.x !== undefined && s.y <= D).map((s, i) => s.made
-                    ? <circle key={s.key || i} cx={s.x} cy={s.y} r="0.75" fill={darkMode ? '#3987e5' : '#2a78d6'} stroke={floor} strokeWidth="0.2"><title>{s.title || 'Make'}</title></circle>
+                    ? <circle key={s.key || i} cx={s.x} cy={s.y} r="0.75" fill={darkMode ? '#34c27a' : '#15913f'} stroke={floor} strokeWidth="0.2"><title>{s.title || 'Make'}</title></circle>
                     : <g key={s.key || i} stroke={darkMode ? '#e66767' : '#e34948'} strokeWidth="0.3"><title>{s.title || 'Miss'}</title>
                         <line x1={s.x - 0.6} y1={s.y - 0.6} x2={s.x + 0.6} y2={s.y + 0.6} /><line x1={s.x - 0.6} y1={s.y + 0.6} x2={s.x + 0.6} y2={s.y - 0.6} /></g>)}
                 {marker && <circle cx={marker.x} cy={marker.y} r="1" fill="none" stroke={darkMode ? '#f08a4b' : '#c64600'} strokeWidth="0.35" />}
@@ -264,7 +264,7 @@
                     <Court darkMode={darkMode} depth={shotDepth(placed)} shots={placed.map(s => ({ ...s, key: s.id, title: `${name(s.shooter)}: ${s.made ? 'made' : 'missed'} ${s.pts}` }))} />
                 </div>
                 <div className={`flex gap-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    <span>● Make</span><span>✕ Miss</span>
+                    <span><span style={{ color: darkMode ? '#34c27a' : '#15913f' }}>●</span> Make</span><span><span style={{ color: darkMode ? '#e66767' : '#e34948' }}>✕</span> Miss</span>
                 </div>
             </div>
         );

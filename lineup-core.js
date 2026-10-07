@@ -341,7 +341,7 @@
             const built = window.LineupCore.buildGame(info, raw, roster);
             const history = info.format === 2 ? [] : historyList(raw);
             const result = info.format === 2
-                ? (info.ended && built.score.vt !== built.score.opp ? (built.score.vt > built.score.opp ? 'W' : 'L') : null)
+                ? (info.ended && built.displayScore.vt !== built.displayScore.opp ? (built.displayScore.vt > built.displayScore.opp ? 'W' : 'L') : null)
                 : gameResult(history, info);
             return { ...g, info, raw, history, built, result };
         }));

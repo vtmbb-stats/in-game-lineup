@@ -81,14 +81,14 @@
             const usage = C.usageRows(counted, roster);
             const shots = built.shots.filter(s => (includeGarbageTime || !s.garbage) && inPeriod(s.period));
             const result = v2
-                ? (info?.ended && built.score.vt !== built.score.opp ? (built.score.vt > built.score.opp ? 'W' : 'L') : null)
+                ? (info?.ended && built.displayScore.vt !== built.displayScore.opp ? (built.displayScore.vt > built.displayScore.opp ? 'W' : 'L') : null)
                 : C.gameResult(rawHistory, info);
             const hasGarbage = segments.some(s => s.isGarbageTime);
 
             const textMain = darkMode ? 'text-white' : 'text-gray-900';
             const textSub = darkMode ? 'text-gray-400' : 'text-gray-500';
             const endRecord = v2 ? null : C.historyList(rawHistory).find(r => r.changes === 'End of Game');
-            const finalScore = v2 ? `${built.score.vt}-${built.score.opp}`
+            const finalScore = v2 ? `${built.displayScore.vt}-${built.displayScore.opp}`
                 : info?.finalVtScore !== undefined ? `${info.finalVtScore}-${info.finalOppScore}`
                 : endRecord ? `${endRecord.vtScore}-${endRecord.oppScore}` : null;
             const card = `rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`;

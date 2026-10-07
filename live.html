@@ -103,8 +103,8 @@
             }), [info, rawHistory, roster, legacyLineupStr, legacyVt, legacyOpp, currentStats]);
             const { segments, warnings } = built;
             const currentIds = v2 ? (built.lineup || []) : C.namesToIds(legacyLineupStr, roster);
-            const vtScore = v2 ? built.score.vt : legacyVt;
-            const oppScore = v2 ? built.score.opp : legacyOpp;
+            const vtScore = v2 ? built.displayScore.vt : legacyVt;
+            const oppScore = v2 ? built.displayScore.opp : legacyOpp;
 
             const keep = (seg) => (includeGarbageTime || !seg.isGarbageTime) && seg.lineup.every(isAvailable);
             const gameSegments = segments.filter(s => includeGarbageTime || !s.isGarbageTime);

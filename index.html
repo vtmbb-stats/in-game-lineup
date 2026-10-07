@@ -66,7 +66,7 @@
             const b = C.buildPlayLog(g.info, g.events, roster);
             const info = clean({
                 ...g.info, legacyCleanup: undefined,
-                vtScore: b.score.vt, oppScore: b.score.opp,
+                vtScore: b.displayScore.vt, oppScore: b.displayScore.opp,
                 currentLineup: C.idsToNames(b.lineup || [], roster),
                 currentPeriod: b.period, lastUpdated: g.updatedAt
             });
@@ -325,7 +325,7 @@
             };
             const openNextPeriod = () => {
                 const n = (game.info.periods?.length || 0) + 1;
-                const lineup = !game.info.custom && n === 2 ? game.info.startingLineup : lineupNow;
+                const lineup = defaultStarters; // every period starts from the registered default lineup (config.js)
                 setModal({ kind: 'startPeriod', period: n, lineup: lineup.length === 5 ? lineup : defaultStarters, length: '6', label: `Period ${n}` });
             };
             const confirmStartPeriod = (m) => {
@@ -353,7 +353,7 @@
                 finishGame();
             };
             const finishGame = () => {
-                mutate(g => { g.info.ended = true; g.info.endTime = new Date().toISOString(); g.info.finalVtScore = built.score.vt; g.info.finalOppScore = built.score.opp; });
+                mutate(g => { g.info.ended = true; g.info.endTime = new Date().toISOString(); g.info.finalVtScore = built.displayScore.vt; g.info.finalOppScore = built.displayScore.opp; });
                 setModal(reviewCount ? { kind: 'review' } : null);
                 showToast('Game ended. ' + (reviewCount ? `${reviewCount} item${reviewCount > 1 ? 's' : ''} to review.` : 'Nothing left to review.'));
             };
@@ -460,6 +460,7 @@
                     case 'expired': return `Time expired on ${e.team === 'vt' ? 'VT' : opponent}'s possession`;
                     case 'foul': return 'Foul on the floor';
                     case 'garbage': return `${C.formatSeconds(e.clock)} Garbage time starts`;
+                    case 'score_reset': return 'Scoreboard reset to 0–0';
                     case 'adjust': return `Score correction: ${e.team === 'vt' ? 'VT' : opponent} ${e.pts > 0 ? '+' : ''}${e.pts}`;
                     default: return e.type;
                 }
@@ -629,11 +630,11 @@
                             {seasonGames.map(g => <option key={g.date} value={g.date}>{g.displayName}{g.exhibition ? ' (exh)' : ''}</option>)}
                         </select>
                         {started && (
-                            <div className="flex items-center gap-2" aria-label={`Virginia Tech ${built.score.vt}, ${opponent} ${built.score.opp}`}>
+                            <div className="flex items-center gap-2" aria-label={`Virginia Tech ${built.displayScore.vt}, ${opponent} ${built.displayScore.opp}`}>
                                 <TeamLogo name="Virginia Tech" size={36} />
-                                <span className="text-3xl font-bold tabular-nums">{built.score.vt}</span>
+                                <span className="text-3xl font-bold tabular-nums">{built.displayScore.vt}</span>
                                 <span className="text-2xl text-gray-400">–</span>
-                                <span className="text-3xl font-bold tabular-nums">{built.score.opp}</span>
+                                <span className="text-3xl font-bold tabular-nums">{built.displayScore.opp}</span>
                                 <TeamLogo name={opponent} size={36} />
                             </div>
                         )}
@@ -733,6 +734,13 @@
                                         <button className="btn bg-gray-100 text-gray-800" onClick={didntHappen} disabled={!live}>Didn't happen<Key k="U" /></button>
                                         <button className="btn bg-gray-100 text-gray-800" onClick={undoLast} disabled={!events.length}>Undo last<Key k="Ctrl+Z" /></button>
                                         <button className="btn bg-gray-100 text-gray-800" onClick={() => setModal({ kind: 'adjust' })} disabled={!started}>Fix score</button>
+                                        {sched?.exhibition && (
+                                            <button className="btn bg-gray-100 text-gray-800" disabled={!live} onClick={() => {
+                                                if (!window.confirm(`Reset the scoreboard to 0–0?\n\nPoints already scored still count toward plus/minus and lineup stats.`)) return;
+                                                const e = commit({ type: 'score_reset' });
+                                                showToast('Scoreboard reset to 0–0.', { label: 'Undo', run: () => deleteEvent(e.id) });
+                                            }}>Reset score to 0–0</button>
+                                        )}
                                     </div>
                                 </div>
 
