@@ -168,7 +168,7 @@
                     emptyText="No data available for selected range" {...guardSort} />
                 </Section>
                 <Section title="Big Combinations" darkMode={darkMode}
-                  note={[flexNames && `${flexNames}: counted as a big only when exactly one teammate listed below them is on the floor`, hiddenBigs && `${hiddenBigs} pairs with no minutes hidden`].filter(Boolean).join(' · ')}>
+                  note={[flexNames && `${flexNames}: counted as a big unless two or more teammates listed below them are on the floor`, hiddenBigs && `${hiddenBigs} pairs with no minutes hidden`].filter(Boolean).join(' · ')}>
                   <StatsTable rows={bigRows} columns={BIG_COLUMNS} nameLabel="Combo" darkMode={darkMode}
                     emptyText="No data available for selected range" {...bigSort} />
                 </Section>

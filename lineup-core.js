@@ -252,15 +252,15 @@
     };
 
     // Is this player playing as a big in this five? Guards: never. F/C without flexBig: always.
-    // A flexBig forward is a big only when exactly one teammate listed below him on the roster is on the floor
+    // A flexBig forward is a big unless two or more teammates listed below him on the roster are on the floor.
     // (e.g. Atak with T. Johnson and Hansberry: only Hansberry is below him, so he's a big;
-    //  Atak with Jones and Sagnia: two below him, so he's not).
+    //  Atak with Jones and Sagnia: two below him, so he's not; Jones with nobody below him is playing the 5, so he is).
     const isBigInLineup = (id, lineup, roster) => {
         const p = roster.find(r => r.id === id);
         if (!p || p.position === 'G') return false;
         if (!p.flexBig) return true;
         const idx = roster.indexOf(p);
-        return lineup.filter(other => other !== id && roster.findIndex(r => r.id === other) > idx).length === 1;
+        return lineup.filter(other => other !== id && roster.findIndex(r => r.id === other) > idx).length <= 1;
     };
 
     // Final result from the log: 'W', 'L', or null if the game isn't finished.

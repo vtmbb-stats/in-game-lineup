@@ -7,7 +7,7 @@
 //   id        jersey number
 //   name      full name — must match exactly what was recorded during games
 //   position  'G', 'F', or 'C'. F and C count as bigs for the Big Combinations table.
-//   flexBig   true for a forward who only counts as a "big" when exactly one teammate listed
+//   flexBig   true for a forward who counts as a "big" only when at most one teammate listed
 //             below him on this roster is on the floor with him (so roster order matters)
 //
 // The roster's ORDER is the display order everywhere (lineup names, player lists, dropdowns).
