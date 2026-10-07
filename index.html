@@ -448,7 +448,7 @@
                         : `${opponent} ${e.made ? 'made' : 'missed'}${e.made ? ' ' + e.pts : ''}${e.andOne ? ' + and-1' : ''}${reb(e)}`;
                     case 'ft': return `${e.team === 'vt' ? who(e.shooter) : opponent} FT ${e.idx} of ${e.of}${e.oneAndOne ? ' (1-and-1)' : ''}: ${e.made ? 'made' : 'missed'}${reb(e)}`;
                     case 'to': return `${e.team === 'vt' ? 'VT turnover: ' + who(e.player) : opponent + ' turnover'}`;
-                    case 'expired': return `Time expired (${e.team === 'vt' ? 'VT' : opponent} ball)`;
+                    case 'expired': return `Time expired on ${e.team === 'vt' ? 'VT' : opponent}'s possession`;
                     case 'foul': return 'Foul on the floor';
                     case 'garbage': return `${C.formatSeconds(e.clock)} Garbage time starts`;
                     case 'adjust': return `Score correction: ${e.team === 'vt' ? 'VT' : opponent} ${e.pts > 0 ? '+' : ''}${e.pts}`;
@@ -705,7 +705,7 @@
                                         <div className="flex flex-wrap gap-2">
                                             <button className="btn bg-orange-600 text-white" onClick={() => startFTs('vt')} disabled={!canPlay}>Free throws<Key k="F" /></button>
                                             <button className="btn bg-orange-600 text-white" onClick={() => begin({ k: 'vtTO', step: 'player' })} disabled={!canPlay}>Turnover<Key k="T" /></button>
-                                            <button className="btn bg-orange-100 text-orange-900" onClick={() => simple({ type: 'expired', team: 'vt', poss: 'vt' })} disabled={!canPlay}>Time expired (VT ball)</button>
+                                            <button className="btn bg-orange-100 text-orange-900" onClick={() => simple({ type: 'expired', team: 'vt', poss: 'vt' })} disabled={!canPlay} title="The clock ran out while VT had the ball. Ends VT's possession.">Time expired</button>
                                         </div>
                                     </div>
                                     <div>
@@ -716,7 +716,7 @@
                                             <button className="btn bg-blue-600 text-white" onClick={() => begin({ k: 'oppMiss', step: 'reb' })} disabled={!canPlay}>Missed<Key k="R" /></button>
                                             <button className="btn bg-blue-600 text-white" onClick={() => startFTs('opp')} disabled={!canPlay}>Free throws<Key k="D" /></button>
                                             <button className="btn bg-blue-600 text-white" onClick={() => simple({ type: 'to', team: 'opp', poss: 'opp' })} disabled={!canPlay}>Turnover<Key k="G" /></button>
-                                            <button className="btn bg-blue-100 text-blue-900" onClick={() => simple({ type: 'expired', team: 'opp', poss: 'opp' })} disabled={!canPlay}>Time expired ({opponent} ball)</button>
+                                            <button className="btn bg-blue-100 text-blue-900" onClick={() => simple({ type: 'expired', team: 'opp', poss: 'opp' })} disabled={!canPlay} title={`The clock ran out while ${opponent} had the ball. Ends their possession.`}>Time expired</button>
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
