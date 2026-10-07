@@ -332,6 +332,7 @@
     // Usage table from LineupCore.usageRows. Click a row to select a player (onRowClick/selectedId).
     const USAGE_COLUMNS = [
         { key: 'seconds', label: 'Min', render: r => C.formatSeconds(r.seconds) },
+        { key: 'plusMinus', label: '+/-', render: r => C.fmtPM(r.plusMinus || 0) },
         { key: 'pts', label: 'Pts', render: r => r.pts },
         { key: 'fga', label: 'FG', render: r => (r.fga ? `${r.fgm}-${r.fga}` : '—') },
         { key: 'tpa', label: '3PT', render: r => (r.tpa ? `${r.tpm}-${r.tpa}` : '—') },
@@ -372,6 +373,7 @@
                         <tr className={darkMode ? 'text-gray-300' : 'text-gray-600'}>
                             <td className="p-2 text-left font-medium">Team</td>
                             <td className="p-2 text-right">{C.formatSeconds(usage.team.mp * 60 / 5)}</td>
+                            <td className="p-2 text-right">{C.fmtPM(usage.team.plusMinus || 0)}</td>
                             <td className="p-2 text-right">{usage.team.pts}</td>
                             <td className="p-2 text-right">{usage.team.fgm}-{usage.team.fga}</td>
                             <td className="p-2 text-right">{usage.team.tpm}-{usage.team.tpa}</td>

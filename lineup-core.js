@@ -39,7 +39,13 @@
 
     const idsToNames = (ids, roster) => ids.map(id => roster.find(p => p.id === id)?.name).join(', ');
 
-    const lastName = (id, roster) => (roster.find(p => p.id === id)?.name || '').split(' ').pop();
+    // Last name, with a first initial when two players on the roster share it (B. Johnson / T. Johnson).
+    const lastName = (id, roster) => {
+        const name = roster.find(p => p.id === id)?.name || '';
+        const last = name.split(' ').pop();
+        const shared = roster.filter(p => p.name.split(' ').pop() === last).length > 1;
+        return shared ? `${name[0]}. ${last}` : last;
+    };
 
     // Firebase returns lists as arrays or objects (push keys). Normalize, keeping insertion order.
     const historyList = (raw) => (!raw ? [] : Array.isArray(raw) ? raw.filter(Boolean) : Object.values(raw));

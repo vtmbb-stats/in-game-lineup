@@ -15,6 +15,7 @@
     <script src="config.js"></script>
     <script src="lineup-core.js"></script>
     <script src="play-log.js"></script>
+    <script src="report-pdf.js"></script>
 </head>
 <body>
     <div id="root"></div>
@@ -28,7 +29,8 @@
         const { useState, useEffect, useMemo } = React;
         const C = window.LineupCore;
         const CFG = window.VT_CONFIG;
-        const { PageHeader, Card, Toggle, StatsTable, PlayerList, Warnings, useSort, useAvailability, UsageTable, ShotChart, TeamLogo } = window.UI;
+        const { PageHeader, Card, Toggle, StatsTable, PlayerList, Warnings, useSort, useAvailability, UsageTable, ShotChart, TeamLogo, Court, shotDepth } = window.UI;
+        const { useRef } = React;
 
         // Everything for one game. Click a player (usage table or shot chart) or a lineup to filter the rest of the page.
         const GameReport = () => {
@@ -100,6 +102,39 @@
             const chip = `inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm ${darkMode ? 'bg-gray-700 text-white' : 'bg-orange-100 text-orange-900'}`;
             const pickPlayer = (id) => { setPlayer(id === 'all' || +player === +id ? 'all' : +id); };
 
+            // ---- PDF: whole team, using the period and garbage-time settings shown on the page ----
+            const pdfCourtRef = useRef(null);
+            const [pdfBusy, setPdfBusy] = useState(false);
+            const teamShots = built.shots.filter(s => (includeGarbageTime || !s.garbage) && inPeriod(s.period));
+            const placedTeamShots = teamShots.filter(s => s.x !== null && s.x !== undefined);
+            const downloadPdf = async () => {
+                setPdfBusy(true);
+                try {
+                    const sections = periods.length > 1 ? periods.map((p, i) => {
+                        const ps = built.periodScores?.[i + 1] || { vt: 0, opp: 0 };
+                        return `${p.label} ${ps.vt}-${ps.opp}${periodsOff.includes(i + 1) ? ' (not counted)' : ''}`;
+                    }).join('   ') : '';
+                    const made = teamShots.filter(s => s.made).length, threes = teamShots.filter(s => s.pts === 3);
+                    await window.GameReportPDF.download({
+                        filename: `VT-vs-${opponent.replace(/[^A-Za-z0-9]+/g, '-')}-${selectedGame}.pdf`,
+                        title: `Virginia Tech vs ${opponent}`,
+                        subtitle: [game?.displayName, game?.exhibition ? 'Exhibition' : null, status, v2 ? `${built.possessions.vt} possessions` : null].filter(Boolean).join('  -  '),
+                        score: { vt: finalVt ?? 0, opp: finalOpp ?? 0, opponent },
+                        sections: sections ? `By section: ${sections}` : '',
+                        filterNote: [periodsOff.length ? `Stats count: ${periods.filter((_, i) => !periodsOff.includes(i + 1)).map(p => p.label).join(', ')}` : 'Stats count: all periods',
+                            includeGarbageTime ? 'garbage time included' : 'garbage time excluded'].join(' - '),
+                        courtSvg: pdfCourtRef.current?.querySelector('svg'),
+                        shotLine: `${made}-${teamShots.length} FG, ${threes.filter(s => s.made).length}-${threes.length} 3PT`,
+                        zones: C.zoneSummary(teamShots),
+                        usage,
+                        lineups: C.aggregateLineups(counted, roster)
+                    });
+                } catch (err) {
+                    alert(`Couldn't make the PDF: ${err.message}`);
+                }
+                setPdfBusy(false);
+            };
+
             return (
                 <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
                     <PageHeader title="Game Report" current="game.html" darkMode={darkMode} setDarkMode={setDarkMode}>
@@ -117,6 +152,12 @@
                                 ))}
                             </select>
                             <Toggle label="Garbage Time" value={includeGarbageTime} onChange={setIncludeGarbageTime} darkMode={darkMode} />
+                            {info?.started && v2 && (
+                                <button onClick={downloadPdf} disabled={pdfBusy}
+                                    className={`px-4 py-2 rounded-md font-semibold ${pdfBusy ? 'opacity-60' : ''} ${darkMode ? 'bg-orange-600 text-white hover:bg-orange-700' : 'bg-orange-600 text-white hover:bg-orange-700'}`}>
+                                    {pdfBusy ? 'Making PDF…' : 'Download PDF'}
+                                </button>
+                            )}
                         </div>
                         {periods.length > 1 && (
                             <div className={`flex flex-wrap justify-end items-center gap-3 mt-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -159,6 +200,10 @@
                                     {lineupSel && <span className={chip}>Shots with: {selectedLineupNames}<button onClick={() => setLineupSel(null)} aria-label="Clear lineup">✕</button></span>}
                                 </div>
                                 <Warnings warnings={built.warnings} darkMode={darkMode} />
+                                {/* Light-background court used only to draw the PDF (kept off screen) */}
+                                {v2 && <div ref={pdfCourtRef} aria-hidden="true" style={{ position: 'absolute', left: -10000, top: 0, width: 600 }}>
+                                    <Court darkMode={false} depth={shotDepth(placedTeamShots)} shots={placedTeamShots.map(s => ({ ...s, key: s.id }))} />
+                                </div>}
 
                                 <Card darkMode={darkMode} title="Lineups" right={v2 ? 'Click a lineup to see the shots taken while it was on the floor' : null}>
                                     <StatsTable rows={rows} darkMode={darkMode} emptyText="No lineup data for this selection" {...sort}

@@ -211,18 +211,22 @@
     // Usage rate: USG% = 100 × (FGA + 0.44×FTA + TOV) × (Team MP / 5) / (MP × (Team FGA + 0.44×Team FTA + Team TOV))
     // Team MP = 5 × minutes in the selected stints. Only format-2 games have the shot data.
     const usageRows = (segments, roster) => {
-        const players = {}, team = { ...emptyPlayer() };
+        const players = {}, team = { ...emptyPlayer(), plusMinus: 0 };
         let teamSeconds = 0, tracked = false;
         segments.forEach(seg => {
             if (seg.seconds) teamSeconds += seg.seconds;
+            // Individual +/-: the score margin of every stint the player was on the floor for
+            const pm = (seg.endScore.vt - seg.startScore.vt) - (seg.endScore.opp - seg.startScore.opp);
+            team.plusMinus += pm;
             seg.lineup.forEach(id => {
-                const p = players[id] || (players[id] = { id, seconds: 0, ...emptyPlayer() });
+                const p = players[id] || (players[id] = { id, seconds: 0, plusMinus: 0, ...emptyPlayer() });
                 if (seg.seconds) p.seconds += seg.seconds;
+                p.plusMinus += pm;
             });
             if (!seg.playerStats) return;
             tracked = true;
             Object.entries(seg.playerStats).forEach(([id, s]) => {
-                const p = players[id] || (players[id] = { id: +id, seconds: 0, ...emptyPlayer() });
+                const p = players[id] || (players[id] = { id: +id, seconds: 0, plusMinus: 0, ...emptyPlayer() });
                 Object.keys(s).forEach(k => { p[k] += s[k]; team[k] += s[k]; });
             });
         });

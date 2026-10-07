@@ -4,9 +4,9 @@
 //
 // Site files: network first (so updates show up when online), cached copy when offline.
 // Library files (pinned CDN versions): cached copy first.
-const CACHE = 'vtlt-v4';
+const CACHE = 'vtlt-v5';
 const SITE = ['./', 'index.html', 'live.html', 'game.html', 'display.html', 'combinations.html', 'shots.html', 'usage.html',
-    'config.js', 'lineup-core.js', 'play-log.js', 'ui.jsx', 'firebase.js'];
+    'config.js', 'lineup-core.js', 'play-log.js', 'ui.jsx', 'firebase.js', 'report-pdf.js'];
 const LIBS = [
     'https://cdn.tailwindcss.com',
     'https://unpkg.com/react@18.3.1/umd/react.production.min.js',
@@ -14,7 +14,10 @@ const LIBS = [
     'https://unpkg.com/@babel/standalone@7.26.4/babel.min.js',
     'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js',
     'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js',
-    'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js'
+    'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js',
+    'https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js',
+    'https://unpkg.com/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js',
+    'https://unpkg.com/svg2pdf.js@2.2.4/dist/svg2pdf.umd.min.js'
 ];
 const LIB_HOSTS = ['cdn.tailwindcss.com', 'unpkg.com', 'www.gstatic.com', 'a.espncdn.com']; // espncdn = team logos
 

@@ -75,17 +75,17 @@
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
                       <thead><tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                        <th className={`${th} !text-left`}>Game</th><th className={th}>Min</th><th className={th}>Pts</th><th className={th}>FG</th>
+                        <th className={`${th} !text-left`}>Game</th><th className={th}>Min</th><th className={th}>+/-</th><th className={th}>Pts</th><th className={th}>FG</th>
                         <th className={th}>3PT</th><th className={th}>FT</th><th className={th}>TO</th><th className={th}>USG%</th>
                       </tr></thead>
                       <tbody>
                         {games.map(({ g, r, tracked }) => (
                           <tr key={g.date} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                             <td className={`${td} !text-left`}><a className="underline" href={`game.html#${g.date}`}>{g.displayName}</a>{g.exhibition ? ' (exh)' : ''}</td>
-                            {!tracked ? <td className={`${td} !text-left`} colSpan={7}>Not tracked (before shot tracking)</td>
-                              : !r ? <td className={`${td} !text-left`} colSpan={7}>Did not play</td>
+                            {!tracked ? <td className={`${td} !text-left`} colSpan={8}>Not tracked (before shot tracking)</td>
+                              : !r ? <td className={`${td} !text-left`} colSpan={8}>Did not play</td>
                               : <>
-                                <td className={td}>{C.formatSeconds(r.seconds)}</td><td className={td}>{r.pts}</td>
+                                <td className={td}>{C.formatSeconds(r.seconds)}</td><td className={td}>{C.fmtPM(r.plusMinus || 0)}</td><td className={td}>{r.pts}</td>
                                 <td className={td}>{r.fgm}-{r.fga}</td><td className={td}>{r.tpm}-{r.tpa}</td><td className={td}>{r.ftm}-{r.fta}</td>
                                 <td className={td}>{r.tov}</td><td className={`${td} font-semibold`}>{r.usg === null ? '—' : r.usg.toFixed(1)}</td>
                               </>}

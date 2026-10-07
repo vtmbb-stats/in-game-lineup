@@ -118,7 +118,7 @@
                 {lineup.map((pid, i) => (
                     <select key={i} value={pid} onChange={(e) => { const n = [...lineup]; n[i] = +e.target.value; setLineup(n); }}
                         className="p-2 border border-gray-300 rounded-md text-sm">
-                        {roster.filter(p => !lineup.includes(p.id) || p.id === pid).map(p => <option key={p.id} value={p.id}>#{p.id} {p.name.split(' ').pop()}</option>)}
+                        {roster.filter(p => !lineup.includes(p.id) || p.id === pid).map(p => <option key={p.id} value={p.id}>#{p.id} {C.lastName(p.id, roster)}</option>)}
                     </select>
                 ))}
             </div>
@@ -145,7 +145,7 @@
             const sched = CFG.findGame(selectedGame);
             const opponent = sched?.opponent || 'Opponent';
             const name = (id) => roster.find(p => p.id === id)?.name || `#${id}`;
-            const last = (id) => name(id).split(' ').pop();
+            const last = (id) => C.lastName(id, roster) || `#${id}`;
             const defaultStarters = useMemo(() => {
                 const s = CFG.SEASONS[CFG.seasonForDate(selectedGame)]?.defaultStarters || [];
                 return s.length === 5 && s.every(id => roster.some(p => p.id === id)) ? [...s] : roster.slice(0, 5).map(p => p.id);
