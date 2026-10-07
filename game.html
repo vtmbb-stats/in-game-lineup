@@ -88,7 +88,8 @@
             const shots = built.shots.filter(s => (includeGarbageTime || !s.garbage) && inPeriod(s.period) && (!lineupSel || lineupKey(s.lineup) === lineupSel));
             const selectedLineupNames = lineupSel ? allRows.find(r => r.id === lineupSel)?.names : null;
 
-            const score = v2 ? built.displayScore : null;
+            // Full game total: every section added together, even if the scoreboard was reset during an exhibition.
+            const score = v2 ? built.score : null;
             const endRecord = v2 ? null : C.historyList(raw).find(r => r.changes === 'End of Game');
             const finalVt = v2 ? score.vt : info?.finalVtScore ?? endRecord?.vtScore;
             const finalOpp = v2 ? score.opp : info?.finalOppScore ?? endRecord?.oppScore;
@@ -146,6 +147,14 @@
                                         <TeamLogo name={opponent} size={40} />
                                     </div>
                                     <div className={textSub}>{game?.displayName}{game?.exhibition ? ' · exhibition' : ''} · {status}{v2 ? ` · ${built.possessions.vt} possessions` : ''}</div>
+                                    {v2 && periods.length > 1 && (
+                                        <div className={`flex flex-wrap gap-3 text-sm ${textSub}`} title="Points scored in each section">
+                                            {periods.map((p, i) => {
+                                                const ps = built.periodScores[i + 1] || { vt: 0, opp: 0 };
+                                                return <span key={i} className={periodsOff.includes(i + 1) ? 'line-through opacity-60' : ''}>{p.label} <b className={textMain}>{ps.vt}–{ps.opp}</b></span>;
+                                            })}
+                                        </div>
+                                    )}
                                     {player !== 'all' && <span className={chip}>Player: {roster.find(p => p.id === +player)?.name}<button onClick={() => setPlayer('all')} aria-label="Clear player">✕</button></span>}
                                     {lineupSel && <span className={chip}>Shots with: {selectedLineupNames}<button onClick={() => setLineupSel(null)} aria-label="Clear lineup">✕</button></span>}
                                 </div>

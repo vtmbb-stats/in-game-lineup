@@ -79,6 +79,8 @@
         const segments = [], warnings = [], shots = [];
         const score = { vt: 0, opp: 0 };        // running total, used for all stats
         let resetAt = { vt: 0, opp: 0 };        // running total at the last scoreboard reset
+        const periodScores = {};                // points by period: { 1: { vt, opp }, ... }
+        const addPeriodPts = (team, pts) => { const p = periodScores[period] || (periodScores[period] = { vt: 0, opp: 0 }); p[team] += pts; };
         const poss = { vt: 0, opp: 0 };
         let lineup = null, period = 0, garbage = false, seg = null;
         const review = { unplacedSubs: [], unseenShots: [] };
@@ -143,7 +145,7 @@
                     break;
                 case 'shot': {
                     outsideStint(e);
-                    if (e.made) { score[e.team] += e.pts; }
+                    if (e.made) { score[e.team] += e.pts; addPeriodPts(e.team, e.pts); }
                     if (e.team === 'vt' && e.shooter !== undefined && e.shooter !== null) {
                         const p = ps(e.shooter);
                         p.fga++; if (e.pts === 3) p.tpa++;
@@ -157,7 +159,7 @@
                 }
                 case 'ft':
                     outsideStint(e);
-                    if (e.made) score[e.team] += 1;
+                    if (e.made) { score[e.team] += 1; addPeriodPts(e.team, 1); }
                     if (e.team === 'vt' && e.shooter !== undefined && e.shooter !== null) {
                         const p = ps(e.shooter); p.fta++; if (e.made) { p.ftm++; p.pts++; }
                     }
@@ -173,7 +175,7 @@
                     countPoss(e);
                     break;
                 case 'adjust':
-                    score[e.team] += e.pts;
+                    score[e.team] += e.pts; addPeriodPts(e.team, e.pts);
                     break;
                 case 'score_reset':
                     resetAt = { ...score };
@@ -191,7 +193,7 @@
 
         // displayScore is what the scoreboard shows (restarts at each reset); score is the full running total.
         const displayScore = { vt: score.vt - resetAt.vt, opp: score.opp - resetAt.opp };
-        return { segments, warnings, shots, score, displayScore, possessions: poss, lineup, period, review, events };
+        return { segments, warnings, shots, score, displayScore, periodScores, possessions: poss, lineup, period, review, events };
     };
 
     // Works for both formats. raw = events (format 2) or lineup-changes (format 1).
