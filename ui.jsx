@@ -172,44 +172,71 @@
         return { availability, toggle, isAvailable };
     };
 
-    // Half court, basket at the top. Coordinates are feet: x 0–50 across, y 0–47 from the baseline.
+    // Half court. Data coordinates are always feet: x 0–50 across (0 = left side when facing the basket),
+    // y = distance from the baseline. Only the drawing rotates; clicks come back in the same coordinates.
+    //   orientation: 'up' (basket at top), 'left' or 'right' (sideways, as seen from the sideline)
+    //   depth: how many feet from the baseline to show (default the full 47)
     // onPick(x, y) makes it clickable. shots: [{ x, y, made, key?, title? }]. marker: { x, y } for a pending click.
-    const Court = ({ shots = [], onPick, marker, darkMode, className = '', style = {} }) => {
+    const Court = ({ shots = [], onPick, marker, darkMode, className = '', style = {}, orientation = 'up', depth = 47 }) => {
         const ref = React.useRef(null);
+        const groupRef = React.useRef(null);
         const line = darkMode ? '#9a968f' : '#6b6760';
         const floor = darkMode ? '#2a2724' : '#efe6d6';
         const paint = darkMode ? '#33302c' : '#e6d9c3';
+        const D = depth;
+        const sideways = orientation !== 'up';
+        // Either way, the sideline nearest the viewer is at the bottom (basket left: x = 0 at the bottom; basket right: x = 0 at the top).
+        const transform = orientation === 'left' ? 'matrix(0 -1 1 0 0 50)' : orientation === 'right' ? `matrix(0 1 -1 0 ${D} 0)` : undefined;
+        const viewBox = sideways ? `-0.5 -0.5 ${D + 1} 51` : `-0.5 -0.5 51 ${D + 1}`;
         const click = (e) => {
             if (!onPick) return;
             const svg = ref.current;
             const pt = svg.createSVGPoint();
             pt.x = e.clientX; pt.y = e.clientY;
-            const p = pt.matrixTransform(svg.getScreenCTM().inverse());
-            const x = Math.max(0, Math.min(50, p.x)), y = Math.max(0, Math.min(47, p.y));
+            const p = pt.matrixTransform(groupRef.current.getScreenCTM().inverse());
+            const x = Math.max(0, Math.min(50, p.x)), y = Math.max(0, Math.min(D, p.y));
             onPick(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
         };
         const C = window.LineupCore;
         const arcStart = C.CORNER_Y;
         const threePath = `M ${25 - C.CORNER_X} 0 L ${25 - C.CORNER_X} ${arcStart} A ${C.ARC_R} ${C.ARC_R} 0 0 0 ${25 + C.CORNER_X} ${arcStart} L ${25 + C.CORNER_X} 0`;
         return (
-            <svg ref={ref} viewBox="-0.5 -0.5 51 48" className={className} onClick={click}
+            <svg ref={ref} viewBox={viewBox} className={className} onClick={click}
                 style={{ cursor: onPick ? 'crosshair' : 'default', display: 'block', width: '100%', height: 'auto', touchAction: 'manipulation', ...style }}
                 role={onPick ? 'button' : 'img'} aria-label={onPick ? 'Court: click where the shot was taken' : 'Shot chart'}>
-                <rect x="0" y="0" width="50" height="47" fill={floor} stroke={line} strokeWidth="0.2" />
+                <g ref={groupRef} transform={transform}>
+                <rect x="0" y="0" width="50" height={Math.min(47, D)} fill={floor} stroke={line} strokeWidth="0.2" />
                 <rect x="19" y="0" width="12" height="19" fill={paint} stroke={line} strokeWidth="0.2" />
                 <circle cx="25" cy="19" r="6" fill="none" stroke={line} strokeWidth="0.2" />
                 <path d="M 21 5.25 A 4 4 0 0 0 29 5.25" fill="none" stroke={line} strokeWidth="0.2" />
                 <path d={threePath} fill="none" stroke={line} strokeWidth="0.25" />
                 <line x1="22" y1="4" x2="28" y2="4" stroke={line} strokeWidth="0.35" />
                 <circle cx="25" cy="5.25" r="0.75" fill="none" stroke={darkMode ? '#f08a4b' : '#c64600'} strokeWidth="0.25" />
-                <path d="M 19 47 A 6 6 0 0 1 31 47" fill="none" stroke={line} strokeWidth="0.2" />
-                {shots.filter(s => s.x !== null && s.x !== undefined).map((s, i) => s.made
+                {D >= 41 && <path d="M 19 47 A 6 6 0 0 1 31 47" fill="none" stroke={line} strokeWidth="0.2" />}
+                {shots.filter(s => s.x !== null && s.x !== undefined && s.y <= D).map((s, i) => s.made
                     ? <circle key={s.key || i} cx={s.x} cy={s.y} r="0.75" fill={darkMode ? '#3987e5' : '#2a78d6'} stroke={floor} strokeWidth="0.2"><title>{s.title || 'Make'}</title></circle>
                     : <g key={s.key || i} stroke={darkMode ? '#e66767' : '#e34948'} strokeWidth="0.3"><title>{s.title || 'Miss'}</title>
                         <line x1={s.x - 0.6} y1={s.y - 0.6} x2={s.x + 0.6} y2={s.y + 0.6} /><line x1={s.x - 0.6} y1={s.y + 0.6} x2={s.x + 0.6} y2={s.y - 0.6} /></g>)}
                 {marker && <circle cx={marker.x} cy={marker.y} r="1" fill="none" stroke={darkMode ? '#f08a4b' : '#c64600'} strokeWidth="0.35" />}
+                </g>
             </svg>
         );
+    };
+
+    // Feet from the baseline the shooting area needs: the top of the arc plus a few feet, or further if a shot was deeper.
+    const shotDepth = (shots = []) => {
+        const base = Math.ceil(window.LineupCore.BASKET.y + window.LineupCore.ARC_R + 4); // ≈ 32 ft
+        const deepest = Math.max(0, ...shots.filter(s => s.y !== null && s.y !== undefined).map(s => s.y));
+        return Math.min(47, Math.max(base, Math.ceil(deepest + 2)));
+    };
+
+    // Team logo with the name as a fallback (and for screen readers).
+    const TeamLogo = ({ name, size = 28, className = '' }) => {
+        const [failed, setFailed] = React.useState(false);
+        const src = window.VT_CONFIG.teamLogo(name);
+        if (!src || failed) return <span className={`font-semibold ${className}`}>{name}</span>;
+        return <img src={src} alt={name} title={name} width={size} height={size} onError={() => setFailed(true)}
+            className={className} style={{ width: size, height: size, objectFit: 'contain', display: 'inline-block' }} />;
     };
 
     // Shot chart with a player filter and make/miss counts.
@@ -234,7 +261,7 @@
                     </span>
                 </div>
                 <div style={{ maxWidth: 520 }}>
-                    <Court darkMode={darkMode} shots={placed.map(s => ({ ...s, key: s.id, title: `${name(s.shooter)}: ${s.made ? 'made' : 'missed'} ${s.pts}` }))} />
+                    <Court darkMode={darkMode} depth={shotDepth(placed)} shots={placed.map(s => ({ ...s, key: s.id, title: `${name(s.shooter)}: ${s.made ? 'made' : 'missed'} ${s.pts}` }))} />
                 </div>
                 <div className={`flex gap-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                     <span>● Make</span><span>✕ Miss</span>
@@ -286,5 +313,5 @@
         );
     };
 
-    window.UI = { Nav, DarkToggle, Toggle, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability, LINEUP_COLUMNS, minutesText, Court, ShotChart, UsageTable };
+    window.UI = { Nav, DarkToggle, Toggle, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability, LINEUP_COLUMNS, minutesText, Court, ShotChart, UsageTable, TeamLogo, shotDepth };
 })();

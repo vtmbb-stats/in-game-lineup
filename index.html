@@ -29,7 +29,8 @@
         const { useState, useEffect, useMemo, useRef, useCallback } = React;
         const C = window.LineupCore;
         const CFG = window.VT_CONFIG;
-        const { Court } = window.UI;
+        const { Court, TeamLogo, shotDepth } = window.UI;
+        const COURT_DEPTH = shotDepth([]); // baseline to a few feet past the top of the arc
 
         // Keep pages working offline (see sw.js).
         if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -134,6 +135,9 @@
             const [modal, setModal] = useState(null);         // { kind, ...data }
             const [subPanel, setSubPanel] = useState(null);   // { out: [], in: [], clock: '', missed: false }
             const [toast, setToast] = useState(null);
+            // Which way the court faces on screen (remembered on this computer). Flip it when teams switch baskets.
+            const [courtSide, setCourtSide] = useState(() => { try { return localStorage.getItem('vtlt-court-side') || 'left'; } catch { return 'left'; } });
+            useEffect(() => { try { localStorage.setItem('vtlt-court-side', courtSide); } catch {} }, [courtSide]);
             const gameRef = useRef(null);
             gameRef.current = game;
 
@@ -616,16 +620,19 @@
                             {seasonGames.map(g => <option key={g.date} value={g.date}>{g.displayName}{g.exhibition ? ' (exh)' : ''}</option>)}
                         </select>
                         {started && (
-                            <div className="flex items-baseline gap-3 font-semibold">
-                                <span className="text-2xl tabular-nums">VT {built.score.vt} – {built.score.opp}</span>
-                                <span className="text-sm text-gray-600">{opponent}</span>
+                            <div className="flex items-center gap-2" aria-label={`Virginia Tech ${built.score.vt}, ${opponent} ${built.score.opp}`}>
+                                <TeamLogo name="Virginia Tech" size={36} />
+                                <span className="text-3xl font-bold tabular-nums">{built.score.vt}</span>
+                                <span className="text-2xl text-gray-400">–</span>
+                                <span className="text-3xl font-bold tabular-nums">{built.score.opp}</span>
+                                <TeamLogo name={opponent} size={36} />
                             </div>
                         )}
                         {live && (
-                            <div className="text-sm text-gray-700">
-                                {periodOpen ? <>{periodOpen.label} · last clock {C.formatSeconds(lastClock)}</> : <span className="text-orange-700 font-semibold">Between periods</span>}
-                                <span className="ml-3">Poss VT {built.possessions.vt} · {opponent} {built.possessions.opp}</span>
-                                {ball && <span className={`ml-3 px-2 py-0.5 rounded text-white text-xs ${ball === 'vt' ? 'bg-orange-600' : 'bg-blue-600'}`}>{ball === 'vt' ? 'VT' : opponent} ball</span>}
+                            <div className="flex items-center gap-3 text-sm text-gray-700">
+                                {periodOpen ? <span>{periodOpen.label} · last clock {C.formatSeconds(lastClock)}</span> : <span className="text-orange-700 font-semibold">Between periods</span>}
+                                <span className="flex items-center gap-1">Possessions <TeamLogo name="Virginia Tech" size={18} /> {built.possessions.vt} <TeamLogo name={opponent} size={18} /> {built.possessions.opp}</span>
+                                {ball && <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold ${ball === 'vt' ? 'bg-orange-100 text-orange-900' : 'bg-blue-100 text-blue-900'}`}><TeamLogo name={ball === 'vt' ? 'Virginia Tech' : opponent} size={18} /> ball</span>}
                             </div>
                         )}
                         <div className="flex-1"></div>
@@ -646,8 +653,20 @@
                             {sched?.exhibition && <div className="mt-2 text-sm">This is an exhibition, so you can set custom period lengths.</div>}
                         </div>
                     ) : (
-                        <div className="grid gap-3" style={{ gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr)' }}>
-                            {/* Left: prompt on top (always on screen), court below sized to the remaining height */}
+                        <div className="grid gap-3" style={{ gridTemplateColumns: 'auto minmax(0, 1fr)' }}>
+                            {/* Left: the court, sideways as seen from the sideline, as tall as the screen allows */}
+                            <div className="bg-white rounded-lg shadow p-3 flex flex-col gap-2 self-start">
+                                <Court onPick={live ? pickCourt : undefined} orientation={courtSide} depth={COURT_DEPTH}
+                                    marker={flow?.k === 'vtShot' && flow.x !== null && flow.x !== undefined ? { x: flow.x, y: flow.y } : null}
+                                    shots={periodShots.map(s => ({ ...s, key: s.id }))}
+                                    style={{ height: 'calc(100vh - 215px)', minHeight: 420, width: 'auto' }} />
+                                <div className="flex flex-wrap items-center gap-2 text-sm">
+                                    <button className="btn bg-gray-200 text-gray-900" onClick={() => setCourtSide(courtSide === 'left' ? 'right' : 'left')} title="Match the court to your view from the sideline">Flip court ⇄</button>
+                                    <button className="btn bg-gray-200 text-gray-900" onClick={shotUnseen} disabled={!canPlay}>Didn't see where<Key k="Q" /></button>
+                                </div>
+                            </div>
+
+                            {/* Right: what to enter next, then lineup, actions, and recent plays */}
                             <div className="grid gap-3 content-start">
                                 <div className={`rounded-lg shadow p-4 min-h-[132px] ${prompt ? 'bg-orange-50 border-2 border-orange-300' : 'bg-white'}`}>
                                     {prompt ? (
@@ -660,22 +679,9 @@
                                             {prompt.hint && <div className="text-xs text-gray-600">{prompt.hint}</div>}
                                         </div>
                                     ) : (
-                                        <div className="text-sm text-gray-500">{live ? (periodOpen ? 'Ready. Click the court for a VT shot, or use the buttons on the right.' : 'Start the next period to continue.') : 'This game has ended. Use Review and Full log to fix anything.'}</div>
+                                        <div className="text-sm text-gray-500">{live ? (periodOpen ? 'Ready. Click the court for a VT shot (it shows this period\'s shots), or use the buttons below.' : 'Start the next period to continue.') : 'This game has ended. Use Review and Full log to fix anything.'}</div>
                                     )}
                                 </div>
-                                <div className="bg-white rounded-lg shadow p-3">
-                                    <Court onPick={live ? pickCourt : undefined} marker={flow?.k === 'vtShot' && flow.x !== null && flow.x !== undefined ? { x: flow.x, y: flow.y } : null}
-                                        shots={periodShots.map(s => ({ ...s, key: s.id }))}
-                                        style={{ height: 'calc(100vh - 450px)', minHeight: 290, width: 'auto', maxWidth: '100%', margin: '0 auto' }} />
-                                    <div className="flex flex-wrap items-center gap-2 mt-2 text-sm">
-                                        <button className="btn bg-gray-200 text-gray-900" onClick={shotUnseen} disabled={!canPlay}>VT shot, didn't see where<Key k="Q" /></button>
-                                        <span className="text-gray-500">Click the court for a VT shot. Showing this period's shots.</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Right: lineup + actions + log */}
-                            <div className="grid gap-3 content-start">
                                 <div className="bg-white rounded-lg shadow p-3">
                                     <div className="flex justify-between items-center mb-2">
                                         <h3 className="font-semibold">On the floor</h3>
@@ -688,7 +694,7 @@
 
                                 <div className="bg-white rounded-lg shadow p-3 grid gap-3">
                                     <div>
-                                        <h3 className="font-semibold mb-2 text-orange-700">Virginia Tech</h3>
+                                        <h3 className="font-semibold mb-2 flex items-center gap-2"><TeamLogo name="Virginia Tech" size={24} /> Virginia Tech</h3>
                                         <div className="flex flex-wrap gap-2">
                                             <button className="btn bg-orange-600 text-white" onClick={() => startFTs('vt')} disabled={!canPlay}>Free throws<Key k="F" /></button>
                                             <button className="btn bg-orange-600 text-white" onClick={() => begin({ k: 'vtTO', step: 'player' })} disabled={!canPlay}>Turnover<Key k="T" /></button>
@@ -696,7 +702,7 @@
                                         </div>
                                     </div>
                                     <div>
-                                        <h3 className="font-semibold mb-2 text-blue-700">{opponent}</h3>
+                                        <h3 className="font-semibold mb-2 flex items-center gap-2"><TeamLogo name={opponent} size={24} /> {opponent}</h3>
                                         <div className="flex flex-wrap gap-2">
                                             <button className="btn bg-blue-600 text-white" onClick={() => oppMade(2)} disabled={!canPlay}>Made 2<Key k="W" /></button>
                                             <button className="btn bg-blue-600 text-white" onClick={() => oppMade(3)} disabled={!canPlay}>Made 3<Key k="E" /></button>
@@ -871,7 +877,7 @@
                     )}
 
                     {modal?.kind === 'review' && built && (
-                        <ReviewModal built={built} events={events} roster={roster} describe={describe} opponent={opponent}
+                        <ReviewModal built={built} events={events} roster={roster} describe={describe} opponent={opponent} courtSide={courtSide}
                             onClose={() => setModal(null)} patchEvent={patchEvent} placeSub={placeSub} />
                     )}
 
@@ -900,7 +906,7 @@
         };
 
         // Lists everything that still needs attention: shots with no spot, subs with no placement.
-        const ReviewModal = ({ built, events, roster, describe, onClose, patchEvent, placeSub }) => {
+        const ReviewModal = ({ built, events, roster, describe, onClose, patchEvent, placeSub, courtSide }) => {
             const [placingShot, setPlacingShot] = useState(null);
             const [placingSub, setPlacingSub] = useState(null);   // { sub, before, clock }
             const unseen = built.review.unseenShots, unplaced = built.review.unplacedSubs;
@@ -912,7 +918,7 @@
                     <Modal title="Where was this shot taken?" onClose={() => setPlacingShot(null)} wide>
                         <p className="mb-3">{describe(s)}</p>
                         <div style={{ maxWidth: 560 }}>
-                            <Court onPick={(x, y) => patchEvent(s.id, { x, y })} marker={s.x !== null && s.x !== undefined ? { x: s.x, y: s.y } : null} />
+                            <Court orientation={courtSide} depth={COURT_DEPTH} style={{ maxHeight: "60vh", width: "auto", margin: "0 auto" }} onPick={(x, y) => patchEvent(s.id, { x, y })} marker={s.x !== null && s.x !== undefined ? { x: s.x, y: s.y } : null} />
                         </div>
                         {geo !== null && geo !== s.pts && (
                             <div className="mt-3 p-3 rounded bg-amber-50 border border-amber-200 text-sm flex items-center gap-3">

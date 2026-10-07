@@ -154,6 +154,21 @@
     email: ''
   };
 
+  // ESPN team IDs, used for logos. Add new opponents here (find the number in the team's
+  // espn.com URL, e.g. espn.com/mens-college-basketball/team/_/id/2335/liberty-flames).
+  const TEAM_IDS = {
+    'Virginia Tech': 259, 'Liberty': 2335, 'Wofford': 2747, 'Maryland': 120, 'Coppin State': 2154, 'Mercer': 2382,
+    'Iowa': 2294, "Mount St. Mary's": 116, 'Richmond': 257, 'Northwestern': 77, 'Oklahoma State': 197,
+    'Old Dominion': 295, 'Ole Miss': 145, 'West Virginia': 277, 'UMES': 2379, 'Maryland-Eastern Shore': 2379,
+    'Radford': 2515, 'UCF': 2116, 'VMI': 2678, 'Louisville': 97, 'Wake Forest': 154, 'Notre Dame': 87,
+    'Boston College': 103, 'SMU': 2567, 'Florida State': 52, 'Miami': 2390, 'Pittsburgh': 221, 'Virginia': 258,
+    'Clemson': 228, 'California': 25, 'Stanford': 24, 'NC State': 152, 'North Carolina': 153, 'Syracuse': 183,
+    'Georgia Tech': 59, 'Seton Hall': 2550, 'Duquesne': 2184, 'Charleston Southern': 2127, 'Providence': 2507,
+    "Saint Joseph's": 2603, 'Charlotte': 2429, 'Bryant': 2803, 'Colorado State': 36, "Saint Mary's": 2608,
+    'VCU': 2670, 'South Carolina': 2579, 'George Mason': 2244, 'Western Carolina': 2717, 'Elon': 2210, 'Duke': 150
+  };
+  const teamLogo = (name) => TEAM_IDS[name] ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${TEAM_IDS[name]}.png` : null;
+
   // ---- helpers (no need to edit below) ----
 
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -187,6 +202,8 @@
     SEASONS,
     CURRENT_SEASON,
     INPUT_SIGN_IN,
+    TEAM_IDS,
+    teamLogo,
     seasonKeys,
     gamesForSeason,
     allGames,

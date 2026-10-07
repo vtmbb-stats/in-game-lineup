@@ -4,7 +4,7 @@
 //
 // Site files: network first (so updates show up when online), cached copy when offline.
 // Library files (pinned CDN versions): cached copy first.
-const CACHE = 'vtlt-v2';
+const CACHE = 'vtlt-v3';
 const SITE = ['./', 'index.html', 'live.html', 'game.html', 'display.html', 'combinations.html',
     'config.js', 'lineup-core.js', 'play-log.js', 'ui.jsx', 'firebase.js'];
 const LIBS = [
@@ -16,7 +16,7 @@ const LIBS = [
     'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js',
     'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js'
 ];
-const LIB_HOSTS = ['cdn.tailwindcss.com', 'unpkg.com', 'www.gstatic.com'];
+const LIB_HOSTS = ['cdn.tailwindcss.com', 'unpkg.com', 'www.gstatic.com', 'a.espncdn.com']; // espncdn = team logos
 
 self.addEventListener('install', (event) => {
     event.waitUntil((async () => {
