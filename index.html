@@ -8,803 +8,1046 @@
     <script type="module" src="firebase.js"></script>
     <script src="config.js"></script>
     <script src="lineup-core.js"></script>
+    <script src="play-log.js"></script>
+    <style>
+        kbd { font: 600 11px/1 ui-monospace, monospace; padding: 2px 5px; border-radius: 4px; border: 1px solid currentColor; opacity: .7; margin-left: 6px; }
+        .btn { border-radius: 6px; padding: 8px 12px; font-weight: 600; font-size: 14px; transition: filter .1s; }
+        .btn:hover:not(:disabled) { filter: brightness(1.08); }
+        .btn:disabled { opacity: .4; cursor: not-allowed; }
+        .btn:focus-visible { outline: 2px solid #c64600; outline-offset: 2px; }
+    </style>
 </head>
-<body>
+<body class="bg-gray-100">
     <div id="root"></div>
 
     <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+    <script type="text/babel" src="ui.jsx"></script>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef, useCallback } = React;
         const C = window.LineupCore;
         const CFG = window.VT_CONFIG;
+        const { Court } = window.UI;
+
+        // Keep pages working offline (see sw.js).
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
         const seasonGames = CFG.gamesForSeason(CFG.CURRENT_SEASON);
+        const todayYMD = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+        const defaultGameDate = (seasonGames.find(g => g.date >= todayYMD) || seasonGames[seasonGames.length - 1] || {}).date || '';
 
-        const todayLocalYMD = () => {
-            const d = new Date();
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        // ---------- local storage: the computer's copy is the source of truth during a game ----------
+        const store = {
+            key: (d) => `vtlt-game-${d}`,
+            load: (d) => { try { return JSON.parse(localStorage.getItem(store.key(d))); } catch { return null; } },
+            save: (d, g) => { try { localStorage.setItem(store.key(d), JSON.stringify(g)); return true; } catch { return false; } }
+        };
+        const clean = (o) => JSON.parse(JSON.stringify(o)); // Firebase rejects undefined values
+        const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
+        // "1542" -> 942 seconds (15:42). Accepts "15:42", "1542", "942", "45" (= 0:45).
+        const parseClock = (s) => {
+            const t = String(s || '').trim();
+            let m, sec;
+            if ((m = t.match(/^(\d{1,2}):(\d{2})$/))) { sec = +m[1] * 60 + +m[2]; if (+m[2] > 59) return null; }
+            else if ((m = t.match(/^\d{1,4}$/))) { const d = t.padStart(4, '0'); if (+d.slice(2) > 59) return null; sec = +d.slice(0, 2) * 60 + +d.slice(2); }
+            else return null;
+            return sec;
         };
 
-        const defaultGameDate = (() => {
-            if (seasonGames.length === 0) return '';
-            const today = todayLocalYMD();
-            const next = seasonGames.find(g => g.date >= today);
-            return next ? next.date : seasonGames[seasonGames.length - 1].date;
-        })();
+        // Upload one saved game (its plays and its summary) to the database.
+        const pushGame = async (g) => {
+            const db = window.firebaseDb;
+            const roster = CFG.rosterForDate(g.date);
+            const b = C.buildPlayLog(g.info, g.events, roster);
+            const info = clean({
+                ...g.info, legacyCleanup: undefined,
+                vtScore: b.score.vt, oppScore: b.score.opp,
+                currentLineup: C.idsToNames(b.lineup || [], roster),
+                currentPeriod: b.period, lastUpdated: g.updatedAt
+            });
+            if (g.info.legacyCleanup) {
+                await withTimeout(Promise.all(['lineup-changes', 'live-game', 'current-stats', 'player-stats'].map(p => db.remove(db.ref(`${p}/${g.date}`)))), 15000);
+            }
+            await withTimeout(db.set(db.ref(`events/${g.date}`), clean(g.events)), 15000);
+            await withTimeout(db.set(db.ref(`game-info/${g.date}`), info), 15000);
+        };
 
-        const TIME_RE = /^\d{1,2}:\d{2}$/;
+        // Games logged on this computer that still have changes waiting to upload.
+        const pendingGames = () => {
+            const out = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (!k || !k.startsWith('vtlt-game-')) continue;
+                const g = store.load(k.slice('vtlt-game-'.length));
+                if (g && g.info?.format === 2 && g.version !== g.uploadedVersion) out.push(g);
+            }
+            return out;
+        };
 
-        const BasketballLineupTracker = () => {
-            const [darkMode, setDarkMode] = useState(false);
-            const [online, setOnline] = useState(true);
+        // ---------- small UI pieces ----------
+        const Modal = ({ title, children, onClose, wide }) => (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}>
+                <div className={`bg-white rounded-lg shadow-xl w-full ${wide ? 'max-w-4xl' : 'max-w-lg'} max-h-[90vh] overflow-y-auto p-6`}>
+                    <h3 className="text-xl font-semibold mb-4 text-gray-900">{title}</h3>
+                    {children}
+                </div>
+            </div>
+        );
+
+        const ClockInput = ({ value, onChange, onEnter, autoFocus = true, label = 'Game clock' }) => {
+            const sec = parseClock(value);
+            return (
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                    <input type="text" inputMode="numeric" autoFocus={autoFocus} value={value}
+                        onChange={(e) => onChange(e.target.value.replace(/[^0-9:]/g, ''))}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && onEnter) { e.preventDefault(); onEnter(); } e.stopPropagation(); }}
+                        placeholder="e.g. 15:42 or 1542" className="w-full p-2 border border-gray-300 rounded-md text-lg" />
+                    <p className="text-xs mt-1 text-gray-500">{value ? (sec === null ? 'Use M:SS, e.g. 4:22 or 15:42' : `= ${C.formatSeconds(sec)}`) : 'Type the time left on the clock.'}</p>
+                </div>
+            );
+        };
+
+        const LineupPicker = ({ roster, lineup, setLineup }) => (
+            <div className="grid grid-cols-5 gap-3">
+                {lineup.map((pid, i) => (
+                    <select key={i} value={pid} onChange={(e) => { const n = [...lineup]; n[i] = +e.target.value; setLineup(n); }}
+                        className="p-2 border border-gray-300 rounded-md text-sm">
+                        {roster.filter(p => !lineup.includes(p.id) || p.id === pid).map(p => <option key={p.id} value={p.id}>#{p.id} {p.name.split(' ').pop()}</option>)}
+                    </select>
+                ))}
+            </div>
+        );
+
+        // ---------- the app ----------
+        const Tracker = () => {
             const [selectedGame, setSelectedGame] = useState(defaultGameDate);
-            const [gameStarted, setGameStarted] = useState(false);
-            const [currentHalf, setCurrentHalf] = useState(1);
-            const [gameTime, setGameTime] = useState('20:00');
-            const [currentLineup, setCurrentLineup] = useState([]);
-            const [previousLineup, setPreviousLineup] = useState([]);
-            const [startingLineup, setStartingLineup] = useState([]);
-            const [pendingChanges, setPendingChanges] = useState([]);
-            // null | 'startLineup' | 'start2nd' | 'subTime' | 'garbageTime'
-            const [modal, setModal] = useState(null);
-            const [pendingGameTime, setPendingGameTime] = useState('');
-            const [vtScore, setVtScore] = useState(0);
-            const [oppScore, setOppScore] = useState(0);
-            const [lineupHistory, setLineupHistory] = useState([]);
-            const [currentStats, setCurrentStats] = useState(C.EMPTY_STATS());
-            const [garbageMarked, setGarbageMarked] = useState(false);
+            const [game, setGame] = useState(null);           // { date, info, events, version, uploadedVersion, updatedAt }
+            const [remoteInfo, setRemoteInfo] = useState(undefined);
+            const [online, setOnline] = useState(false);
+            const [uploadState, setUploadState] = useState({ busy: false, error: null });
+            const [flow, setFlow] = useState(null);
+            const [modal, setModal] = useState(null);         // { kind, ...data }
+            const [subPanel, setSubPanel] = useState(null);   // { out: [], in: [], clock: '', missed: false }
+            const [toast, setToast] = useState(null);
+            const gameRef = useRef(null);
+            gameRef.current = game;
 
             const roster = useMemo(() => CFG.rosterForDate(selectedGame), [selectedGame]);
-            // The season's defaultStarters if they're all on the roster, otherwise the first five listed.
-            const defaultLineup = useMemo(() => {
-                const starters = CFG.SEASONS[CFG.seasonForDate(selectedGame)]?.defaultStarters || [];
-                const valid = starters.length === 5 && starters.every(id => roster.some(p => p.id === id));
-                return valid ? [...starters] : roster.slice(0, 5).map(p => p.id);
+            const sched = CFG.findGame(selectedGame);
+            const opponent = sched?.opponent || 'Opponent';
+            const name = (id) => roster.find(p => p.id === id)?.name || `#${id}`;
+            const last = (id) => name(id).split(' ').pop();
+            const defaultStarters = useMemo(() => {
+                const s = CFG.SEASONS[CFG.seasonForDate(selectedGame)]?.defaultStarters || [];
+                return s.length === 5 && s.every(id => roster.some(p => p.id === id)) ? [...s] : roster.slice(0, 5).map(p => p.id);
             }, [roster, selectedGame]);
-            const currentOpponent = CFG.findGame(selectedGame)?.opponent || 'Opponent';
-            const names = (ids) => C.idsToNames(ids, roster);
-            const playerName = (id) => roster.find(p => p.id === id)?.name;
-            const label = C.periodLabel(currentHalf);
 
-            const path = (root) => `${root}/${selectedGame}`;
+            const showToast = (text, action) => { setToast({ text, action, at: Date.now() }); };
+            useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t); }, [toast]);
 
-            useEffect(() => {
-                document.body.className = darkMode ? 'bg-gray-900' : 'bg-gray-100';
-            }, [darkMode]);
-
-            // Connection indicator. Writes made while offline are queued and sent on reconnect,
-            // as long as this page isn't reloaded in the meantime.
+            // ----- connection -----
             useEffect(() => {
                 let unsub;
-                C.db().then(db => { unsub = db.watch('.info/connected', v => setOnline(v === true)); });
-                return () => unsub && unsub();
+                const wait = setInterval(() => {
+                    if (!window.firebaseDb) return;
+                    clearInterval(wait);
+                    unsub = window.firebaseDb.watch('.info/connected', v => setOnline(v === true));
+                }, 100);
+                return () => { clearInterval(wait); unsub && unsub(); };
             }, []);
 
-            const resetLocal = () => {
-                setGameStarted(false);
-                setCurrentHalf(1);
-                setGameTime('20:00');
-                setCurrentLineup(defaultLineup);
-                setPreviousLineup(defaultLineup);
-                setStartingLineup(defaultLineup);
-                setPendingChanges([]);
-                setVtScore(0);
-                setOppScore(0);
-                setLineupHistory([]);
-                setCurrentStats(C.EMPTY_STATS());
-                setGarbageMarked(false);
-                setModal(null);
-            };
-
-            // Load (or resume) the selected game.
+            // ----- load the selected game: local copy first, then the database -----
             useEffect(() => {
-                if (!selectedGame) return;
+                setFlow(null); setModal(null); setSubPanel(null); setRemoteInfo(undefined);
+                if (!selectedGame) { setGame(null); return; }
+                const local = store.load(selectedGame);
+                setGame(local && local.info?.format === 2 ? local : null);
                 let cancelled = false;
                 (async () => {
-                    const db = await C.db();
-                    const info = await db.read(path('game-info'));
-                    if (cancelled) return;
-                    if (!info?.started || info.ended) { resetLocal(); return; }
-
-                    const [rawHist, live, stats] = await Promise.all([
-                        db.read(path('lineup-changes')), db.read(path('live-game')), db.read(path('current-stats'))
-                    ]);
-                    if (cancelled) return;
-                    const hist = C.historyList(rawHist);
-                    const lineup = C.namesToIds(info.currentLineup, roster);
-                    const starters = C.namesToIds(info.startingLineup, roster);
-
-                    setGameStarted(true);
-                    setCurrentHalf(info.currentHalf || 1);
-                    setGameTime(info.gameTime || '20:00');
-                    setCurrentLineup(lineup.length === 5 ? lineup : defaultLineup);
-                    setPreviousLineup(lineup.length === 5 ? lineup : defaultLineup);
-                    setStartingLineup(starters.length === 5 ? starters : defaultLineup);
-                    setPendingChanges([]);
-                    setVtScore(live?.vtScore ?? info.vtScore ?? 0);
-                    setOppScore(live?.oppScore ?? info.oppScore ?? 0);
-                    setCurrentStats(stats || C.EMPTY_STATS());
-                    setLineupHistory(hist);
-                    setGarbageMarked(hist.some(r => r.garbageTime));
-
-                    // Reloaded during halftime: go straight back to the 2nd-half lineup picker.
-                    const last = C.sortHistory(hist).slice(-1)[0];
-                    if (last?.changes === 'End of 1st Half') {
-                        setCurrentLineup(starters.length === 5 ? starters : defaultLineup);
-                        setModal('start2nd');
-                    } else {
-                        setModal(null);
-                    }
+                    if (!window.firebaseDb) { setRemoteInfo(null); return; }
+                    try {
+                        const info = await withTimeout(window.firebaseDb.read(`game-info/${selectedGame}`), 4000);
+                        if (cancelled) return;
+                        setRemoteInfo(info);
+                        // No copy on this computer but the game exists online (e.g. reviewing on another machine): pull it down.
+                        if (!(local && local.info?.format === 2) && info?.format === 2) {
+                            const events = await withTimeout(window.firebaseDb.read(`events/${selectedGame}`), 6000) || {};
+                            if (cancelled) return;
+                            const g = { date: selectedGame, info, events, version: 1, uploadedVersion: 1, updatedAt: info.lastUpdated || new Date().toISOString() };
+                            store.save(selectedGame, g); setGame(g);
+                        }
+                    } catch { if (!cancelled) setRemoteInfo(null); }
                 })();
                 return () => { cancelled = true; };
             }, [selectedGame]);
 
-            // ---- Firebase writes ----
-            // Writes are NOT awaited: Firebase only resolves them once the server confirms, so
-            // awaiting would freeze the screen whenever the wifi drops. The SDK queues them in
-            // order and sends them when the connection comes back.
+            // ----- derived game state -----
+            const built = useMemo(() => game ? C.buildPlayLog(game.info, game.events, roster, { current: true }) : null, [game, roster]);
+            const events = built ? built.events : [];
+            const periodOpen = useMemo(() => {
+                const pe = [...events].reverse().find(e => e.type === 'period_start' || e.type === 'period_end');
+                return pe?.type === 'period_start' ? pe : null;
+            }, [events]);
+            const lineupNow = useMemo(() => (built?.lineup || []).slice().sort((a, b) => roster.findIndex(p => p.id === a) - roster.findIndex(p => p.id === b)), [built, roster]);
+            const lastClock = useMemo(() => {
+                if (!periodOpen) return null;
+                const after = events.filter(e => e.seq >= periodOpen.seq);
+                const withClock = [...after].reverse().find(e => typeof e.clock === 'number');
+                return withClock ? withClock.clock : periodOpen.length;
+            }, [events, periodOpen]);
+            const ball = useMemo(() => {
+                for (let i = events.length - 1; i >= 0; i--) {
+                    const e = events[i];
+                    if (e.poss && !e.possVoid) return e.poss === 'vt' ? 'opp' : 'vt';
+                    if ((e.type === 'shot' || e.type === 'ft') && !e.made && e.reb && e.reb !== 'none') return e.reb;
+                    if (e.ballTo === 'vt' || e.ballTo === 'opp') return e.ballTo;
+                    if (e.type === 'period_start') return null;
+                }
+                return null;
+            }, [events]);
+            const started = !!game?.info?.started;
+            const ended = !!game?.info?.ended;
+            const live = started && !ended;
+            const reviewCount = built ? built.review.unplacedSubs.length + built.review.unseenShots.length : 0;
 
-            const [writeError, setWriteError] = useState(null);
-            const db = () => window.firebaseDb;
-            const send = (promise) => {
-                promise.catch(err => {
-                    console.error('Firebase write failed:', err);
-                    setWriteError(err.message || String(err));
+            // ----- persistence -----
+            const mutate = (fn) => {
+                setGame(prev => {
+                    const g = clean(prev);
+                    fn(g);
+                    g.version = (g.version || 0) + 1;
+                    g.updatedAt = new Date().toISOString();
+                    if (!store.save(g.date, g)) showToast('Could not save on this computer (storage full?). Keep this page open.');
+                    return g;
                 });
             };
+            // The order number is assigned inside the state update, so fast keypresses can't collide.
+            const commit = (ev, seq) => {
+                const id = newId();
+                mutate(g => {
+                    const s = seq ?? Math.max(0, ...Object.values(g.events).map(x => x.seq)) + 1;
+                    g.events[id] = clean({ id, seq: s, ...ev });
+                });
+                return { id, ...ev };
+            };
+            const patchEvent = (id, patch) => mutate(g => { if (g.events[id]) Object.assign(g.events[id], clean(patch)); Object.keys(patch).forEach(k => { if (patch[k] === undefined || patch[k] === null) delete g.events[id][k]; }); });
+            const deleteEvent = (id) => mutate(g => { delete g.events[id]; });
 
-            const appendRecords = (records) => {
-                setLineupHistory(h => [...h, ...records]);
-                // push() adds each record under its own key, so a second device can't overwrite them.
-                records.forEach(r => send(db().push(db().ref(path('lineup-changes')), r)));
+            // ----- upload whenever there are new changes and we're connected -----
+            const uploading = useRef(false);
+            const upload = useCallback(async () => {
+                const g = gameRef.current;
+                if (!g || !window.firebaseDb || !online || uploading.current || g.version === g.uploadedVersion) return;
+                uploading.current = true;
+                setUploadState({ busy: true, error: null });
+                const v = g.version;
+                try {
+                    await pushGame(g);
+                    setGame(prev => {
+                        if (!prev || prev.date !== g.date) return prev;
+                        const n = { ...prev, uploadedVersion: v, info: { ...prev.info, legacyCleanup: undefined } };
+                        store.save(n.date, clean(n));
+                        return clean(n);
+                    });
+                    setUploadState({ busy: false, error: null });
+                } catch (err) {
+                    setUploadState({ busy: false, error: err.message === 'timeout' ? 'Upload is taking too long; will retry.' : err.message });
+                } finally {
+                    uploading.current = false;
+                    // Plays logged while this upload was running go up right away.
+                    setTimeout(() => { const cur = gameRef.current; if (cur && cur.version !== cur.uploadedVersion) upload(); }, 500);
+                }
+            }, [online]);
+            useEffect(() => { const t = setTimeout(upload, 1200); return () => clearTimeout(t); }, [game?.version, online, upload]);
+            useEffect(() => { const t = setInterval(upload, 15000); return () => clearInterval(t); }, [upload]);
+
+            // Other games on this computer with unsent changes (e.g. logged offline, then switched games).
+            const [otherPending, setOtherPending] = useState(0);
+            useEffect(() => {
+                const run = async () => {
+                    const others = pendingGames().filter(g => g.date !== gameRef.current?.date);
+                    setOtherPending(others.length);
+                    if (!online || !window.firebaseDb) return;
+                    for (const g of others) {
+                        try {
+                            await pushGame(g);
+                            const cur = store.load(g.date);
+                            if (cur && cur.version === g.version) { cur.uploadedVersion = g.version; delete cur.info.legacyCleanup; store.save(g.date, cur); }
+                        } catch { /* try again next round */ }
+                    }
+                    setOtherPending(pendingGames().filter(g => g.date !== gameRef.current?.date).length);
+                };
+                run();
+                const t = setInterval(run, 20000);
+                return () => clearInterval(t);
+            }, [online, selectedGame]);
+
+            // ----- starting and ending -----
+            const startGame = () => {
+                const local = store.load(selectedGame);
+                const existing = (local && local.info?.started) || remoteInfo?.started;
+                if (existing && !window.confirm(`This game already has data${remoteInfo?.started ? ' online' : ' on this computer'}.\n\nStarting over will REPLACE it when this computer next uploads.\n\nStart over?`)) return;
+                setModal({ kind: 'startGame', lineup: defaultStarters, custom: false, length: '20', label: '' });
+            };
+            const confirmStartGame = (m) => {
+                const custom = !!(sched?.exhibition && m.custom);
+                const length = custom ? Math.round(parseFloat(m.length) * 60) : 1200;
+                if (custom && !(length > 0)) { alert('Enter the length of the first period in minutes.'); return; }
+                const label = custom ? (m.label.trim() || 'Period 1') : '1st';
+                const g = {
+                    date: selectedGame, version: 1, uploadedVersion: 0, updatedAt: new Date().toISOString(),
+                    info: { format: 2, started: true, ended: false, season: CFG.seasonForDate(selectedGame), opponent, custom,
+                        periods: [{ label, length }], startingLineup: m.lineup, startTime: new Date().toISOString(), legacyCleanup: true },
+                    events: {}
+                };
+                const e = { id: newId(), seq: 1, type: 'period_start', period: 1, label, length, lineup: m.lineup };
+                g.events[e.id] = e;
+                store.save(selectedGame, g);
+                setGame(g); setModal(null); setFlow(null);
+            };
+            const openNextPeriod = () => {
+                const n = (game.info.periods?.length || 0) + 1;
+                const lineup = !game.info.custom && n === 2 ? game.info.startingLineup : lineupNow;
+                setModal({ kind: 'startPeriod', period: n, lineup: lineup.length === 5 ? lineup : defaultStarters, length: '6', label: `Period ${n}` });
+            };
+            const confirmStartPeriod = (m) => {
+                const custom = game.info.custom;
+                const std = C.STANDARD_PERIODS(m.period)[m.period - 1];
+                const length = custom ? Math.round(parseFloat(m.length) * 60) : std.length;
+                if (!(length > 0)) { alert('Enter the period length in minutes.'); return; }
+                const label = custom ? (m.label.trim() || `Period ${m.period}`) : std.label;
+                mutate(g => { g.info.periods = [...(g.info.periods || []), { label, length }]; });
+                commit({ type: 'period_start', period: m.period, label, length, lineup: m.lineup });
+                setModal(null); setFlow(null);
+            };
+            const confirmEndPeriod = (clockText, thenEndGame) => {
+                const clock = parseClock(clockText);
+                if (clock === null) { alert('Enter the time left on the clock (0:00 if the period ran out).'); return false; }
+                if (lastClock !== null && clock > lastClock) { alert(`That's earlier than the last entry this period (${C.formatSeconds(lastClock)}).`); return false; }
+                commit({ type: 'period_end', period: periodOpen.period, clock });
+                mutate(g => { const p = g.info.periods[periodOpen.period - 1]; if (p) p.endClock = clock; });
+                setFlow(null);
+                if (!thenEndGame) setModal(null);
+                return true;
+            };
+            const endGame = () => {
+                if (periodOpen) { setModal({ kind: 'endPeriod', clock: '0:00', thenEndGame: true }); return; }
+                finishGame();
+            };
+            const finishGame = () => {
+                mutate(g => { g.info.ended = true; g.info.endTime = new Date().toISOString(); g.info.finalVtScore = built.score.vt; g.info.finalOppScore = built.score.opp; });
+                setModal(reviewCount ? { kind: 'review' } : null);
+                showToast('Game ended. ' + (reviewCount ? `${reviewCount} item${reviewCount > 1 ? 's' : ''} to review.` : 'Nothing left to review.'));
             };
 
-            // lastUpdated lets the live dashboard ignore games that were started but never ended.
-            const writeGameState = (fields) => {
-                const stamped = { ...fields, lastUpdated: new Date().toISOString() };
-                send(db().update(db().ref(path('game-info')), stamped));
-                send(db().update(db().ref(path('live-game')), stamped));
+            // ----- possession flows -----
+            const canPlay = live && periodOpen && lineupNow.length === 5;
+            const needPeriod = () => { showToast(!started ? 'Start the game first.' : ended ? 'This game has ended.' : 'Start the next period first.'); };
+            const busy = flow && flow.k !== 'afterMake';
+            const begin = (f) => {
+                if (!canPlay) { needPeriod(); return; }
+                if (busy) { showToast('Finish the current entry first, or press Esc to cancel it.'); return; }
+                setFlow(f);
             };
 
-            const resetSegmentStats = () => {
-                const fresh = C.EMPTY_STATS();
-                setCurrentStats(fresh);
-                send(db().set(db().ref(path('current-stats')), fresh));
+            // poss for an outcome: which team's possession (if any) ended
+            const possFor = (team, reb, ballTo) => {
+                const other = team === 'vt' ? 'opp' : 'vt';
+                if (reb === 'vt' || reb === 'opp') return reb === team ? null : team;
+                if (ballTo === 'expired') return team;
+                if (ballTo) return ballTo === team ? null : team;
+                return null;
             };
 
-            const makeRecord = (time, changes, extra = {}) => ({
-                timestamp: time,
-                gameTime: time,
-                vtScore,
-                oppScore,
-                changes,
-                previousLineup: names(previousLineup),
-                newLineup: names(currentLineup),
-                half: currentHalf,
-                completedSegmentStats: currentStats,
-                ...extra
+            const pickCourt = (x, y) => {
+                if (!canPlay) { needPeriod(); return; }
+                if (flow && flow.k === 'vtShot' && flow.step === 'shooter') { setFlow({ ...flow, x, y, pts: C.isThree(x, y) ? 3 : 2 }); return; }
+                begin({ k: 'vtShot', x, y, pts: C.isThree(x, y) ? 3 : 2, step: 'shooter' });
+            };
+            const shotUnseen = () => begin({ k: 'vtShot', x: null, y: null, pts: null, step: 'pts' });
+
+            const chooseShooter = (id) => {
+                if (flow?.k === 'vtShot') setFlow({ ...flow, shooter: id, step: 'result' });
+                else if (flow?.k === 'vtFT') setFlow({ ...flow, shooter: id, step: 'count' });
+                else if (flow?.k === 'vtTO') { commit({ type: 'to', team: 'vt', player: id, poss: 'vt' }); setFlow(null); }
+            };
+            const shotResult = (made) => {
+                const f = flow;
+                if (made) {
+                    const e = commit({ type: 'shot', team: 'vt', pts: f.pts, made: true, shooter: f.shooter, x: f.x, y: f.y, poss: 'vt' });
+                    setFlow({ k: 'afterMake', team: 'vt', eventId: e.id, shooter: f.shooter });
+                } else setFlow({ ...f, made: false, step: 'reb' });
+            };
+            const startFTs = (team) => begin(team === 'vt' ? { k: 'vtFT', step: 'shooter' } : { k: 'oppFT', step: 'count' });
+            const ftCount = (kind) => {
+                const of = kind === '1and1' ? 2 : kind;
+                setFlow({ ...flow, of, oneAndOne: kind === '1and1', idx: 1, step: 'shoot' });
+            };
+            const ftResult = (made) => {
+                const f = flow, team = f.k === 'vtFT' ? 'vt' : 'opp';
+                const base = { type: 'ft', team, idx: f.idx, of: f.of, oneAndOne: f.oneAndOne || undefined, andOne: f.andOne || undefined, shooter: team === 'vt' ? f.shooter : undefined };
+                const lastShot = f.idx === f.of;
+                if (made) {
+                    commit({ ...base, made: true, poss: lastShot ? team : undefined });
+                    if (lastShot) setFlow(null); else setFlow({ ...f, idx: f.idx + 1 });
+                } else if (lastShot || (f.oneAndOne && f.idx === 1)) {
+                    setFlow({ ...f, step: 'reb', pendingFT: { ...base, made: false } });
+                } else {
+                    commit({ ...base, made: false });
+                    setFlow({ ...f, idx: f.idx + 1 });
+                }
+            };
+            const rebound = (reb) => {
+                const f = flow;
+                if (reb === 'none') { setFlow({ ...f, step: 'ballTo' }); return; }
+                finishMiss(f, reb, undefined);
+            };
+            const ballTo = (to) => finishMiss(flow, 'none', to);
+            const finishMiss = (f, reb, to) => {
+                const team = f.k.startsWith('vt') ? 'vt' : 'opp';
+                const poss = possFor(team, reb, to);
+                if (f.k === 'vtShot') commit({ type: 'shot', team: 'vt', pts: f.pts, made: false, shooter: f.shooter, x: f.x, y: f.y, reb, ballTo: to, poss: poss || undefined });
+                else if (f.k === 'oppMiss') commit({ type: 'shot', team: 'opp', pts: 2, made: false, reb, ballTo: to, poss: poss || undefined });
+                else commit({ ...f.pendingFT, reb, ballTo: to, poss: poss || undefined });
+                setFlow(null);
+            };
+            const andOne = () => {
+                const f = flow;
+                patchEvent(f.eventId, { poss: null, andOne: true });
+                setFlow(f.team === 'vt' ? { k: 'vtFT', shooter: f.shooter, of: 1, idx: 1, andOne: true, step: 'shoot' } : { k: 'oppFT', of: 1, idx: 1, andOne: true, step: 'shoot' });
+            };
+            const oppMade = (pts) => {
+                if (!canPlay) { needPeriod(); return; }
+                if (busy) { showToast('Finish the current entry first, or press Esc to cancel it.'); return; }
+                const e = commit({ type: 'shot', team: 'opp', pts, made: true, poss: 'opp' });
+                setFlow({ k: 'afterMake', team: 'opp', eventId: e.id });
+            };
+            const simple = (ev) => {
+                if (!canPlay) { needPeriod(); return; }
+                if (busy) { showToast('Finish the current entry first, or press Esc to cancel it.'); return; }
+                commit(ev); setFlow(null);
+            };
+            const describe = (e) => {
+                const who = (id) => (id === undefined || id === null ? '' : last(id));
+                const reb = (e) => e.made ? '' : e.reb === 'vt' ? ', VT rebound' : e.reb === 'opp' ? `, ${opponent} rebound` : e.reb === 'none' ? (e.ballTo === 'expired' ? ', time expired' : `, ball to ${e.ballTo === 'vt' ? 'VT' : opponent}`) : '';
+                switch (e.type) {
+                    case 'period_start': return `Start of ${e.label}`;
+                    case 'period_end': return `End of ${C.periodLabelOf(game?.info, e.period)} (${C.formatSeconds(e.clock)})`;
+                    case 'sub': return `${e.clock === null || e.clock === undefined ? '?:??' : C.formatSeconds(e.clock)} Sub: ${(e.in || []).map(last).join(', ')} in for ${(e.out || []).map(last).join(', ')}${e.needsPlacement ? ' (needs placing)' : ''}`;
+                    case 'shot': return e.team === 'vt'
+                        ? `${who(e.shooter)} ${e.made ? 'made' : 'missed'} ${e.pts}${e.x === null || e.x === undefined ? ' (spot not seen)' : ''}${e.andOne ? ' + and-1' : ''}${reb(e)}`
+                        : `${opponent} ${e.made ? 'made' : 'missed'}${e.made ? ' ' + e.pts : ''}${e.andOne ? ' + and-1' : ''}${reb(e)}`;
+                    case 'ft': return `${e.team === 'vt' ? who(e.shooter) : opponent} FT ${e.idx} of ${e.of}${e.oneAndOne ? ' (1-and-1)' : ''}: ${e.made ? 'made' : 'missed'}${reb(e)}`;
+                    case 'to': return `${e.team === 'vt' ? 'VT turnover: ' + who(e.player) : opponent + ' turnover'}`;
+                    case 'expired': return `Time expired (${e.team === 'vt' ? 'VT' : opponent} ball)`;
+                    case 'foul': return 'Foul on the floor';
+                    case 'garbage': return `${C.formatSeconds(e.clock)} Garbage time starts`;
+                    case 'adjust': return `Score correction: ${e.team === 'vt' ? 'VT' : opponent} ${e.pts > 0 ? '+' : ''}${e.pts}`;
+                    default: return e.type;
+                }
+            };
+            const didntHappen = () => {
+                const target = [...events].reverse().find(e => e.poss && !e.possVoid);
+                if (!target) { showToast('No possession to remove.'); return; }
+                patchEvent(target.id, { possVoid: true });
+                showToast(`Removed the possession count from: ${describe(target)}`, { label: 'Put it back', run: () => patchEvent(target.id, { possVoid: null }) });
+            };
+            const undoLast = () => {
+                const target = events[events.length - 1];
+                if (!target) return;
+                if (target.type === 'period_start' && target.period === 1) { showToast('Use Start Game to start over.'); return; }
+                deleteEvent(target.id);
+                if (target.type === 'period_start') mutate(g => { g.info.periods = g.info.periods.slice(0, -1); });
+                if (target.type === 'period_end') mutate(g => { const p = g.info.periods[target.period - 1]; if (p) delete p.endClock; });
+                setFlow(null);
+                showToast(`Undid: ${describe(target)}`, { label: 'Redo', run: () => mutate(g => { g.events[target.id] = target; }) });
+            };
+
+            // ----- subs -----
+            const openSub = () => {
+                if (!canPlay) { needPeriod(); return; }
+                setSubPanel({ out: [], in: [], clock: '', missed: false });
+            };
+            const confirmSub = () => {
+                const s = subPanel;
+                if (!s.out.length || s.out.length !== s.in.length) { alert('Pick the same number of players going out and coming in.'); return; }
+                let clock = null;
+                if (!s.missed) {
+                    clock = parseClock(s.clock);
+                    if (clock === null) { alert('Enter the game clock, or tick "I missed this sub" to place it later.'); return; }
+                    if (clock > periodOpen.length) { alert(`The period is only ${C.formatSeconds(periodOpen.length)} long.`); return; }
+                    if (lastClock !== null && clock > lastClock && !window.confirm(`${C.formatSeconds(clock)} is earlier than the last entry (${C.formatSeconds(lastClock)}). The clock counts down, so this is usually a typo.\n\nSave anyway?`)) return;
+                }
+                commit({ type: 'sub', out: s.out, in: s.in, clock, needsPlacement: s.missed || undefined });
+                setSubPanel(null);
+            };
+
+            // ----- keyboard -----
+            useEffect(() => {
+                const onKey = (e) => {
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+                    if (modal || subPanel) { if (e.key === 'Escape') { setModal(null); setSubPanel(null); } if (subPanel && e.key === 'Enter') confirmSub(); return; }
+                    const k = e.key.toLowerCase();
+                    if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); undoLast(); return; }
+                    if (e.ctrlKey || e.metaKey || e.altKey) return;
+                    if (k === 'escape') { setFlow(null); return; }
+                    const f = flow;
+                    if (f) {
+                        const slot = '12345'.indexOf(k);
+                        if ((f.step === 'shooter' || (f.k === 'vtTO' && f.step === 'player')) && slot >= 0 && lineupNow[slot] !== undefined) { chooseShooter(lineupNow[slot]); return; }
+                        if (f.step === 'pts' && (k === '2' || k === '3')) { setFlow({ ...f, pts: +k, step: 'shooter' }); return; }
+                        if (f.step === 'result' && (k === 'm' || k === 'x')) { shotResult(k === 'm'); return; }
+                        if (f.step === 'count' && '123'.includes(k)) { ftCount(k === '1' ? '1and1' : +k); return; }
+                        if (f.step === 'shoot' && (k === 'm' || k === 'x')) { ftResult(k === 'm'); return; }
+                        if (f.step === 'reb' && 'von'.includes(k)) { rebound(k === 'v' ? 'vt' : k === 'o' ? 'opp' : 'none'); return; }
+                        if (f.step === 'ballTo' && 'vok'.includes(k)) { ballTo(k === 'v' ? 'vt' : k === 'o' ? 'opp' : 'expired'); return; }
+                        if (f.k === 'vtShot' && f.step !== 'pts' && k === 'p') { setFlow({ ...f, pts: f.pts === 3 ? 2 : 3 }); return; }
+                        if (f.k === 'afterMake' && ((f.team === 'vt' && k === 'a') || (f.team === 'opp' && k === 's'))) { andOne(); return; }
+                    }
+                    if (k === 'b') { openSub(); return; }
+                    if (k === 'u') { didntHappen(); return; }
+                    if (k === 'q') { shotUnseen(); return; }
+                    if (k === 'f') { startFTs('vt'); return; }
+                    if (k === 't') { begin({ k: 'vtTO', step: 'player' }); return; }
+                    if (k === 'w') { oppMade(2); return; }
+                    if (k === 'e') { oppMade(3); return; }
+                    if (k === 'r') { begin({ k: 'oppMiss', step: 'reb' }); return; }
+                    if (k === 'd') { startFTs('opp'); return; }
+                    if (k === 'g') { simple({ type: 'to', team: 'opp', poss: 'opp' }); return; }
+                };
+                window.addEventListener('keydown', onKey);
+                return () => window.removeEventListener('keydown', onKey);
             });
 
-            // ---- score & stats ----
-
-            const updateScore = (team, points) => {
-                if (!gameStarted) return;
-                const newVt = team === 'vt' ? Math.max(0, vtScore + points) : vtScore;
-                const newOpp = team === 'opponent' ? Math.max(0, oppScore + points) : oppScore;
-                setVtScore(newVt);
-                setOppScore(newOpp);
-                writeGameState({ vtScore: newVt, oppScore: newOpp });
-            };
-
-            const updateStat = (team, statName, delta) => {
-                if (!gameStarted) return;
-                const newStats = {
-                    ...currentStats,
-                    [team]: { ...currentStats[team], [statName]: Math.max(0, currentStats[team][statName] + delta) }
-                };
-                setCurrentStats(newStats);
-                send(db().set(db().ref(path('current-stats')), newStats));
-            };
-
-            // ---- game start / end ----
-
-            const startGame = async () => {
-                if (!selectedGame) return;
-                let info = null;
-                try {
-                    info = await db().read(path('game-info'));
-                } catch (err) {
-                    alert(`Couldn't check this game for existing data (${err.message}). Check the connection and try again.`);
-                    return;
+            // ----- placing a missed sub / editing -----
+            const placeSub = (sub, beforeEvent, clockText) => {
+                const clock = parseClock(clockText);
+                if (clock === null) { alert('Enter the game clock when he came in.'); return false; }
+                const idx = events.findIndex(e => e.id === beforeEvent.id);
+                const prev = events.slice(0, idx).filter(e => e.id !== sub.id).pop();
+                const seq = prev ? (prev.seq + beforeEvent.seq) / 2 : beforeEvent.seq - 1;
+                // The players going out must be on the floor at that point, and the ones coming in must not.
+                let floor = [];
+                events.filter(e => e.seq < seq && e.id !== sub.id).forEach(e => {
+                    if (e.type === 'period_start') floor = [...e.lineup];
+                    if (e.type === 'sub') floor = floor.filter(id => !(e.out || []).includes(id)).concat(e.in || []);
+                });
+                const notOn = (sub.out || []).filter(id => !floor.includes(id));
+                const alreadyOn = (sub.in || []).filter(id => floor.includes(id));
+                if (notOn.length || alreadyOn.length) {
+                    alert(`That spot doesn't work: ${notOn.length ? notOn.map(name).join(', ') + ' wasn\'t on the floor yet' : ''}${notOn.length && alreadyOn.length ? ', and ' : ''}${alreadyOn.length ? alreadyOn.map(name).join(', ') + ' was already on the floor' : ''}. Pick a later play.`);
+                    return false;
                 }
-                if (info?.started) {
-                    const ok = window.confirm(
-                        `Warning: this game (${selectedGame}) already has data!\n\n` +
-                        `Started: ${info.startTime ? new Date(info.startTime).toLocaleString() : 'Unknown'}\n` +
-                        `Score: ${info.vtScore || 0}-${info.oppScore || 0}\n\n` +
-                        `Starting a new game will OVERWRITE all existing data.\n\nContinue?`
-                    );
-                    if (!ok) return;
-                }
-                setCurrentLineup(defaultLineup);
-                setModal('startLineup');
+                patchEvent(sub.id, { seq, clock, needsPlacement: null });
+                return true;
             };
 
-            const confirmStartGame = () => {
-                const starters = names(currentLineup);
-                resetLocal();
-                setGameStarted(true);
-                setCurrentLineup([...currentLineup]);
-                setPreviousLineup([...currentLineup]);
-                setStartingLineup([...currentLineup]);
+            // ---------- rendering ----------
+            const status = !window.firebaseDb ? { text: 'Saving on this computer (database not loaded)', cls: 'bg-yellow-100 text-yellow-900' }
+                : !online ? { text: 'Offline · saved on this computer, will upload when connected', cls: 'bg-red-600 text-white' }
+                : uploadState.error ? { text: `Upload problem: ${uploadState.error}`, cls: 'bg-red-600 text-white' }
+                : game && game.version !== game.uploadedVersion ? { text: 'Saved on this computer · uploading…', cls: 'bg-yellow-100 text-yellow-900' }
+                : { text: game ? 'Saved and uploaded' : 'Online', cls: 'bg-green-100 text-green-800' };
 
-                send(db().remove(db().ref(path('lineup-changes'))));
-                send(db().remove(db().ref(path('player-stats'))));
-                send(db().set(db().ref(path('current-stats')), C.EMPTY_STATS()));
-                send(db().set(db().ref(path('game-info')), {
-                    started: true,
-                    ended: false,
-                    season: CFG.CURRENT_SEASON,
-                    opponent: currentOpponent,
-                    currentHalf: 1,
-                    gameTime: '20:00',
-                    vtScore: 0,
-                    oppScore: 0,
-                    currentLineup: starters,
-                    startingLineup: starters,
-                    startTime: new Date().toISOString(),
-                    lastUpdated: new Date().toISOString()
-                }));
-                send(db().set(db().ref(path('live-game')), {
-                    vtScore: 0, oppScore: 0, gameTime: '20:00', currentHalf: 1,
-                    currentLineup: starters, lastUpdated: new Date().toISOString()
-                }));
-            };
-
-            const blockIfPending = () => {
-                if (pendingChanges.length > 0) {
-                    alert('Confirm or cancel the pending substitutions first.');
-                    return true;
-                }
-                return false;
-            };
-
-            const endGame = async () => {
-                if (blockIfPending()) return;
-                const ok = window.confirm(
-                    `Are you sure you want to END this game?\n\n` +
-                    `Score: VT ${vtScore} - ${currentOpponent} ${oppScore}\n` +
-                    `Period: ${label}\n\nThis finalizes the game.`
-                );
-                if (!ok) return;
-
-                appendRecords([makeRecord(`0:00 ${label}`, 'End of Game')]);
-                send(db().update(db().ref(path('game-info')), {
-                    ended: true,
-                    endTime: new Date().toISOString(),
-                    vtScore, oppScore,
-                    finalVtScore: vtScore,
-                    finalOppScore: oppScore
-                }));
-                resetLocal();
-            };
-
-            // ---- periods ----
-
-            const endPeriod = async () => {
-                if (blockIfPending()) return;
-
-                if (currentHalf === 1) {
-                    if (!window.confirm('End the 1st half?')) return;
-                    appendRecords([makeRecord('0:00 1st', 'End of 1st Half', { previousLineup: names(currentLineup) })]);
-                    resetSegmentStats();
-                    setCurrentLineup([...startingLineup]);
-                    setModal('start2nd');
-                    return;
-                }
-
-                const next = currentHalf + 1;
-                const nextLabel = C.periodLabel(next);
-                const endName = currentHalf === 2 ? 'End of 2nd Half' : `End of ${label}`;
-                if (!window.confirm(`${endName} — start ${nextLabel}?`)) return;
-
-                const lineupNames = names(currentLineup);
-                appendRecords([
-                    makeRecord(`0:00 ${label}`, endName, { previousLineup: lineupNames }),
-                    {
-                        ...makeRecord(`5:00 ${nextLabel}`, `Start of ${nextLabel}`, { previousLineup: lineupNames, half: next }),
-                        completedSegmentStats: C.EMPTY_STATS()
-                    }
-                ]);
-                resetSegmentStats();
-                setPreviousLineup([...currentLineup]);
-                setCurrentHalf(next);
-                setGameTime('5:00');
-                writeGameState({ currentHalf: next, gameTime: '5:00' });
-            };
-
-            const confirmStart2ndHalf = () => {
-                const endOfFirst = C.sortHistory(lineupHistory).slice(-1)[0];
-                appendRecords([{
-                    ...makeRecord('20:00 2nd', 'Start of 2nd Half', {
-                        previousLineup: endOfFirst?.newLineup || names(currentLineup),
-                        half: 2
-                    }),
-                    completedSegmentStats: C.EMPTY_STATS()
-                }]);
-                setPreviousLineup([...currentLineup]);
-                setCurrentHalf(2);
-                setGameTime('20:00');
-                setModal(null);
-                writeGameState({ currentLineup: names(currentLineup), currentHalf: 2, gameTime: '20:00' });
-            };
-
-            // ---- substitutions ----
-
-            const handleLineupChange = (positionIndex, newPlayerId) => {
-                newPlayerId = parseInt(newPlayerId, 10);
-                if (newPlayerId === currentLineup[positionIndex]) return;
-                if (pendingChanges.length === 0) setPreviousLineup([...currentLineup]);
-
-                const oldPlayerId = currentLineup[positionIndex];
-                const existing = pendingChanges.findIndex(c => c.positionIndex === positionIndex);
-                const next = [...pendingChanges];
-                if (existing !== -1) {
-                    // Keep the original player who left this spot.
-                    next[existing] = { ...next[existing], newPlayerId };
-                    if (next[existing].oldPlayerId === newPlayerId) next.splice(existing, 1);
-                } else {
-                    next.push({ positionIndex, oldPlayerId, newPlayerId });
-                }
-                setPendingChanges(next);
-
-                const newLineup = [...currentLineup];
-                newLineup[positionIndex] = newPlayerId;
-                setCurrentLineup(newLineup);
-            };
-
-            const handleStartingLineupChange = (positionIndex, newPlayerId) => {
-                const newLineup = [...currentLineup];
-                newLineup[positionIndex] = parseInt(newPlayerId, 10);
-                setCurrentLineup(newLineup);
-            };
-
-            const cancelChanges = () => {
-                setCurrentLineup([...previousLineup]);
-                setPendingChanges([]);
-            };
-
-            // Returns the full time string ('15:42 1st') or null if the entry was rejected.
-            const validateTime = () => {
-                if (!TIME_RE.test(pendingGameTime)) {
-                    alert('Use M:SS or MM:SS format (e.g. 4:22 or 15:42).');
-                    return null;
-                }
-                const [m, s] = pendingGameTime.split(':').map(Number);
-                if (s > 59) { alert('Seconds must be between 00 and 59.'); return null; }
-                if (m * 60 + s > C.periodLength(currentHalf)) {
-                    alert(`Time can't be more than ${C.periodLength(currentHalf) / 60}:00 in the ${label}.`);
-                    return null;
-                }
-
-                const full = `${pendingGameTime} ${label}`;
-                const lastInPeriod = C.sortHistory(lineupHistory).filter(r => r.half === currentHalf).slice(-1)[0];
-                if (lastInPeriod && C.parseGameTime(full) < C.parseGameTime(lastInPeriod.gameTime)) {
-                    const ok = window.confirm(
-                        `${full} is EARLIER in the game than the last entry (${lastInPeriod.gameTime}).\n` +
-                        `The clock counts down, so this is usually a typo.\n\nSave it anyway?`
-                    );
-                    if (!ok) return null;
-                }
-                return full;
-            };
-
-            const confirmAllChanges = () => {
-                if (pendingChanges.length === 0) { alert('No changes to confirm.'); return; }
-                const full = validateTime();
-                if (!full) return;
-
-                const description = pendingChanges
-                    .map(c => `${playerName(c.oldPlayerId)} OUT, ${playerName(c.newPlayerId)} IN`)
-                    .join('; ');
-                appendRecords([makeRecord(full, description)]);
-                writeGameState({ currentLineup: names(currentLineup), currentHalf, gameTime: pendingGameTime });
-                resetSegmentStats();
-
-                setPreviousLineup([...currentLineup]);
-                setGameTime(pendingGameTime);
-                setPendingChanges([]);
-                setModal(null);
-                setPendingGameTime('');
-            };
-
-            const confirmGarbageTime = () => {
-                const full = validateTime();
-                if (!full) return;
-                appendRecords([makeRecord(full, 'Garbage Time Start', {
-                    previousLineup: names(currentLineup),
-                    garbageTime: true
-                })]);
-                send(db().update(db().ref(path('game-info')), { garbageTimeStart: full }));
-                resetSegmentStats();
-                setGarbageMarked(true);
-                setGameTime(pendingGameTime);
-                setModal(null);
-                setPendingGameTime('');
-            };
-
-            const openTimeModal = (kind) => {
-                if (kind === 'subTime' && pendingChanges.length === 0) {
-                    alert('No changes to confirm. Make some substitutions first.');
-                    return;
-                }
-                if (kind === 'garbageTime' && blockIfPending()) return;
-                setPendingGameTime('');
-                setModal(kind);
-            };
-
-            // ---- totals ----
-
-            const allSegmentStats = [...lineupHistory.map(r => r.completedSegmentStats), currentStats];
-            const total = (team, stat) => allSegmentStats.reduce((t, s) => t + (s?.[team]?.[stat] || 0), 0);
-            const totalVTPossessions = total('vt', 'possessions');
-
-            const historyNewestFirst = [...C.sortHistory(lineupHistory)].reverse();
-
-            // ---- render helpers ----
-
-            const card = `rounded-lg shadow-lg ${darkMode ? 'bg-gray-800' : 'bg-white'}`;
-            const textMain = darkMode ? 'text-white' : 'text-gray-900';
-            const textSub = darkMode ? 'text-gray-300' : 'text-gray-700';
-            const selectCls = `w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`;
-
-            const ScoreButtons = ({ team, score, color }) => (
-                <div className="flex justify-center gap-2">
-                    {[1, 2, 3].map(p => (
-                        <button key={p} onClick={() => updateScore(team, p)} disabled={!gameStarted}
-                            className={`px-4 py-2 rounded-md font-medium text-white ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''} ${color}`}>+{p}</button>
-                    ))}
-                    <button onClick={() => updateScore(team, -1)} disabled={!gameStarted || score === 0}
-                        className={`px-4 py-2 rounded-md font-medium text-white bg-red-500 hover:bg-red-600 ${!gameStarted || score === 0 ? 'cursor-not-allowed opacity-50' : ''}`}>-1</button>
-                </div>
+            const Key = ({ k }) => <kbd>{k}</kbd>;
+            const playerBtn = (id, i, onClick, extra = '') => (
+                <button key={id} onClick={() => onClick(id)} className={`btn bg-white border border-gray-300 text-gray-900 text-left ${extra}`}>
+                    <span className="text-gray-500 mr-1">{i + 1}</span> #{id} {last(id)}
+                </button>
             );
 
-            const StatRow = ({ team, title }) => (
-                <div className="mb-6 last:mb-0">
-                    <h3 className={`text-lg font-medium mb-3 text-center ${textMain}`}>{title}</h3>
-                    <div className="grid grid-cols-4 gap-4">
-                        {[['possessions', 'Possessions'], ['offensiveRebounds', 'Off Reb'], ['defensiveRebounds', 'Def Reb'], ['turnovers', 'Turnovers']].map(([stat, statLabel]) => (
-                            <div key={stat} className="text-center">
-                                <div className="flex justify-center items-center gap-2 mb-2">
-                                    <button onClick={() => updateStat(team, stat, -1)} disabled={!gameStarted}
-                                        className={`px-3 py-2 rounded-md font-medium text-sm text-white bg-red-500 hover:bg-red-600 ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''}`}>-</button>
-                                    <div className={`text-lg font-bold min-w-[2rem] ${textMain}`}>{currentStats[team][stat]}</div>
-                                    <button onClick={() => updateStat(team, stat, 1)} disabled={!gameStarted}
-                                        className={`px-3 py-2 rounded-md font-medium text-sm text-white bg-green-500 hover:bg-green-600 ${!gameStarted ? 'cursor-not-allowed opacity-50' : ''}`}>+</button>
-                                </div>
-                                <div className={`text-sm ${textSub}`}>{statLabel}</div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            );
+            const prompt = (() => {
+                if (!flow) return null;
+                const f = flow;
+                const team = f.k.startsWith('opp') || f.team === 'opp' ? opponent : 'VT';
+                const row = (children) => <div className="flex flex-wrap gap-2">{children}</div>;
+                const rebRow = row(<>
+                    <button className="btn bg-orange-600 text-white" onClick={() => rebound('vt')}>VT rebound<Key k="V" /></button>
+                    <button className="btn bg-blue-600 text-white" onClick={() => rebound('opp')}>{opponent} rebound<Key k="O" /></button>
+                    <button className="btn bg-gray-600 text-white" onClick={() => rebound('none')}>None<Key k="N" /></button>
+                </>);
+                const ballRow = row(<>
+                    <button className="btn bg-orange-600 text-white" onClick={() => ballTo('vt')}>Ball to VT<Key k="V" /></button>
+                    <button className="btn bg-blue-600 text-white" onClick={() => ballTo('opp')}>Ball to {opponent}<Key k="O" /></button>
+                    <button className="btn bg-gray-600 text-white" onClick={() => ballTo('expired')}>Time expired<Key k="K" /></button>
+                </>);
+                if (f.k === 'afterMake') return { title: `${f.team === 'vt' ? last(f.shooter) : opponent} made it.`, body: row(<button className="btn bg-purple-600 text-white" onClick={andOne}>And-1<Key k={f.team === 'vt' ? 'A' : 'S'} /></button>), hint: 'Or just keep going with the next play.' };
+                if (f.k === 'vtShot') {
+                    if (f.step === 'pts') return { title: 'Shot (spot not seen): 2 or 3?', body: row(<><button className="btn bg-gray-800 text-white" onClick={() => setFlow({ ...f, pts: 2, step: 'shooter' })}>2-pointer<Key k="2" /></button><button className="btn bg-gray-800 text-white" onClick={() => setFlow({ ...f, pts: 3, step: 'shooter' })}>3-pointer<Key k="3" /></button></>) };
+                    const ptsBtn = <button className="btn bg-gray-200 text-gray-900" onClick={() => setFlow({ ...f, pts: f.pts === 3 ? 2 : 3 })}>It's a {f.pts === 3 ? '2' : '3'}<Key k="P" /></button>;
+                    if (f.step === 'shooter') return { title: `${f.pts}-point shot${f.x === null ? ' (spot not seen)' : ''}. Who shot it?`, body: <div className="grid gap-2"><div className="grid grid-cols-5 gap-2">{lineupNow.map((id, i) => playerBtn(id, i, chooseShooter))}</div>{f.x !== null && row(ptsBtn)}</div>, hint: 'Click the court again to move the spot.' };
+                    if (f.step === 'result') return { title: `${last(f.shooter)} · ${f.pts}-pointer`, body: row(<><button className="btn bg-green-600 text-white text-lg px-6" onClick={() => shotResult(true)}>Make<Key k="M" /></button><button className="btn bg-red-600 text-white text-lg px-6" onClick={() => shotResult(false)}>Miss<Key k="X" /></button>{f.x !== null && ptsBtn}</>) };
+                    if (f.step === 'reb') return { title: `${last(f.shooter)} missed. Rebound?`, body: rebRow };
+                    if (f.step === 'ballTo') return { title: 'No rebound. Whose ball?', body: ballRow };
+                }
+                if (f.k === 'vtTO') return { title: 'VT turnover. Who?', body: <div className="grid grid-cols-5 gap-2">{lineupNow.map((id, i) => playerBtn(id, i, chooseShooter))}</div> };
+                if (f.k === 'oppMiss') return f.step === 'reb' ? { title: `${opponent} missed. Rebound?`, body: rebRow } : { title: 'No rebound. Whose ball?', body: ballRow };
+                if (f.k === 'vtFT' || f.k === 'oppFT') {
+                    const shooter = f.k === 'vtFT' ? (f.shooter !== undefined ? last(f.shooter) : null) : opponent;
+                    if (f.step === 'shooter') return { title: 'VT free throws. Who is shooting?', body: <div className="grid grid-cols-5 gap-2">{lineupNow.map((id, i) => playerBtn(id, i, chooseShooter))}</div> };
+                    if (f.step === 'count') return { title: `${shooter} free throws. How many?`, body: row(<>
+                        <button className="btn bg-gray-800 text-white" onClick={() => ftCount('1and1')}>1-and-1<Key k="1" /></button>
+                        <button className="btn bg-gray-800 text-white" onClick={() => ftCount(2)}>Two<Key k="2" /></button>
+                        <button className="btn bg-gray-800 text-white" onClick={() => ftCount(3)}>Three<Key k="3" /></button></>) };
+                    if (f.step === 'shoot') return { title: `${shooter}: free throw ${f.idx} of ${f.of}${f.oneAndOne ? ' (1-and-1)' : ''}${f.andOne ? ' (and-1)' : ''}`, body: row(<><button className="btn bg-green-600 text-white text-lg px-6" onClick={() => ftResult(true)}>Make<Key k="M" /></button><button className="btn bg-red-600 text-white text-lg px-6" onClick={() => ftResult(false)}>Miss<Key k="X" /></button></>), hint: 'You can make a sub between free throws. The rest are saved as they are shot.' };
+                    if (f.step === 'reb') return { title: `${shooter} missed the last free throw. Rebound?`, body: rebRow };
+                    if (f.step === 'ballTo') return { title: 'No rebound. Whose ball?', body: ballRow };
+                }
+                return null;
+            })();
 
-            if (seasonGames.length === 0) {
-                return (
-                    <div className="min-h-screen flex items-center justify-center p-4">
-                        <div className={`${card} p-8 max-w-lg text-center`}>
-                            <h1 className={`text-2xl font-bold mb-2 ${textMain}`}>No games scheduled</h1>
-                            <p className={textSub}>Add the {CFG.CURRENT_SEASON} schedule to <code>config.js</code> to start tracking.</p>
-                        </div>
-                    </div>
-                );
-            }
+            const recent = [...events].reverse().slice(0, 10);
+            const placed = built ? built.shots.filter(s => s.x !== null) : [];
+            const periodShots = periodOpen ? placed.filter(s => s.period === periodOpen.period) : placed;
+
+            if (seasonGames.length === 0) return <div className="p-8">Add the {CFG.CURRENT_SEASON} schedule to config.js.</div>;
 
             return (
-                <div className={`min-h-screen p-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                    <div className="max-w-6xl mx-auto">
-                        <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
-                            <h1 className={`text-3xl font-bold ${textMain}`}>VT Basketball Lineup Tracker</h1>
-                            <div className="flex items-center gap-3">
-                                <span className={`flex items-center gap-2 text-sm px-3 py-1 rounded-md ${online ? 'bg-green-100 text-green-800' : 'bg-red-600 text-white font-semibold'}`}>
-                                    <span className={`w-2 h-2 rounded-full ${online ? 'bg-green-500' : 'bg-white animate-pulse'}`}></span>
-                                    {online ? 'Online' : 'OFFLINE — keep this page open, changes will sync'}
-                                </span>
-                                <button onClick={() => setDarkMode(!darkMode)}
-                                    className={`px-4 py-2 rounded-md ${darkMode ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-600' : 'bg-gray-800 text-white hover:bg-gray-700'}`}>
-                                    {darkMode ? 'Light' : 'Dark'}
-                                </button>
-                            </div>
-                        </div>
-
-                        {writeError && (
-                            <div className="rounded-lg p-4 mb-6 bg-red-600 text-white flex justify-between items-start gap-4">
-                                <div>
-                                    <div className="font-semibold">A save to the database failed — data may be missing.</div>
-                                    <div className="text-sm opacity-90">{writeError}</div>
-                                </div>
-                                <button onClick={() => setWriteError(null)} className="px-3 py-1 bg-white text-red-700 rounded text-sm font-medium">Dismiss</button>
+                <div className="min-h-screen p-3 text-gray-900">
+                    {/* Header */}
+                    <div className="bg-white rounded-lg shadow p-3 mb-3 flex flex-wrap items-center gap-3">
+                        <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} disabled={live && !!flow}
+                            className="p-2 border border-gray-300 rounded-md text-sm">
+                            {seasonGames.map(g => <option key={g.date} value={g.date}>{g.displayName}{g.exhibition ? ' (exh)' : ''}</option>)}
+                        </select>
+                        {started && (
+                            <div className="flex items-baseline gap-3 font-semibold">
+                                <span className="text-2xl tabular-nums">VT {built.score.vt} – {built.score.opp}</span>
+                                <span className="text-sm text-gray-600">{opponent}</span>
                             </div>
                         )}
-
-                        <div className={`${card} p-4 mb-6`}>
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div className="flex items-center gap-4">
-                                    <label className={`text-sm font-medium ${textSub}`}>Select Game:</label>
-                                    <select value={selectedGame} onChange={(e) => setSelectedGame(e.target.value)} disabled={gameStarted}
-                                        className={`px-3 py-2 border rounded-md ${gameStarted ? 'opacity-50 cursor-not-allowed' : ''} ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-                                        {seasonGames.map(g => <option key={g.date} value={g.date}>{g.displayName}{g.exhibition ? ' (exh)' : ''}</option>)}
-                                    </select>
-                                </div>
-
-                                <div className="flex flex-wrap items-center gap-3">
-                                    {gameStarted && (
-                                        <>
-                                            <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                                                Last entry: {gameTime} {label}
-                                            </div>
-                                            <button onClick={() => openTimeModal('garbageTime')} disabled={garbageMarked}
-                                                className={`px-3 py-1 rounded-md text-sm font-medium ${garbageMarked ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-amber-600 text-white hover:bg-amber-700'}`}>
-                                                {garbageMarked ? 'Garbage Time ✓' : 'Mark Garbage Time'}
-                                            </button>
-                                            <button onClick={endPeriod}
-                                                className="px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm font-medium">
-                                                {currentHalf === 1 ? 'End 1st Half' : currentHalf === 2 ? 'Start OT' : 'Next OT'}
-                                            </button>
-                                        </>
-                                    )}
-                                    {!gameStarted ? (
-                                        <button onClick={startGame} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium">Start Game</button>
-                                    ) : (
-                                        <button onClick={endGame} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium">End Game</button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        {(modal === 'startLineup' || modal === 'start2nd') && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                                <div className={`p-6 rounded-lg shadow-xl max-w-3xl w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <h3 className={`text-xl font-semibold mb-6 text-center ${textMain}`}>
-                                        {modal === 'start2nd' ? 'Select 2nd Half Starting Lineup' : `Select Starting Lineup vs ${currentOpponent}`}
-                                    </h3>
-                                    <div className="grid grid-cols-5 gap-4 mb-6">
-                                        {currentLineup.map((playerId, index) => (
-                                            <div key={index} className="text-center">
-                                                <label className={`block text-sm font-medium mb-2 ${textSub}`}>Player {index + 1}</label>
-                                                <select value={playerId} onChange={(e) => handleStartingLineupChange(index, e.target.value)} className={selectCls}>
-                                                    {roster.filter(p => !currentLineup.includes(p.id) || p.id === playerId).map(p => (
-                                                        <option key={p.id} value={p.id}>#{p.id} {p.name.split(' ').pop()}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="flex gap-3">
-                                        {modal === 'startLineup' && (
-                                            <button onClick={() => setModal(null)}
-                                                className={`flex-1 px-4 py-2 border rounded-md ${darkMode ? 'text-gray-300 border-gray-600 hover:bg-gray-700' : 'text-gray-600 border-gray-300 hover:bg-gray-50'}`}>Cancel</button>
-                                        )}
-                                        <button onClick={modal === 'start2nd' ? confirmStart2ndHalf : confirmStartGame}
-                                            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
-                                            {modal === 'start2nd' ? 'Start 2nd Half' : 'Start Game'}
-                                        </button>
-                                    </div>
-                                </div>
+                        {live && (
+                            <div className="text-sm text-gray-700">
+                                {periodOpen ? <>{periodOpen.label} · last clock {C.formatSeconds(lastClock)}</> : <span className="text-orange-700 font-semibold">Between periods</span>}
+                                <span className="ml-3">Poss VT {built.possessions.vt} · {opponent} {built.possessions.opp}</span>
+                                {ball && <span className={`ml-3 px-2 py-0.5 rounded text-white text-xs ${ball === 'vt' ? 'bg-orange-600' : 'bg-blue-600'}`}>{ball === 'vt' ? 'VT' : opponent} ball</span>}
                             </div>
                         )}
-
-                        {pendingChanges.length > 0 && (
-                            <div className={`rounded-lg p-4 mb-6 border ${darkMode ? 'bg-yellow-800 border-yellow-600' : 'bg-yellow-100 border-yellow-400'}`}>
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <h3 className={`font-semibold ${darkMode ? 'text-yellow-100' : 'text-yellow-800'}`}>Pending Substitutions ({pendingChanges.length})</h3>
-                                        <div className={`text-sm ${darkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>
-                                            {pendingChanges.map((c, i) => <div key={i}>{playerName(c.oldPlayerId)} → {playerName(c.newPlayerId)}</div>)}
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={cancelChanges} className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700">Cancel</button>
-                                        <button onClick={() => openTimeModal('subTime')} className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Confirm All</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className={`${card} p-6 mb-6 ${!gameStarted ? 'opacity-50' : ''}`}>
-                            <h2 className={`text-xl font-semibold mb-4 ${textMain}`}>
-                                Current Lineup (5 Active Players)
-                                {!gameStarted && <span className="text-sm font-normal text-orange-500 ml-2">Start game to enable</span>}
-                            </h2>
-                            <div className="grid grid-cols-5 gap-4">
-                                {currentLineup.map((playerId, index) => (
-                                    <div key={index} className="text-center">
-                                        <label className={`block text-sm font-medium mb-2 ${textSub}`}>Player {index + 1}</label>
-                                        <select value={playerId} onChange={(e) => handleLineupChange(index, e.target.value)} disabled={!gameStarted}
-                                            className={`${selectCls} ${!gameStarted ? 'cursor-not-allowed' : ''}`}>
-                                            <option value={playerId}>{playerName(playerId)}</option>
-                                            {roster.filter(p => !currentLineup.includes(p.id)).map(p => (
-                                                <option key={p.id} value={p.id}>{p.name} ({p.position})</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className={`${card} p-6 mb-6 ${!gameStarted ? 'opacity-50' : ''}`}>
-                            <h2 className={`text-xl font-semibold mb-4 text-center ${textMain}`}>
-                                Live Score
-                                {!gameStarted && <span className="text-sm font-normal text-orange-500 ml-2">Start game to enable</span>}
-                            </h2>
-                            {gameStarted && (
-                                <div className={`text-center mb-6 pb-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                    <div className={`text-sm font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total VT Possessions</div>
-                                    <div className={`text-3xl font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>{totalVTPossessions}</div>
-                                </div>
-                            )}
-                            <div className="grid grid-cols-2 gap-8">
-                                <div className="text-center">
-                                    <h3 className={`text-lg font-medium mb-3 ${textMain}`}>Virginia Tech</h3>
-                                    <div className={`text-4xl font-bold mb-4 ${textMain}`}>{vtScore}</div>
-                                    <ScoreButtons team="vt" score={vtScore} color="bg-orange-500 hover:bg-orange-600" />
-                                </div>
-                                <div className="text-center">
-                                    <h3 className={`text-lg font-medium mb-3 ${textMain}`}>{currentOpponent}</h3>
-                                    <div className={`text-4xl font-bold mb-4 ${textMain}`}>{oppScore}</div>
-                                    <ScoreButtons team="opponent" score={oppScore} color="bg-blue-500 hover:bg-blue-600" />
-                                </div>
-                            </div>
-                        </div>
-
-                        {(modal === 'subTime' || modal === 'garbageTime') && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                                <div className={`p-6 rounded-lg shadow-xl max-w-md w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <h3 className={`text-lg font-semibold mb-4 ${textMain}`}>
-                                        {modal === 'garbageTime' ? 'When did garbage time start?' : 'Record Time for Substitution'}
-                                    </h3>
-                                    {modal === 'garbageTime' && (
-                                        <p className={`text-sm mb-4 ${textSub}`}>Everything from this point on can be excluded with the Garbage Time toggle on the dashboards. This can't be undone from here.</p>
-                                    )}
-                                    <label className={`block text-sm font-medium mb-1 ${textSub}`}>Game clock ({label})</label>
-                                    <input type="text" inputMode="numeric" autoFocus value={pendingGameTime}
-                                        onChange={(e) => setPendingGameTime(e.target.value.replace(/[^0-9:]/g, ''))}
-                                        onKeyDown={(e) => { if (e.key === 'Enter') (modal === 'garbageTime' ? confirmGarbageTime : confirmAllChanges)(); }}
-                                        placeholder="e.g. 15:42 or 4:22"
-                                        className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'}`} />
-                                    {pendingGameTime && !TIME_RE.test(pendingGameTime) && (
-                                        <p className="text-red-500 text-xs mt-1">Format should be M:SS or MM:SS (e.g. 4:22 or 15:42)</p>
-                                    )}
-                                    <div className="flex gap-3 mt-6">
-                                        <button onClick={() => setModal(null)}
-                                            className={`flex-1 px-4 py-2 border rounded-md ${darkMode ? 'text-gray-300 border-gray-600 hover:bg-gray-700' : 'text-gray-600 border-gray-300 hover:bg-gray-50'}`}>Cancel</button>
-                                        <button onClick={modal === 'garbageTime' ? confirmGarbageTime : confirmAllChanges}
-                                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                                            {modal === 'garbageTime' ? 'Mark Garbage Time' : 'Confirm Changes'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className={`${card} p-6 mb-6 ${!gameStarted ? 'opacity-50' : ''}`}>
-                            <h2 className={`text-xl font-semibold mb-4 ${textMain}`}>
-                                Game Stats <span className={`text-sm font-normal ${textSub}`}>(current stint — resets on each sub)</span>
-                                {!gameStarted && <span className="text-sm font-normal text-orange-500 ml-2">Start game to enable</span>}
-                            </h2>
-                            <StatRow team="vt" title="Virginia Tech" />
-                            <StatRow team="opponent" title={currentOpponent} />
-                        </div>
-
-                        <div className={`${card} p-4 mb-6`}>
-                            <div className="grid grid-cols-2 gap-8">
-                                {[['vt', 'Virginia Tech'], ['opponent', currentOpponent]].map(([team, title]) => (
-                                    <div key={team} className="text-center">
-                                        <h3 className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{title} - Total Game Stats</h3>
-                                        <div className={`flex justify-center gap-6 text-sm ${textSub}`}>
-                                            <div><span className="font-semibold">Off Reb:</span> {total(team, 'offensiveRebounds')}</div>
-                                            <div><span className="font-semibold">Def Reb:</span> {total(team, 'defensiveRebounds')}</div>
-                                            <div><span className="font-semibold">TO:</span> {total(team, 'turnovers')}</div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className={`${card} p-6`}>
-                            <h2 className={`text-xl font-semibold mb-4 ${textMain}`}>Lineup Changes History <span className={`text-sm font-normal ${textSub}`}>(newest first)</span></h2>
-                            {historyNewestFirst.length === 0 ? (
-                                <p className={`text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No lineup changes yet</p>
-                            ) : (
-                                <div className="space-y-3">
-                                    {historyNewestFirst.map((r, i) => (
-                                        <div key={i} className={`border-l-4 pl-4 py-2 ${r.garbageTime ? 'border-amber-500' : 'border-blue-500'}`}>
-                                            <div className={`font-medium ${textMain}`}>{r.changes}</div>
-                                            <div className={`text-sm ${textSub}`}>{r.gameTime} | Score: {r.vtScore}-{r.oppScore}</div>
-                                            <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>New Lineup: {r.newLineup}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                        <div className="flex-1"></div>
+                        <span className={`text-xs px-2 py-1 rounded ${status.cls}`}>{status.text}</span>
+                        {otherPending > 0 && <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-900">{otherPending} other game{otherPending > 1 ? 's' : ''} waiting to upload</span>}
+                        {started && <button className="btn bg-amber-100 text-amber-900" onClick={() => setModal({ kind: 'review' })}>Review{reviewCount ? ` (${reviewCount})` : ''}</button>}
+                        {started && <button className="btn bg-gray-100 text-gray-800" onClick={() => setModal({ kind: 'log' })}>Full log</button>}
+                        {live && periodOpen && <button className="btn bg-gray-100 text-gray-800" onClick={() => setModal({ kind: 'garbage', clock: '' })} disabled={events.some(e => e.type === 'garbage')}>Garbage time</button>}
+                        {live && periodOpen && <button className="btn bg-purple-600 text-white" onClick={() => setModal({ kind: 'endPeriod', clock: '0:00' })}>End {periodOpen.label}</button>}
+                        {live && !periodOpen && <button className="btn bg-purple-600 text-white" onClick={openNextPeriod}>Start next period</button>}
+                        {!live && <button className="btn bg-green-600 text-white" onClick={startGame}>{started ? 'Start over' : 'Start game'}</button>}
+                        {live && <button className="btn bg-red-600 text-white" onClick={endGame}>End game</button>}
                     </div>
+
+                    {!started ? (
+                        <div className="bg-white rounded-lg shadow p-8 text-center text-gray-600">
+                            {remoteInfo?.started && remoteInfo.format !== 2 ? 'This game has data in the old format. Starting it will replace that data.' : 'Press Start game when you are ready.'}
+                            {sched?.exhibition && <div className="mt-2 text-sm">This is an exhibition, so you can set custom period lengths.</div>}
+                        </div>
+                    ) : (
+                        <div className="grid gap-3" style={{ gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr)' }}>
+                            {/* Left: prompt on top (always on screen), court below sized to the remaining height */}
+                            <div className="grid gap-3 content-start">
+                                <div className={`rounded-lg shadow p-4 min-h-[132px] ${prompt ? 'bg-orange-50 border-2 border-orange-300' : 'bg-white'}`}>
+                                    {prompt ? (
+                                        <div className="grid gap-3">
+                                            <div className="flex justify-between items-start gap-3">
+                                                <div className="text-lg font-semibold">{prompt.title}</div>
+                                                {flow.k !== 'afterMake' && <button className="text-sm text-gray-600 underline" onClick={() => setFlow(null)}>Cancel (Esc)</button>}
+                                            </div>
+                                            {prompt.body}
+                                            {prompt.hint && <div className="text-xs text-gray-600">{prompt.hint}</div>}
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-gray-500">{live ? (periodOpen ? 'Ready. Click the court for a VT shot, or use the buttons on the right.' : 'Start the next period to continue.') : 'This game has ended. Use Review and Full log to fix anything.'}</div>
+                                    )}
+                                </div>
+                                <div className="bg-white rounded-lg shadow p-3">
+                                    <Court onPick={live ? pickCourt : undefined} marker={flow?.k === 'vtShot' && flow.x !== null && flow.x !== undefined ? { x: flow.x, y: flow.y } : null}
+                                        shots={periodShots.map(s => ({ ...s, key: s.id }))}
+                                        style={{ height: 'calc(100vh - 450px)', minHeight: 290, width: 'auto', maxWidth: '100%', margin: '0 auto' }} />
+                                    <div className="flex flex-wrap items-center gap-2 mt-2 text-sm">
+                                        <button className="btn bg-gray-200 text-gray-900" onClick={shotUnseen} disabled={!canPlay}>VT shot, didn't see where<Key k="Q" /></button>
+                                        <span className="text-gray-500">Click the court for a VT shot. Showing this period's shots.</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Right: lineup + actions + log */}
+                            <div className="grid gap-3 content-start">
+                                <div className="bg-white rounded-lg shadow p-3">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h3 className="font-semibold">On the floor</h3>
+                                        <button className="btn bg-gray-800 text-white" onClick={openSub} disabled={!canPlay}>Sub<Key k="B" /></button>
+                                    </div>
+                                    <div className="grid grid-cols-5 gap-2 text-sm">
+                                        {lineupNow.map((id, i) => <div key={id} className="p-2 rounded bg-gray-100 text-center"><div className="text-gray-500 text-xs">{i + 1}</div>#{id} {last(id)}</div>)}
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-lg shadow p-3 grid gap-3">
+                                    <div>
+                                        <h3 className="font-semibold mb-2 text-orange-700">Virginia Tech</h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button className="btn bg-orange-600 text-white" onClick={() => startFTs('vt')} disabled={!canPlay}>Free throws<Key k="F" /></button>
+                                            <button className="btn bg-orange-600 text-white" onClick={() => begin({ k: 'vtTO', step: 'player' })} disabled={!canPlay}>Turnover<Key k="T" /></button>
+                                            <button className="btn bg-orange-100 text-orange-900" onClick={() => simple({ type: 'expired', team: 'vt', poss: 'vt' })} disabled={!canPlay}>Time expired (VT ball)</button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h3 className="font-semibold mb-2 text-blue-700">{opponent}</h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button className="btn bg-blue-600 text-white" onClick={() => oppMade(2)} disabled={!canPlay}>Made 2<Key k="W" /></button>
+                                            <button className="btn bg-blue-600 text-white" onClick={() => oppMade(3)} disabled={!canPlay}>Made 3<Key k="E" /></button>
+                                            <button className="btn bg-blue-600 text-white" onClick={() => begin({ k: 'oppMiss', step: 'reb' })} disabled={!canPlay}>Missed<Key k="R" /></button>
+                                            <button className="btn bg-blue-600 text-white" onClick={() => startFTs('opp')} disabled={!canPlay}>Free throws<Key k="D" /></button>
+                                            <button className="btn bg-blue-600 text-white" onClick={() => simple({ type: 'to', team: 'opp', poss: 'opp' })} disabled={!canPlay}>Turnover<Key k="G" /></button>
+                                            <button className="btn bg-blue-100 text-blue-900" onClick={() => simple({ type: 'expired', team: 'opp', poss: 'opp' })} disabled={!canPlay}>Time expired ({opponent} ball)</button>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+                                        <button className="btn bg-gray-100 text-gray-800" onClick={() => simple({ type: 'foul' })} disabled={!canPlay}>Foul on the floor</button>
+                                        <button className="btn bg-gray-100 text-gray-800" onClick={didntHappen} disabled={!live}>Didn't happen<Key k="U" /></button>
+                                        <button className="btn bg-gray-100 text-gray-800" onClick={undoLast} disabled={!events.length}>Undo last<Key k="Ctrl+Z" /></button>
+                                        <button className="btn bg-gray-100 text-gray-800" onClick={() => setModal({ kind: 'adjust' })} disabled={!started}>Fix score</button>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-lg shadow p-3">
+                                    <h3 className="font-semibold mb-2">Recent plays <span className="text-xs font-normal text-gray-500">(newest first)</span></h3>
+                                    <ul className="text-sm divide-y divide-gray-100">
+                                        {recent.map(e => (
+                                            <li key={e.id} className={`py-1.5 flex justify-between gap-2 ${e.possVoid ? 'text-gray-400 line-through' : ''} ${e.needsPlacement || (e.type === 'shot' && e.team === 'vt' && (e.x === null || e.x === undefined)) ? 'text-amber-700' : ''}`}>
+                                                <span>{describe(e)}</span>
+                                                {e.type === 'sub' && <button className="text-xs underline text-gray-600 shrink-0" onClick={() => setModal({ kind: 'editSub', sub: e, clock: e.clock === null || e.clock === undefined ? '' : C.formatSeconds(e.clock) })}>Fix time</button>}
+                                            </li>
+                                        ))}
+                                        {!recent.length && <li className="py-2 text-gray-500">Nothing logged yet.</li>}
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Sub panel */}
+                    {subPanel && (
+                        <Modal title="Substitution" onClose={() => setSubPanel(null)} wide>
+                            <div className="grid grid-cols-2 gap-6">
+                                <div>
+                                    <h4 className="font-semibold mb-2">Going out</h4>
+                                    <div className="grid gap-2">{lineupNow.map(id => (
+                                        <button key={id} className={`btn text-left border ${subPanel.out.includes(id) ? 'bg-red-600 text-white border-red-600' : 'bg-white border-gray-300'}`}
+                                            onClick={() => setSubPanel(s => ({ ...s, out: s.out.includes(id) ? s.out.filter(x => x !== id) : [...s.out, id] }))}>#{id} {name(id)}</button>))}</div>
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold mb-2">Coming in</h4>
+                                    <div className="grid gap-2 max-h-80 overflow-y-auto">{roster.filter(p => !lineupNow.includes(p.id)).map(p => (
+                                        <button key={p.id} className={`btn text-left border ${subPanel.in.includes(p.id) ? 'bg-green-600 text-white border-green-600' : 'bg-white border-gray-300'}`}
+                                            onClick={() => setSubPanel(s => ({ ...s, in: s.in.includes(p.id) ? s.in.filter(x => x !== p.id) : [...s.in, p.id] }))}>#{p.id} {p.name} <span className="opacity-60">({p.position})</span></button>))}</div>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-6 mt-5 items-start">
+                                <div className={subPanel.missed ? 'opacity-40 pointer-events-none' : ''}>
+                                    <ClockInput value={subPanel.clock} onChange={(v) => setSubPanel(s => ({ ...s, clock: v }))} onEnter={confirmSub} />
+                                </div>
+                                <label className="flex gap-2 items-start text-sm p-3 bg-amber-50 rounded border border-amber-200 cursor-pointer">
+                                    <input type="checkbox" checked={subPanel.missed} onChange={(e) => setSubPanel(s => ({ ...s, missed: e.target.checked }))} className="mt-1" />
+                                    <span><b>I missed this sub.</b> Put him in now, and I'll place when he actually came in from the Review list later.</span>
+                                </label>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <button className="btn flex-1 border border-gray-300" onClick={() => setSubPanel(null)}>Cancel</button>
+                                <button className="btn flex-1 bg-green-600 text-white" onClick={confirmSub}>Confirm sub (Enter)</button>
+                            </div>
+                        </Modal>
+                    )}
+
+                    {/* Modals */}
+                    {modal?.kind === 'startGame' && (
+                        <Modal title={`Start game vs ${opponent}`} onClose={() => setModal(null)} wide>
+                            {sched?.exhibition && (
+                                <div className="mb-5 grid gap-3">
+                                    <div className="flex gap-4 text-sm">
+                                        <label className="flex items-center gap-2"><input type="radio" checked={!modal.custom} onChange={() => setModal({ ...modal, custom: false })} /> Standard (two 20-minute halves)</label>
+                                        <label className="flex items-center gap-2"><input type="radio" checked={modal.custom} onChange={() => setModal({ ...modal, custom: true })} /> Custom periods</label>
+                                    </div>
+                                    {modal.custom && (
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div><label className="block text-sm font-medium mb-1">First period length (minutes)</label>
+                                                <input type="number" min="1" value={modal.length} onChange={(e) => setModal({ ...modal, length: e.target.value })} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                            <div><label className="block text-sm font-medium mb-1">Name (optional)</label>
+                                                <input type="text" value={modal.label} placeholder="Period 1" onChange={(e) => setModal({ ...modal, label: e.target.value })} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            <h4 className="font-semibold mb-2">Starting lineup</h4>
+                            <LineupPicker roster={roster} lineup={modal.lineup} setLineup={(l) => setModal({ ...modal, lineup: l })} />
+                            <div className="flex gap-3 mt-6">
+                                <button className="btn flex-1 border border-gray-300" onClick={() => setModal(null)}>Cancel</button>
+                                <button className="btn flex-1 bg-green-600 text-white" onClick={() => confirmStartGame(modal)}>Start game</button>
+                            </div>
+                        </Modal>
+                    )}
+
+                    {modal?.kind === 'startPeriod' && (
+                        <Modal title={game.info.custom ? `Start period ${modal.period}` : `Start ${C.STANDARD_PERIODS(modal.period)[modal.period - 1].label}`} onClose={() => setModal(null)} wide>
+                            {game.info.custom && (
+                                <div className="grid grid-cols-2 gap-3 mb-5">
+                                    <div><label className="block text-sm font-medium mb-1">Length (minutes)</label>
+                                        <div className="flex gap-2">
+                                            <input type="number" min="1" value={modal.length} onChange={(e) => setModal({ ...modal, length: e.target.value })} className="w-24 p-2 border border-gray-300 rounded-md" />
+                                            {['6', '10', '20'].map(m => <button key={m} className="btn bg-gray-100" onClick={() => setModal({ ...modal, length: m })}>{m}</button>)}
+                                        </div></div>
+                                    <div><label className="block text-sm font-medium mb-1">Name</label>
+                                        <input type="text" value={modal.label} onChange={(e) => setModal({ ...modal, label: e.target.value })} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                </div>
+                            )}
+                            <h4 className="font-semibold mb-2">Lineup to start the period</h4>
+                            <LineupPicker roster={roster} lineup={modal.lineup} setLineup={(l) => setModal({ ...modal, lineup: l })} />
+                            <div className="flex gap-3 mt-6">
+                                <button className="btn flex-1 border border-gray-300" onClick={() => setModal(null)}>Cancel</button>
+                                <button className="btn flex-1 bg-green-600 text-white" onClick={() => confirmStartPeriod(modal)}>Start period</button>
+                            </div>
+                        </Modal>
+                    )}
+
+                    {modal?.kind === 'endPeriod' && (
+                        <Modal title={`End ${periodOpen?.label}${modal.thenEndGame ? ' and the game' : ''}`} onClose={() => setModal(null)}>
+                            <ClockInput label="Time left on the clock" value={modal.clock} onChange={(v) => setModal({ ...modal, clock: v })}
+                                onEnter={() => { if (confirmEndPeriod(modal.clock, modal.thenEndGame) && modal.thenEndGame) finishGame(); }} />
+                            <p className="text-sm text-gray-600 mt-3">Leave it at 0:00 if the period ran out. If play stopped early (for example at the Under-4), enter the time that was left.</p>
+                            <div className="flex gap-3 mt-6">
+                                <button className="btn flex-1 border border-gray-300" onClick={() => setModal(null)}>Cancel</button>
+                                <button className="btn flex-1 bg-purple-600 text-white" onClick={() => { if (confirmEndPeriod(modal.clock, modal.thenEndGame) && modal.thenEndGame) finishGame(); }}>End period</button>
+                            </div>
+                        </Modal>
+                    )}
+
+                    {modal?.kind === 'garbage' && (
+                        <Modal title="When did garbage time start?" onClose={() => setModal(null)}>
+                            <ClockInput value={modal.clock} onChange={(v) => setModal({ ...modal, clock: v })} onEnter={() => {}} />
+                            <p className="text-sm text-gray-600 mt-3">Everything after this point can be left out on the dashboards with the Garbage Time switch.</p>
+                            <div className="flex gap-3 mt-6">
+                                <button className="btn flex-1 border border-gray-300" onClick={() => setModal(null)}>Cancel</button>
+                                <button className="btn flex-1 bg-amber-600 text-white" onClick={() => {
+                                    const clock = parseClock(modal.clock);
+                                    if (clock === null) { alert('Enter the game clock.'); return; }
+                                    commit({ type: 'garbage', clock }); setModal(null);
+                                }}>Mark garbage time</button>
+                            </div>
+                        </Modal>
+                    )}
+
+                    {modal?.kind === 'adjust' && (
+                        <Modal title="Fix the score" onClose={() => setModal(null)}>
+                            <p className="text-sm text-gray-600 mb-4">Use this only if the score is off and you can't find the play to fix. It adds a correction to the log.</p>
+                            {['vt', 'opp'].map(team => (
+                                <div key={team} className="flex items-center gap-3 mb-3">
+                                    <span className="w-40 font-medium">{team === 'vt' ? 'Virginia Tech' : opponent}</span>
+                                    {[-1, 1].map(pts => <button key={pts} className="btn bg-gray-100" onClick={() => { commit({ type: 'adjust', team, pts }); showToast(`Score corrected: ${team === 'vt' ? 'VT' : opponent} ${pts > 0 ? '+1' : '−1'}`); }}>{pts > 0 ? '+1' : '−1'}</button>)}
+                                </div>
+                            ))}
+                            <button className="btn w-full border border-gray-300 mt-3" onClick={() => setModal(null)}>Done</button>
+                        </Modal>
+                    )}
+
+                    {modal?.kind === 'editSub' && (
+                        <Modal title="Fix sub time" onClose={() => setModal(null)}>
+                            <p className="mb-3 text-sm">{describe(modal.sub)}</p>
+                            <ClockInput value={modal.clock} onChange={(v) => setModal({ ...modal, clock: v })} onEnter={() => {}} />
+                            <div className="flex gap-3 mt-6">
+                                <button className="btn border border-red-300 text-red-700" onClick={() => { if (window.confirm('Delete this sub?')) { deleteEvent(modal.sub.id); setModal(null); } }}>Delete sub</button>
+                                <div className="flex-1"></div>
+                                <button className="btn border border-gray-300" onClick={() => setModal(null)}>Cancel</button>
+                                <button className="btn bg-green-600 text-white" onClick={() => {
+                                    const clock = parseClock(modal.clock);
+                                    if (clock === null) { alert('Enter the game clock.'); return; }
+                                    patchEvent(modal.sub.id, { clock }); setModal(null);
+                                }}>Save time</button>
+                            </div>
+                        </Modal>
+                    )}
+
+                    {modal?.kind === 'review' && built && (
+                        <ReviewModal built={built} events={events} roster={roster} describe={describe} opponent={opponent}
+                            onClose={() => setModal(null)} patchEvent={patchEvent} placeSub={placeSub} />
+                    )}
+
+                    {modal?.kind === 'log' && built && (
+                        <LogModal events={events} describe={describe} onClose={() => setModal(null)} deleteEvent={deleteEvent}
+                            patchEvent={patchEvent} editSub={(e) => setModal({ kind: 'editSub', sub: e, clock: e.clock === null || e.clock === undefined ? '' : C.formatSeconds(e.clock) })} />
+                    )}
+
+                    {toast && (
+                        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg flex items-center gap-4 z-50 max-w-xl">
+                            <span>{toast.text}</span>
+                            {toast.action && <button className="underline font-semibold shrink-0" onClick={() => { toast.action.run(); setToast(null); }}>{toast.action.label}</button>}
+                        </div>
+                    )}
+
+                    <details className="mt-3 text-xs text-gray-600 bg-white rounded-lg shadow p-3">
+                        <summary className="cursor-pointer font-semibold">Keyboard shortcuts</summary>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                            <div><b>VT</b>: click court = shot · Q shot (spot not seen) · 1–5 player · M make · X miss · P switch 2/3 · A and-1 · F free throws · T turnover</div>
+                            <div><b>{opponent}</b>: W made 2 · E made 3 · R missed · D free throws · S and-1 · G turnover</div>
+                            <div><b>Rebounds</b>: V VT · O {opponent} · N none, then V / O / K (time expired). <b>Other</b>: B sub · U didn't happen · Ctrl+Z undo · Esc cancel</div>
+                        </div>
+                    </details>
                 </div>
             );
         };
 
-        // Shown instead of the tracker until the tablet is signed in (only if INPUT_SIGN_IN.enabled).
-        const SignInGate = ({ children }) => {
-            const [user, setUser] = useState(undefined); // undefined = still checking
-            const [email, setEmail] = useState(CFG.INPUT_SIGN_IN.email || '');
-            const [password, setPassword] = useState('');
-            const [error, setError] = useState('');
-            const [busy, setBusy] = useState(false);
-
-            useEffect(() => {
-                let unsub;
-                const wait = setInterval(() => {
-                    if (!window.firebaseAuth) return;
-                    clearInterval(wait);
-                    unsub = window.firebaseAuth.onChange(setUser);
-                }, 50);
-                return () => { clearInterval(wait); unsub && unsub(); };
-            }, []);
-
-            const submit = async (e) => {
-                e.preventDefault();
-                setBusy(true);
-                setError('');
-                try {
-                    await window.firebaseAuth.signIn(email.trim(), password);
-                } catch (err) {
-                    setError(err.code === 'auth/network-request-failed'
-                        ? 'No connection — sign in once you have wifi.'
-                        : 'Wrong password.');
-                }
-                setBusy(false);
-            };
-
-            if (user === undefined) {
-                return <div className="min-h-screen flex items-center justify-center text-gray-500">Loading…</div>;
-            }
-            if (user) {
+        // Lists everything that still needs attention: shots with no spot, subs with no placement.
+        const ReviewModal = ({ built, events, roster, describe, onClose, patchEvent, placeSub }) => {
+            const [placingShot, setPlacingShot] = useState(null);
+            const [placingSub, setPlacingSub] = useState(null);   // { sub, before, clock }
+            const unseen = built.review.unseenShots, unplaced = built.review.unplacedSubs;
+            const name = (id) => roster.find(p => p.id === id)?.name || `#${id}`;
+            if (placingShot) {
+                const s = events.find(e => e.id === placingShot.id) || placingShot;
+                const geo = s.x !== null && s.x !== undefined ? (C.isThree(s.x, s.y) ? 3 : 2) : null;
                 return (
-                    <>
-                        {children}
-                        <div className="text-center text-xs text-gray-500 pb-4">
-                            Signed in as {user} · <button className="underline" onClick={() => window.confirm('Sign out of the lineup tracker on this device?') && window.firebaseAuth.signOut()}>Sign out</button>
+                    <Modal title="Where was this shot taken?" onClose={() => setPlacingShot(null)} wide>
+                        <p className="mb-3">{describe(s)}</p>
+                        <div style={{ maxWidth: 560 }}>
+                            <Court onPick={(x, y) => patchEvent(s.id, { x, y })} marker={s.x !== null && s.x !== undefined ? { x: s.x, y: s.y } : null} />
                         </div>
-                    </>
+                        {geo !== null && geo !== s.pts && (
+                            <div className="mt-3 p-3 rounded bg-amber-50 border border-amber-200 text-sm flex items-center gap-3">
+                                That spot is a {geo}-pointer, but the shot was logged as a {s.pts}.
+                                <button className="btn bg-amber-600 text-white" onClick={() => patchEvent(s.id, { pts: geo })}>Change to {geo}</button>
+                            </div>
+                        )}
+                        <div className="flex gap-3 mt-5">
+                            <div className="flex-1"></div>
+                            <button className="btn bg-green-600 text-white" onClick={() => setPlacingShot(null)}>Done</button>
+                        </div>
+                    </Modal>
+                );
+            }
+            if (placingSub) {
+                const { sub } = placingSub;
+                const before = events.filter(e => e.seq < sub.seq && e.type !== 'period_end');
+                const periodStart = [...before].reverse().find(e => e.type === 'period_start');
+                const choices = before.filter(e => e.seq > (periodStart?.seq ?? 0));
+                return (
+                    <Modal title={`When did ${(sub.in || []).map(name).join(', ')} come in?`} onClose={() => setPlacingSub(null)} wide>
+                        <p className="text-sm text-gray-600 mb-3">Pick the first play he was on the floor for. Plays from that point on will be credited to the corrected lineup.</p>
+                        <div className="max-h-72 overflow-y-auto border border-gray-200 rounded mb-4">
+                            {choices.map(e => (
+                                <label key={e.id} className={`flex gap-3 items-center px-3 py-2 text-sm border-b border-gray-100 cursor-pointer ${placingSub.before?.id === e.id ? 'bg-green-50' : ''}`}>
+                                    <input type="radio" checked={placingSub.before?.id === e.id} onChange={() => setPlacingSub({ ...placingSub, before: e })} />
+                                    {describe(e)}
+                                </label>
+                            ))}
+                            <label className={`flex gap-3 items-center px-3 py-2 text-sm cursor-pointer ${placingSub.before?.id === sub.id ? 'bg-green-50' : ''}`}>
+                                <input type="radio" checked={placingSub.before?.id === sub.id} onChange={() => setPlacingSub({ ...placingSub, before: sub })} />
+                                <i>Right where I entered it</i>
+                            </label>
+                        </div>
+                        <ClockInput value={placingSub.clock} onChange={(v) => setPlacingSub({ ...placingSub, clock: v })} onEnter={() => {}} autoFocus={false} label="Game clock when he came in" />
+                        <div className="flex gap-3 mt-5">
+                            <div className="flex-1"></div>
+                            <button className="btn border border-gray-300" onClick={() => setPlacingSub(null)}>Cancel</button>
+                            <button className="btn bg-green-600 text-white" disabled={!placingSub.before} onClick={() => {
+                                if (placingSub.before.id === sub.id) {
+                                    const clock = parseClock(placingSub.clock);
+                                    if (clock === null) { alert('Enter the game clock when he came in.'); return; }
+                                    patchEvent(sub.id, { clock, needsPlacement: null }); setPlacingSub(null); return;
+                                }
+                                if (placeSub(sub, placingSub.before, placingSub.clock)) setPlacingSub(null);
+                            }}>Place sub</button>
+                        </div>
+                    </Modal>
                 );
             }
             return (
-                <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-                    <form onSubmit={submit} className="bg-white rounded-lg shadow-lg p-8 w-full max-w-sm space-y-4">
-                        <h1 className="text-2xl font-bold text-gray-900">VT Lineup Tracker</h1>
-                        <p className="text-sm text-gray-600">Sign in once on this device to enter game data. You'll stay signed in.</p>
-                        {!CFG.INPUT_SIGN_IN.email && (
-                            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email"
-                                className="w-full p-3 border border-gray-300 rounded-md" autoComplete="username" />
-                        )}
-                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password"
-                            className="w-full p-3 border border-gray-300 rounded-md" autoComplete="current-password" autoFocus />
+                <Modal title="Review" onClose={onClose} wide>
+                    {!unseen.length && !unplaced.length && <p className="text-green-700 font-medium">Nothing to review. Every shot has a spot and every sub is placed.</p>}
+                    {unplaced.length > 0 && (
+                        <div className="mb-6">
+                            <h4 className="font-semibold mb-2">Subs to place ({unplaced.length})</h4>
+                            <ul className="divide-y divide-gray-100 border border-gray-200 rounded">
+                                {unplaced.map(s => (
+                                    <li key={s.id} className="flex justify-between items-center px-3 py-2 text-sm">
+                                        {describe(s)}
+                                        <button className="btn bg-amber-600 text-white" onClick={() => setPlacingSub({ sub: s, before: null, clock: '' })}>Place</button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    {unseen.length > 0 && (
+                        <div>
+                            <h4 className="font-semibold mb-2">Shots without a spot ({unseen.length})</h4>
+                            <ul className="divide-y divide-gray-100 border border-gray-200 rounded">
+                                {unseen.map(s => (
+                                    <li key={s.id} className="flex justify-between items-center px-3 py-2 text-sm">
+                                        {describe(s)}
+                                        <button className="btn bg-amber-600 text-white" onClick={() => setPlacingShot(s)}>Mark spot</button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    <button className="btn w-full border border-gray-300 mt-6" onClick={onClose}>Close</button>
+                </Modal>
+            );
+        };
+
+        // Every entry, grouped by period, with fixes.
+        const LogModal = ({ events, describe, onClose, deleteEvent, patchEvent, editSub }) => (
+            <Modal title="Full log" onClose={onClose} wide>
+                <ul className="text-sm divide-y divide-gray-100 border border-gray-200 rounded">
+                    {events.map(e => (
+                        <li key={e.id} className={`flex justify-between items-center gap-3 px-3 py-1.5 ${e.type === 'period_start' ? 'bg-gray-50 font-semibold' : ''} ${e.possVoid ? 'text-gray-400' : ''}`}>
+                            <span>{describe(e)}{e.possVoid ? ' (possession removed)' : ''}</span>
+                            <span className="flex gap-3 shrink-0 text-xs">
+                                {e.type === 'sub' && <button className="underline" onClick={() => editSub(e)}>Fix time</button>}
+                                {e.poss && <button className="underline" onClick={() => patchEvent(e.id, { possVoid: e.possVoid ? null : true })}>{e.possVoid ? 'Count possession' : "Didn't happen"}</button>}
+                                {e.type !== 'period_start' && e.type !== 'period_end' && <button className="underline text-red-700" onClick={() => { if (window.confirm(`Delete "${describe(e)}"?`)) deleteEvent(e.id); }}>Delete</button>}
+                            </span>
+                        </li>
+                    ))}
+                </ul>
+                <button className="btn w-full border border-gray-300 mt-4" onClick={onClose}>Close</button>
+            </Modal>
+        );
+
+        // Sign-in (only when INPUT_SIGN_IN.enabled in config.js)
+        const SignInGate = ({ children }) => {
+            const [user, setUser] = useState(undefined);
+            const [password, setPassword] = useState('');
+            const [email, setEmail] = useState(CFG.INPUT_SIGN_IN.email || '');
+            const [error, setError] = useState('');
+            useEffect(() => {
+                let unsub;
+                const wait = setInterval(() => { if (!window.firebaseAuth) return; clearInterval(wait); unsub = window.firebaseAuth.onChange(setUser); }, 50);
+                return () => { clearInterval(wait); unsub && unsub(); };
+            }, []);
+            if (user === undefined) return <div className="p-8 text-gray-500">Loading…</div>;
+            if (user) return <>{children}<div className="text-center text-xs text-gray-500 pb-4">Signed in as {user} · <button className="underline" onClick={() => window.confirm('Sign out on this device?') && window.firebaseAuth.signOut()}>Sign out</button></div></>;
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <form className="bg-white rounded-lg shadow-lg p-8 w-full max-w-sm grid gap-4" onSubmit={async (e) => {
+                        e.preventDefault(); setError('');
+                        try { await window.firebaseAuth.signIn(email.trim(), password); } catch (err) { setError(err.code === 'auth/network-request-failed' ? 'No connection. Sign in once you have internet.' : 'Wrong password.'); }
+                    }}>
+                        <h1 className="text-2xl font-bold">VT Lineup Tracker</h1>
+                        <p className="text-sm text-gray-600">Sign in once on this computer. You'll stay signed in.</p>
+                        {!CFG.INPUT_SIGN_IN.email && <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="p-3 border border-gray-300 rounded-md" />}
+                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" autoFocus className="p-3 border border-gray-300 rounded-md" />
                         {error && <p className="text-sm text-red-600">{error}</p>}
-                        <button type="submit" disabled={busy || !password}
-                            className="w-full py-3 bg-orange-600 text-white rounded-md font-semibold disabled:opacity-50">
-                            {busy ? 'Signing in…' : 'Sign in'}
-                        </button>
-                        <p className="text-xs text-gray-500">Just want to watch? Use the <a href="live.html" className="underline">live dashboard</a> — no sign-in needed.</p>
+                        <button className="btn bg-orange-600 text-white py-3">Sign in</button>
                     </form>
                 </div>
             );
         };
 
         ReactDOM.createRoot(document.getElementById('root')).render(
-            CFG.INPUT_SIGN_IN.enabled ? <SignInGate><BasketballLineupTracker /></SignInGate> : <BasketballLineupTracker />
+            CFG.INPUT_SIGN_IN.enabled ? <SignInGate><Tracker /></SignInGate> : <Tracker />
         );
     </script>
 </body>

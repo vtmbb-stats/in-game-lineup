@@ -318,17 +318,22 @@
 
     // Load info + change log for a list of scheduled games (from VT_CONFIG). Games with no
     // recorded data are dropped. Each result also carries its result ('W'/'L'/null).
+    // Each game also gets `built` = { segments, warnings, shots, ... } from buildGame (needs play-log.js).
     const loadGames = async (games) => {
         const database = await db();
         const loaded = await Promise.all(games.map(async (g) => {
-            const [info, raw] = await Promise.all([
-                database.read(`game-info/${g.date}`),
-                database.read(`lineup-changes/${g.date}`)
-            ]);
-            const history = historyList(raw);
-            return { ...g, info, history, result: gameResult(history, info) };
+            const info = await database.read(`game-info/${g.date}`);
+            if (!info?.started) return null;
+            const raw = await database.read(window.LineupCore.dataPath(info, g.date));
+            const roster = window.VT_CONFIG.rosterForDate(g.date);
+            const built = window.LineupCore.buildGame(info, raw, roster);
+            const history = info.format === 2 ? [] : historyList(raw);
+            const result = info.format === 2
+                ? (info.ended && built.score.vt !== built.score.opp ? (built.score.vt > built.score.opp ? 'W' : 'L') : null)
+                : gameResult(history, info);
+            return { ...g, info, raw, history, built, result };
         }));
-        return loaded.filter(g => g.info?.started && g.history.length > 0);
+        return loaded.filter(g => g && (g.info.format === 2 ? g.built.segments.length > 0 : g.history.length > 0));
     };
 
     // Season filters shared by the multi-game pages. Exhibitions are always excluded.

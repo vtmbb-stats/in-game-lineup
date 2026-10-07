@@ -172,5 +172,119 @@
         return { availability, toggle, isAvailable };
     };
 
-    window.UI = { Nav, DarkToggle, Toggle, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability, LINEUP_COLUMNS, minutesText };
+    // Half court, basket at the top. Coordinates are feet: x 0–50 across, y 0–47 from the baseline.
+    // onPick(x, y) makes it clickable. shots: [{ x, y, made, key?, title? }]. marker: { x, y } for a pending click.
+    const Court = ({ shots = [], onPick, marker, darkMode, className = '', style = {} }) => {
+        const ref = React.useRef(null);
+        const line = darkMode ? '#9a968f' : '#6b6760';
+        const floor = darkMode ? '#2a2724' : '#efe6d6';
+        const paint = darkMode ? '#33302c' : '#e6d9c3';
+        const click = (e) => {
+            if (!onPick) return;
+            const svg = ref.current;
+            const pt = svg.createSVGPoint();
+            pt.x = e.clientX; pt.y = e.clientY;
+            const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+            const x = Math.max(0, Math.min(50, p.x)), y = Math.max(0, Math.min(47, p.y));
+            onPick(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
+        };
+        const C = window.LineupCore;
+        const arcStart = C.CORNER_Y;
+        const threePath = `M ${25 - C.CORNER_X} 0 L ${25 - C.CORNER_X} ${arcStart} A ${C.ARC_R} ${C.ARC_R} 0 0 0 ${25 + C.CORNER_X} ${arcStart} L ${25 + C.CORNER_X} 0`;
+        return (
+            <svg ref={ref} viewBox="-0.5 -0.5 51 48" className={className} onClick={click}
+                style={{ cursor: onPick ? 'crosshair' : 'default', display: 'block', width: '100%', height: 'auto', touchAction: 'manipulation', ...style }}
+                role={onPick ? 'button' : 'img'} aria-label={onPick ? 'Court: click where the shot was taken' : 'Shot chart'}>
+                <rect x="0" y="0" width="50" height="47" fill={floor} stroke={line} strokeWidth="0.2" />
+                <rect x="19" y="0" width="12" height="19" fill={paint} stroke={line} strokeWidth="0.2" />
+                <circle cx="25" cy="19" r="6" fill="none" stroke={line} strokeWidth="0.2" />
+                <path d="M 21 5.25 A 4 4 0 0 0 29 5.25" fill="none" stroke={line} strokeWidth="0.2" />
+                <path d={threePath} fill="none" stroke={line} strokeWidth="0.25" />
+                <line x1="22" y1="4" x2="28" y2="4" stroke={line} strokeWidth="0.35" />
+                <circle cx="25" cy="5.25" r="0.75" fill="none" stroke={darkMode ? '#f08a4b' : '#c64600'} strokeWidth="0.25" />
+                <path d="M 19 47 A 6 6 0 0 1 31 47" fill="none" stroke={line} strokeWidth="0.2" />
+                {shots.filter(s => s.x !== null && s.x !== undefined).map((s, i) => s.made
+                    ? <circle key={s.key || i} cx={s.x} cy={s.y} r="0.75" fill={darkMode ? '#3987e5' : '#2a78d6'} stroke={floor} strokeWidth="0.2"><title>{s.title || 'Make'}</title></circle>
+                    : <g key={s.key || i} stroke={darkMode ? '#e66767' : '#e34948'} strokeWidth="0.3"><title>{s.title || 'Miss'}</title>
+                        <line x1={s.x - 0.6} y1={s.y - 0.6} x2={s.x + 0.6} y2={s.y + 0.6} /><line x1={s.x - 0.6} y1={s.y + 0.6} x2={s.x + 0.6} y2={s.y - 0.6} /></g>)}
+                {marker && <circle cx={marker.x} cy={marker.y} r="1" fill="none" stroke={darkMode ? '#f08a4b' : '#c64600'} strokeWidth="0.35" />}
+            </svg>
+        );
+    };
+
+    // Shot chart with a player filter and make/miss counts.
+    const ShotChart = ({ shots, roster, darkMode }) => {
+        const [player, setPlayer] = React.useState('all');
+        const shown = shots.filter(s => player === 'all' || s.shooter === +player);
+        const placed = shown.filter(s => s.x !== null && s.x !== undefined);
+        const made = shown.filter(s => s.made).length;
+        const threes = shown.filter(s => s.pts === 3);
+        const shooters = roster.filter(p => shots.some(s => s.shooter === p.id));
+        const name = (id) => roster.find(p => p.id === id)?.name || `#${id}`;
+        return (
+            <div className="grid gap-3">
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <Select value={player} onChange={setPlayer} darkMode={darkMode}>
+                        <option value="all">All players</option>
+                        {shooters.map(p => <option key={p.id} value={p.id}>#{p.id} {p.name}</option>)}
+                    </Select>
+                    <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+                        {made}-{shown.length} FG · {threes.filter(s => s.made).length}-{threes.length} 3PT
+                        {shown.length - placed.length > 0 && ` · ${shown.length - placed.length} without a location`}
+                    </span>
+                </div>
+                <div style={{ maxWidth: 520 }}>
+                    <Court darkMode={darkMode} shots={placed.map(s => ({ ...s, key: s.id, title: `${name(s.shooter)}: ${s.made ? 'made' : 'missed'} ${s.pts}` }))} />
+                </div>
+                <div className={`flex gap-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    <span>● Make</span><span>✕ Miss</span>
+                </div>
+            </div>
+        );
+    };
+
+    // Usage table from LineupCore.usageRows.
+    const UsageTable = ({ usage, darkMode }) => {
+        const th = `text-right p-2 text-xs uppercase tracking-wide ${darkMode ? 'text-gray-300' : 'text-gray-600'}`;
+        const td = `text-right p-2 ${darkMode ? 'text-white' : 'text-gray-900'}`;
+        const pct = (m, a) => (a ? `${m}-${a}` : '—');
+        if (!usage.tracked) return <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Usage needs shot tracking, which started with the 2026-27 season.</div>;
+        return (
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <thead><tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <th className={`${th} text-left`}>Player</th><th className={th}>Min</th><th className={th}>Pts</th>
+                        <th className={th}>FG</th><th className={th}>3PT</th><th className={th}>FT</th><th className={th}>TO</th><th className={th}>USG%</th>
+                    </tr></thead>
+                    <tbody>
+                        {usage.rows.map(r => (
+                            <tr key={r.id} className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                <td className={`${td} text-left`}>#{r.id} {r.name}</td>
+                                <td className={td}>{window.LineupCore.formatSeconds(r.seconds)}</td>
+                                <td className={td}>{r.pts}</td>
+                                <td className={td}>{pct(r.fgm, r.fga)}</td>
+                                <td className={td}>{pct(r.tpm, r.tpa)}</td>
+                                <td className={td}>{pct(r.ftm, r.fta)}</td>
+                                <td className={td}>{r.tov}</td>
+                                <td className={`${td} font-semibold`}>{r.usg === null ? '—' : r.usg.toFixed(1)}</td>
+                            </tr>
+                        ))}
+                        <tr className={darkMode ? 'text-gray-300' : 'text-gray-600'}>
+                            <td className="p-2 text-left font-medium">Team</td>
+                            <td className="p-2 text-right">{window.LineupCore.formatSeconds(usage.team.mp * 60 / 5)}</td>
+                            <td className="p-2 text-right">{usage.team.pts}</td>
+                            <td className="p-2 text-right">{pct(usage.team.fgm, usage.team.fga)}</td>
+                            <td className="p-2 text-right">{pct(usage.team.tpm, usage.team.tpa)}</td>
+                            <td className="p-2 text-right">{pct(usage.team.ftm, usage.team.fta)}</td>
+                            <td className="p-2 text-right">{usage.team.tov}</td>
+                            <td className="p-2 text-right">100.0</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>USG% = 100 × (FGA + 0.44×FTA + TOV) × (Team MP ÷ 5) ÷ (MP × (Team FGA + 0.44×Team FTA + Team TOV)). Team rows count only the selected periods.</p>
+            </div>
+        );
+    };
+
+    window.UI = { Nav, DarkToggle, Toggle, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability, LINEUP_COLUMNS, minutesText, Court, ShotChart, UsageTable };
 })();

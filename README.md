@@ -1,52 +1,65 @@
 # VT Men's Basketball — In-Game Lineup Tracker
 
-Live lineup tracking for Virginia Tech Men's Basketball. One person enters subs, score, and
-possession stats on the bench; the dashboards update live from a shared Firebase database.
+Live lineup, possession, and shot tracking for Virginia Tech Men's Basketball. One person logs
+the game on a laptop; the dashboards update live from a shared Firebase database.
 
 ## Pages
 
 | Page | Who uses it | What it does |
 |---|---|---|
-| `index.html` | Bench operator | Starting lineups, subs (with game clock), score, possessions/rebounds/turnovers, garbage time, periods/OT |
+| `index.html` | Bench operator (laptop) | Subs, shots by location, rebounds, free throws, turnovers, periods, garbage time, review/fixes |
 | `live.html` | Staff during the game | Current five's +/-, bench minutes, live lineup table (optionally combined with earlier games) |
-| `game.html` | After the game | Lineup table for any single game, any season |
-| `display.html` | Season review | Lineups over a date range with filters (losses, high-major, ACC, garbage time, player filters) |
+| `game.html` | After the game | Lineups, usage, and shot chart for any single game; choose which periods count (scrimmage formats) |
+| `display.html` | Season review | Lineups, usage, and shot chart over a date range with filters |
 | `combinations.html` | Season review | Guard pairs, big pairs, and all 3-man combos |
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `config.js` | **Rosters and schedules for every season.** The only file to edit for a new season. |
-| `lineup-core.js` | All the lineup math (stints, minutes, +/-, rates, W/L). Shared by every page. |
-| `ui.jsx` | Shared React components (nav, tables, player list, toggles). |
-| `firebase.js` | Firebase connection, shared by every page. |
+| `config.js` | **Rosters, schedules, default starters, sign-in switch.** The only file to edit for a new season. |
+| `play-log.js` | Engine for this season's game format: turns the play log into stints, possessions, shots, and usage. |
+| `lineup-core.js` | Lineup math shared by every page, plus last season's (old format) engine. |
+| `ui.jsx` | Shared React components (nav, tables, court, shot chart, usage table). |
+| `firebase.js` | Firebase connection (database + sign-in). |
+| `sw.js` | Offline support: keeps the pages and libraries cached so the input app opens with no internet. |
+| `database.rules.json` | Database security rules (deploy only after the sign-in account exists). |
 
 ## New season checklist
 
-1. In `config.js`, add a new entry to `SEASONS` with the roster and schedule (see the comments
-   at the top of the file for the fields), and set `CURRENT_SEASON` to it.
+1. In `config.js`, add a `SEASONS` entry (roster in display order, `defaultStarters`, schedule) and set `CURRENT_SEASON`.
 2. Leave old seasons in place — their games need their own roster to display correctly.
-3. Mark exhibitions (`exhibition: true`), ACC games (`conference: true`), and high-major
-   opponents (`highMajor: true`). Wins and losses are worked out automatically from final scores.
+3. Tag exhibitions (`exhibition: true`), ACC games (`conference: true`), and high-major opponents (`highMajor: true`).
+   Wins and losses come from final scores.
 
-## Running a game
+## Logging a game (index.html)
 
-1. Open `index.html`, pick the game, **Start Game**, choose the starting five.
-2. Change players in the lineup dropdowns, then **Confirm All** and enter the game clock.
-   The app warns if a time is earlier in the game than the previous entry (usually a typo).
-3. **Mark Garbage Time** once the game is decided — dashboards can then exclude it.
-4. **End 1st Half** → pick the 2nd-half five. **Start OT** if tied. **End Game** when final.
-5. If the wifi drops, keep the page open: the red OFFLINE badge appears and changes sync when the
-   connection returns. Reloading while offline loses unsynced changes.
+- **Start game** → pick the starting five. Exhibitions can use **custom periods** (any length; End period can stop early,
+  e.g. at the Under-4). Regular games are always two 20-minute halves plus 5-minute overtimes.
+- **Our shots:** click the spot on the court → shooter (keys `1`–`5`) → **Make** (`M`) or **Miss** (`X`) → rebound
+  **VT / Opponent / None** (`V` `O` `N`; "None" then asks whose ball, or time expired). `Q` logs a shot whose spot you didn't
+  see; mark the spot later from Review. After a make, `A` adds an and-1.
+- **Free throws** (`F` ours, `D` theirs): pick 1-and-1, 2, or 3, then enter each result as it's shot. Subs between free throws are fine.
+- **Opponent:** Made 2 (`W`), Made 3 (`E`), Missed (`R`), and-1 (`S`), Turnover (`G`). **Our turnover:** `T` then the player.
+- **Possessions count themselves** from makes, defensive rebounds, turnovers, last free throws, and time expired.
+  **Didn't happen** (`U`) removes the last counted possession (e.g. the refs stopped play). `Ctrl+Z` undoes the last entry.
+- **Subs** (`B`): pick who's out and in, type the clock (`1542` = 15:42). If you missed a sub, tick **I missed this sub**:
+  the player goes in now and you place when he really entered from **Review**. **Fix time** corrects a sub's clock.
+- **Offline:** everything saves on the laptop first and uploads automatically when there's a connection. You can open the
+  page and log a whole game with no internet once the page has been opened online at least once.
+
+## Usage rate
+
+USG% = 100 × (FGA + 0.44 × FTA + TOV) × (Team MP / 5) / (MP × (Team FGA + 0.44 × Team FTA + Team TOV)),
+with Team MP = 5 × the minutes in the selected periods/games.
 
 ## Hosting
 
-The pages must be served over http(s) (e.g. GitHub Pages) — opening the HTML files directly from
-disk won't load the shared files. For local testing: `npx http-server` in this folder.
+Netlify deploys `main` automatically — every push goes live, so avoid pushing during a game.
+For local testing: `npx http-server` in this folder (pages need http, not file://).
 
 ## Data
 
 Firebase Realtime Database `vtmbb-gameday`, keyed by game date (`YYYY-MM-DD`):
-`game-info/`, `live-game/`, `lineup-changes/`, `current-stats/`.
-Each entry in `lineup-changes/<date>` closes the stint that was on the floor and opens the next.
+- 2026-27 on (format 2): `game-info/<date>` (with `format: 2`, periods) and `events/<date>` — the ordered play log.
+- 2025-26 (format 1): `game-info/`, `lineup-changes/`, `live-game/`, `current-stats/`.

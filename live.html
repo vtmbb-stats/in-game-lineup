@@ -14,6 +14,7 @@
     <script type="module" src="firebase.js"></script>
     <script src="config.js"></script>
     <script src="lineup-core.js"></script>
+    <script src="play-log.js"></script>
 </head>
 <body>
     <div id="root"></div>
@@ -74,9 +75,10 @@
             }, [allInfo, now]);
 
             const info = allInfo?.[liveDate] || null;
-            const live = useWatch(liveDate && `live-game/${liveDate}`);
-            const rawHistory = useWatch(liveDate && `lineup-changes/${liveDate}`);
-            const currentStats = useWatch(liveDate && `current-stats/${liveDate}`);
+            const v2 = info?.format === 2;
+            const live = useWatch(liveDate && !v2 && `live-game/${liveDate}`);
+            const rawHistory = useWatch(liveDate && C.dataPath(info, liveDate));
+            const currentStats = useWatch(liveDate && !v2 && `current-stats/${liveDate}`);
 
             const game = liveDate ? CFG.findGame(liveDate) : null;
             const opponent = game?.opponent || info?.opponent || 'Opponent';
@@ -91,15 +93,18 @@
                 C.loadGames(earlier).then(games => setPriorGames(C.filterGames(games)));
             }, [liveDate]);
 
-            const currentLineupStr = live?.currentLineup || info?.currentLineup;
-            const currentIds = C.namesToIds(currentLineupStr, roster);
-            const vtScore = live?.vtScore ?? info?.vtScore ?? 0;
-            const oppScore = live?.oppScore ?? info?.oppScore ?? 0;
+            const legacyLineupStr = live?.currentLineup || info?.currentLineup;
+            const legacyVt = live?.vtScore ?? info?.vtScore ?? 0;
+            const legacyOpp = live?.oppScore ?? info?.oppScore ?? 0;
 
-            const { segments, warnings } = useMemo(() => C.buildSegments(rawHistory, roster, {
-                startingLineup: info?.startingLineup,
-                current: { lineup: currentLineupStr, vtScore, oppScore, stats: currentStats }
-            }), [rawHistory, roster, info?.startingLineup, currentLineupStr, vtScore, oppScore, currentStats]);
+            const built = useMemo(() => C.buildGame(info, rawHistory, roster, {
+                current: true,
+                legacyCurrent: { lineup: legacyLineupStr, vtScore: legacyVt, oppScore: legacyOpp, stats: currentStats }
+            }), [info, rawHistory, roster, legacyLineupStr, legacyVt, legacyOpp, currentStats]);
+            const { segments, warnings } = built;
+            const currentIds = v2 ? (built.lineup || []) : C.namesToIds(legacyLineupStr, roster);
+            const vtScore = v2 ? built.score.vt : legacyVt;
+            const oppScore = v2 ? built.score.opp : legacyOpp;
 
             const keep = (seg) => (includeGarbageTime || !seg.isGarbageTime) && seg.lineup.every(isAvailable);
             const gameSegments = segments.filter(s => includeGarbageTime || !s.isGarbageTime);
@@ -112,12 +117,13 @@
                     if (timeframe === 'conference') games = games.filter(g => g.conference);
                     if (timeframe === 'last-5') games = games.slice(-5);
                     if (timeframe === 'last-10') games = games.slice(-10);
-                    baseline = games.flatMap(g => C.buildSegments(g.history, CFG.rosterForDate(g.date)).segments);
+                    baseline = games.flatMap(g => g.built.segments);
                 }
                 return C.aggregateLineups([...baseline, ...segments].filter(keep), roster);
             }, [timeframe, priorGames, segments, includeGarbageTime, availability, roster]);
 
             const half = live?.currentHalf || info?.currentHalf || 1;
+            const periodText = v2 ? C.periodLabelOf(info, built.period || 1) : `${live?.gameTime || info?.gameTime || '20:00'} ${C.periodLabel(half)}`;
             const textMain = darkMode ? 'text-white' : 'text-gray-900';
 
             if (!liveDate) {
@@ -139,7 +145,7 @@
                             <div>
                                 <h1 className={`text-2xl font-bold ${textMain}`}>VT Basketball Analytics</h1>
                                 <p className={`text-sm mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                                    Live vs {opponent} — VT {vtScore}, {opponent} {oppScore} · {live?.gameTime || info?.gameTime || '20:00'} {C.periodLabel(half)}
+                                    Live vs {opponent} — VT {vtScore}, {opponent} {oppScore} · {periodText}
                                 </p>
                             </div>
                             <Nav current="live.html" darkMode={darkMode} />

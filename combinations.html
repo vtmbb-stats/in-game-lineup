@@ -14,6 +14,7 @@
   <script type="module" src="firebase.js"></script>
   <script src="config.js"></script>
   <script src="lineup-core.js"></script>
+  <script src="play-log.js"></script>
 </head>
 <body>
   <div id="root"></div>
@@ -94,7 +95,7 @@
       const { segments, warnings } = useMemo(() => {
         const segs = [], warns = [];
         C.filterGames(games || [], { from, to, includeLosses, highMajorOnly, conferenceOnly }).forEach(g => {
-          const built = C.buildSegments(g.history, roster, { startingLineup: g.info?.startingLineup });
+          const built = g.built;
           segs.push(...built.segments);
           warns.push(...built.warnings.map(w => `${g.displayName}: ${w}`));
         });

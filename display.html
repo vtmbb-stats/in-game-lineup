@@ -14,6 +14,7 @@
   <script type="module" src="firebase.js"></script>
   <script src="config.js"></script>
   <script src="lineup-core.js"></script>
+  <script src="play-log.js"></script>
 </head>
 <body>
   <div id="root"></div>
@@ -27,7 +28,7 @@
     const { useState, useEffect, useMemo } = React;
     const C = window.LineupCore;
     const CFG = window.VT_CONFIG;
-    const { Nav, DarkToggle, Toggle, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability } = window.UI;
+    const { Nav, DarkToggle, Toggle, Select, StatsTable, PlayerList, Warnings, useSort, useAvailability, UsageTable, ShotChart } = window.UI;
 
     // Most recent season that has at least one tracked game (falls back to the current season).
     const pickDefaultSeason = (allInfo) =>
@@ -69,18 +70,21 @@
         [games, from, to, includeLosses, highMajorOnly, conferenceOnly]
       );
 
-      const { segments, warnings } = useMemo(() => {
-        const segs = [], warns = [];
+      const { segments, warnings, shots } = useMemo(() => {
+        const segs = [], warns = [], shotList = [];
         rangeGames.forEach(g => {
-          const built = C.buildSegments(g.history, roster, { startingLineup: g.info?.startingLineup });
+          const built = g.built;
           segs.push(...built.segments);
+          shotList.push(...(built.shots || []));
           warns.push(...built.warnings.map(w => `${g.displayName}: ${w}`));
         });
-        return { segments: segs, warnings: warns };
+        return { segments: segs, warnings: warns, shots: shotList };
       }, [rangeGames, roster]);
 
       const counted = segments.filter(s => includeGarbageTime || !s.isGarbageTime);
       const totals = C.playerTotals(counted);
+      const usage = C.usageRows(counted, roster);
+      const seasonShots = shots.filter(s => includeGarbageTime || !s.garbage);
       const rows = C.aggregateLineups(counted.filter(s => s.lineup.every(isAvailable)), roster)
         .filter(r => selectedPlayers.every(id => r.playerIds.includes(id)));
 
@@ -165,6 +169,18 @@
                       ? `No games tracked yet for ${CFG.SEASONS[season]?.label || 'this season'}`
                       : `No lineup data for the selected range${selectedPlayers.length ? ' and filters' : ''}`} />
                 </div>
+                {usage.tracked && (
+                  <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' }}>
+                    <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                      <h3 className={`text-lg font-semibold mb-3 ${textMain}`}>Usage</h3>
+                      <UsageTable usage={usage} darkMode={darkMode} />
+                    </div>
+                    <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                      <h3 className={`text-lg font-semibold mb-3 ${textMain}`}>Shot chart</h3>
+                      <ShotChart shots={seasonShots} roster={roster} darkMode={darkMode} />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

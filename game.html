@@ -14,6 +14,7 @@
     <script type="module" src="firebase.js"></script>
     <script src="config.js"></script>
     <script src="lineup-core.js"></script>
+    <script src="play-log.js"></script>
 </head>
 <body>
     <div id="root"></div>
@@ -27,7 +28,7 @@
         const { useState, useEffect, useMemo } = React;
         const C = window.LineupCore;
         const CFG = window.VT_CONFIG;
-        const { Nav, DarkToggle, Toggle, StatsTable, PlayerList, Warnings, useSort, useAvailability } = window.UI;
+        const { Nav, DarkToggle, Toggle, StatsTable, PlayerList, Warnings, useSort, useAvailability, UsageTable, ShotChart } = window.UI;
 
         const SingleGameViewer = () => {
             const [darkMode, setDarkMode] = useState(true);
@@ -51,32 +52,46 @@
 
             useEffect(() => {
                 if (!selectedGame) return;
-                let u1, u2;
-                C.db().then(db => {
-                    u1 = db.watch(`game-info/${selectedGame}`, setInfo);
-                    u2 = db.watch(`lineup-changes/${selectedGame}`, setRawHistory);
-                });
-                return () => { u1 && u1(); u2 && u2(); setInfo(null); setRawHistory(null); };
+                let u1;
+                C.db().then(db => { u1 = db.watch(`game-info/${selectedGame}`, setInfo); });
+                return () => { u1 && u1(); setInfo(null); setRawHistory(null); setPeriodsOff([]); };
             }, [selectedGame]);
 
+            // The play data lives in a different place for this season's games (format 2).
+            const format = info?.format === 2 ? 2 : 1;
+            useEffect(() => {
+                if (!selectedGame || !info) return;
+                let u2;
+                C.db().then(db => { u2 = db.watch(C.dataPath(info, selectedGame), setRawHistory); });
+                return () => { u2 && u2(); };
+            }, [selectedGame, format, !!info]);
+
+            const [periodsOff, setPeriodsOff] = useState([]);
             const roster = useMemo(() => CFG.rosterForDate(selectedGame), [selectedGame]);
             const game = CFG.findGame(selectedGame);
+            const v2 = format === 2;
+            const periods = v2 ? (info?.periods || []) : [];
 
-            const { segments, warnings } = useMemo(
-                () => C.buildSegments(rawHistory, roster, { startingLineup: info?.startingLineup }),
-                [rawHistory, roster, info?.startingLineup]
-            );
-            const counted = segments.filter(s => includeGarbageTime || !s.isGarbageTime);
+            const built = useMemo(() => C.buildGame(info, rawHistory, roster), [info, rawHistory, roster]);
+            const { segments, warnings } = built;
+            const inPeriod = (p) => !v2 || !periodsOff.includes(p);
+            const counted = segments.filter(s => (includeGarbageTime || !s.isGarbageTime) && inPeriod(s.period));
             const rows = C.aggregateLineups(counted.filter(s => s.lineup.every(isAvailable)), roster);
             const totals = C.playerTotals(counted);
-            const result = C.gameResult(rawHistory, info);
+            const usage = C.usageRows(counted, roster);
+            const shots = built.shots.filter(s => (includeGarbageTime || !s.garbage) && inPeriod(s.period));
+            const result = v2
+                ? (info?.ended && built.score.vt !== built.score.opp ? (built.score.vt > built.score.opp ? 'W' : 'L') : null)
+                : C.gameResult(rawHistory, info);
             const hasGarbage = segments.some(s => s.isGarbageTime);
 
             const textMain = darkMode ? 'text-white' : 'text-gray-900';
             const textSub = darkMode ? 'text-gray-400' : 'text-gray-500';
-            const endRecord = C.historyList(rawHistory).find(r => r.changes === 'End of Game');
-            const finalScore = info?.finalVtScore !== undefined ? `${info.finalVtScore}-${info.finalOppScore}`
+            const endRecord = v2 ? null : C.historyList(rawHistory).find(r => r.changes === 'End of Game');
+            const finalScore = v2 ? `${built.score.vt}-${built.score.opp}`
+                : info?.finalVtScore !== undefined ? `${info.finalVtScore}-${info.finalOppScore}`
                 : endRecord ? `${endRecord.vtScore}-${endRecord.oppScore}` : null;
+            const card = `rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`;
 
             return (
                 <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
@@ -103,6 +118,18 @@
                             </select>
                             <Toggle label="Garbage Time" value={includeGarbageTime} onChange={setIncludeGarbageTime} darkMode={darkMode} />
                         </div>
+                        {periods.length > 1 && (
+                            <div className={`flex flex-wrap justify-end items-center gap-3 mt-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <span>Periods counted:</span>
+                                {periods.map((p, i) => (
+                                    <label key={i} className="flex items-center gap-1 cursor-pointer">
+                                        <input type="checkbox" checked={!periodsOff.includes(i + 1)}
+                                            onChange={() => setPeriodsOff(off => off.includes(i + 1) ? off.filter(x => x !== i + 1) : [...off, i + 1])} />
+                                        {p.label} ({C.formatSeconds(p.length - (p.endClock || 0))})
+                                    </label>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex">
@@ -123,6 +150,18 @@
                                         </div>
                                     </div>
                                     <StatsTable rows={rows} darkMode={darkMode} emptyText="No lineup data available for this game" {...sort} />
+                                </div>
+                            )}
+                            {info?.started && v2 && (
+                                <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' }}>
+                                    <div className={card}>
+                                        <h3 className={`text-lg font-semibold mb-3 ${textMain}`}>Usage</h3>
+                                        <UsageTable usage={usage} darkMode={darkMode} />
+                                    </div>
+                                    <div className={card}>
+                                        <h3 className={`text-lg font-semibold mb-3 ${textMain}`}>Shot chart</h3>
+                                        <ShotChart shots={shots} roster={roster} darkMode={darkMode} />
+                                    </div>
                                 </div>
                             )}
                         </div>
