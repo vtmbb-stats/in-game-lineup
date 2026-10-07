@@ -14,7 +14,7 @@
 //   ft           { team, shooter? (vt), made, idx, of, oneAndOne?, reb?, ballTo? }
 //   to           { team, player? (vt) }
 //   expired      { team }               — time ran out on that team's possession
-//   foul         { }                    — foul on the floor, no change of possession
+//   foul         { }                    — (no longer logged) older 'foul on the floor' notes; ignored by all stats
 //   garbage      { clock }              — garbage time starts here
 //   adjust       { team, pts }          — manual score correction
 //   score_reset  { }                    — scoreboard back to 0-0 (exhibitions). Points before it still count

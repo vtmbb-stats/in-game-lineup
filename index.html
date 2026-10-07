@@ -730,7 +730,6 @@
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
-                                        <button className="btn bg-gray-100 text-gray-800" onClick={() => simple({ type: 'foul' })} disabled={!canPlay}>Foul on the floor</button>
                                         <button className="btn bg-gray-100 text-gray-800" onClick={didntHappen} disabled={!live}>Didn't happen<Key k="U" /></button>
                                         <button className="btn bg-gray-100 text-gray-800" onClick={undoLast} disabled={!events.length}>Undo last<Key k="Ctrl+Z" /></button>
                                         <button className="btn bg-gray-100 text-gray-800" onClick={() => setModal({ kind: 'adjust' })} disabled={!started}>Fix score</button>
