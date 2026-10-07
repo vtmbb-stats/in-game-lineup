@@ -605,7 +605,7 @@
                 return null;
             })();
 
-            const recent = [...events].reverse().slice(0, 10);
+            const recent = [...events].reverse().slice(0, 60);
             const placed = built ? built.shots.filter(s => s.x !== null) : [];
             const periodShots = periodOpen ? placed.filter(s => s.period === periodOpen.period) : placed;
 
@@ -667,7 +667,7 @@
                             </div>
 
                             {/* Right: what to enter next, then lineup, actions, and recent plays */}
-                            <div className="grid gap-3 content-start">
+                            <div className="flex flex-col gap-3 min-w-0" style={{ height: 'calc(100vh - 143px)', minHeight: 492 }}>
                                 {prompt ? (
                                     <div className="rounded-lg shadow p-4 bg-orange-50 border-2 border-orange-300 grid gap-3">
                                         <div className="flex justify-between items-start gap-3">
@@ -727,9 +727,9 @@
                                     </div>
                                 </div>
 
-                                <div className="bg-white rounded-lg shadow p-3">
+                                <div className="bg-white rounded-lg shadow p-3 flex flex-col min-h-[140px]" style={{ flex: '1 1 0' }}>
                                     <h3 className="font-semibold mb-2">Recent plays <span className="text-xs font-normal text-gray-500">(newest first)</span></h3>
-                                    <ul className="text-sm divide-y divide-gray-100">
+                                    <ul className="text-sm divide-y divide-gray-100 overflow-y-auto min-h-0" style={{ flex: '1 1 0' }}>
                                         {recent.map(e => (
                                             <li key={e.id} className={`py-1.5 flex justify-between gap-2 ${e.possVoid ? 'text-gray-400 line-through' : ''} ${e.needsPlacement || (e.type === 'shot' && e.team === 'vt' && (e.x === null || e.x === undefined)) ? 'text-amber-700' : ''}`}>
                                                 <span>{describe(e)}</span>
