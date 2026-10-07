@@ -668,20 +668,27 @@
 
                             {/* Right: what to enter next, then lineup, actions, and recent plays */}
                             <div className="grid gap-3 content-start">
-                                <div className={`rounded-lg shadow p-4 min-h-[132px] ${prompt ? 'bg-orange-50 border-2 border-orange-300' : 'bg-white'}`}>
-                                    {prompt ? (
-                                        <div className="grid gap-3">
-                                            <div className="flex justify-between items-start gap-3">
-                                                <div className="text-lg font-semibold">{prompt.title}</div>
-                                                {flow.k !== 'afterMake' && <button className="text-sm text-gray-600 underline" onClick={() => setFlow(null)}>Cancel (Esc)</button>}
-                                            </div>
-                                            {prompt.body}
-                                            {prompt.hint && <div className="text-xs text-gray-600">{prompt.hint}</div>}
+                                {prompt ? (
+                                    <div className="rounded-lg shadow p-4 bg-orange-50 border-2 border-orange-300 grid gap-3">
+                                        <div className="flex justify-between items-start gap-3">
+                                            <div className="text-lg font-semibold">{prompt.title}</div>
+                                            {flow.k !== 'afterMake' && <button className="text-sm text-gray-600 underline" onClick={() => setFlow(null)}>Cancel (Esc)</button>}
                                         </div>
-                                    ) : (
-                                        <div className="text-sm text-gray-500">{live ? (periodOpen ? 'Ready. Click the court for a VT shot (it shows this period\'s shots), or use the buttons below.' : 'Start the next period to continue.') : 'This game has ended. Use Review and Full log to fix anything.'}</div>
-                                    )}
-                                </div>
+                                        {prompt.body}
+                                        {prompt.hint && <div className="text-xs text-gray-600">{prompt.hint}</div>}
+                                    </div>
+                                ) : (
+                                    // Between plays: one line with the last entry, so a mistake is easy to spot and undo.
+                                    <div className="rounded-lg shadow px-4 py-2 bg-white flex items-center gap-3 text-sm">
+                                        {!live ? <span className="text-gray-600">This game has ended. Use Review and Full log to fix anything.</span>
+                                            : !periodOpen ? <span className="text-orange-700 font-semibold">Start the next period to continue.</span>
+                                            : events.length ? <>
+                                                <span className="text-gray-500 shrink-0">Last:</span>
+                                                <span className={`truncate ${events[events.length - 1].possVoid ? 'line-through text-gray-400' : 'text-gray-900'}`}>{describe(events[events.length - 1])}</span>
+                                                <button className="ml-auto shrink-0 text-gray-600 underline" onClick={undoLast}>Undo</button>
+                                            </> : <span className="text-gray-500">Click the court for a VT shot, or use the buttons below.</span>}
+                                    </div>
+                                )}
                                 <div className="bg-white rounded-lg shadow p-3">
                                     <div className="flex justify-between items-center mb-2">
                                         <h3 className="font-semibold">On the floor</h3>
