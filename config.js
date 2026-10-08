@@ -150,8 +150,8 @@
   // Turn on only AFTER the account exists in Firebase (Authentication → Users) and you've
   // tested signing in. `email` is the shared account, so the tablet only asks for the password.
   const INPUT_SIGN_IN = {
-    enabled: false,
-    email: ''
+    enabled: true,
+    email: 'bakerd23@vt.edu'
   };
 
   // ESPN team IDs, used for logos. Add new opponents here (find the number in the team's

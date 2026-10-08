@@ -1057,18 +1057,33 @@
             const [password, setPassword] = useState('');
             const [email, setEmail] = useState(CFG.INPUT_SIGN_IN.email || '');
             const [error, setError] = useState('');
+            // If sign-in can't be checked (no internet and nothing cached), never block logging: open the
+            // tracker anyway. Plays save on this computer, and the database only accepts uploads once signed in.
+            const [unchecked, setUnchecked] = useState(false);
             useEffect(() => {
                 let unsub;
-                const wait = setInterval(() => { if (!window.firebaseAuth) return; clearInterval(wait); unsub = window.firebaseAuth.onChange(setUser); }, 50);
-                return () => { clearInterval(wait); unsub && unsub(); };
+                const giveUp = setTimeout(() => setUnchecked(true), 4000);
+                const wait = setInterval(() => {
+                    if (!window.firebaseAuth) return;
+                    clearInterval(wait);
+                    unsub = window.firebaseAuth.onChange(u => { clearTimeout(giveUp); setUnchecked(false); setUser(u); });
+                }, 50);
+                return () => { clearInterval(wait); clearTimeout(giveUp); unsub && unsub(); };
             }, []);
+            if (user === undefined && unchecked) return <>
+                <div className="m-3 mb-0 rounded-lg p-3 bg-amber-100 text-amber-900 text-sm">Couldn't check sign-in (no connection). Keep logging: everything saves on this computer and uploads after you sign in.</div>
+                {children}
+            </>;
             if (user === undefined) return <div className="p-8 text-gray-500">Loading…</div>;
             if (user) return <>{children}<div className="text-center text-xs text-gray-500 pb-4">Signed in as {user} · <button className="underline" onClick={() => window.confirm('Sign out on this device?') && window.firebaseAuth.signOut()}>Sign out</button></div></>;
             return (
                 <div className="min-h-screen flex items-center justify-center p-4">
                     <form className="bg-white rounded-lg shadow-lg p-8 w-full max-w-sm grid gap-4" onSubmit={async (e) => {
                         e.preventDefault(); setError('');
-                        try { await window.firebaseAuth.signIn(email.trim(), password); } catch (err) { setError(err.code === 'auth/network-request-failed' ? 'No connection. Sign in once you have internet.' : 'Wrong password.'); }
+                        try { await window.firebaseAuth.signIn(email.trim(), password); } catch (err) { setError(err.code === 'auth/network-request-failed' ? 'No connection. Sign in once you have internet.'
+                            : err.code === 'auth/too-many-requests' ? 'Too many tries. Wait a few minutes, then try again.'
+                            : err.code === 'auth/operation-not-allowed' ? 'Email/password sign-in is not turned on in Firebase yet.'
+                            : 'Wrong password.'); }
                     }}>
                         <h1 className="text-2xl font-bold">VT Lineup Tracker</h1>
                         <p className="text-sm text-gray-600">Sign in once on this computer. You'll stay signed in.</p>
