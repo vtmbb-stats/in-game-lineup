@@ -75,6 +75,26 @@
             }
             await withTimeout(db.set(db.ref(`events/${g.date}`), clean(g.events)), 15000);
             await withTimeout(db.set(db.ref(`game-info/${g.date}`), info), 15000);
+            // End-of-game backup: a copy under backups/<date>/<time> that the app never overwrites.
+            // (the copy is frozen at the moment the game ended, so later edits never change it)
+            if (g.backup) {
+                const key = g.backup.savedAt.replace(/[.:]/g, '-');
+                await withTimeout(db.set(db.ref(`backups/${g.date}/${key}`), clean(g.backup)), 15000);
+            }
+        };
+
+        // Save a game as a JSON file in the laptop's Downloads folder.
+        const downloadBackup = (g) => {
+            try {
+                const opp = (g.info.opponent || 'Opponent').replace(/[^A-Za-z0-9]+/g, '-');
+                const blob = new Blob([JSON.stringify({ savedAt: g.savedAt || new Date().toISOString(), date: g.date, info: g.info, events: g.events }, null, 1)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `VT-vs-${opp}-${g.date}-backup.json`;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+                return true;
+            } catch { return false; }
         };
 
         // Games logged on this computer that still have changes waiting to upload.
@@ -263,7 +283,8 @@
                     await pushGame(g);
                     setGame(prev => {
                         if (!prev || prev.date !== g.date) return prev;
-                        const n = { ...prev, uploadedVersion: v, info: { ...prev.info, legacyCleanup: undefined } };
+                        const n = { ...prev, uploadedVersion: v, info: { ...prev.info, legacyCleanup: undefined },
+                            backup: prev.backup && g.backup && prev.backup.savedAt === g.backup.savedAt ? undefined : prev.backup };
                         store.save(n.date, clean(n));
                         return clean(n);
                     });
@@ -290,7 +311,7 @@
                         try {
                             await pushGame(g);
                             const cur = store.load(g.date);
-                            if (cur && cur.version === g.version) { cur.uploadedVersion = g.version; delete cur.info.legacyCleanup; store.save(g.date, cur); }
+                            if (cur && cur.version === g.version) { cur.uploadedVersion = g.version; delete cur.info.legacyCleanup; if (cur.backup && g.backup && cur.backup.savedAt === g.backup.savedAt) delete cur.backup; store.save(g.date, cur); }
                         } catch { /* try again next round */ }
                     }
                     setOtherPending(pendingGames().filter(g => g.date !== gameRef.current?.date).length);
@@ -352,11 +373,23 @@
                 if (periodOpen) { setModal({ kind: 'endPeriod', clock: '0:00', thenEndGame: true }); return; }
                 finishGame();
             };
+            // Ending a game also backs it up: a file on this computer, and a copy in the database's backups section.
+            const backupFileFor = useRef(null);
             const finishGame = () => {
-                mutate(g => { g.info.ended = true; g.info.endTime = new Date().toISOString(); g.info.finalVtScore = built.displayScore.vt; g.info.finalOppScore = built.displayScore.opp; });
+                const stamp = new Date().toISOString();
+                backupFileFor.current = stamp;
+                mutate(g => { g.info.ended = true; g.info.endTime = stamp; g.info.finalVtScore = built.displayScore.vt; g.info.finalOppScore = built.displayScore.opp;
+                    g.backup = clean({ savedAt: stamp, info: g.info, events: g.events }); });
                 setModal(reviewCount ? { kind: 'review' } : null);
-                showToast('Game ended. ' + (reviewCount ? `${reviewCount} item${reviewCount > 1 ? 's' : ''} to review.` : 'Nothing left to review.'));
+                showToast('Game ended and backed up. ' + (reviewCount ? `${reviewCount} item${reviewCount > 1 ? 's' : ''} to review.` : 'Nothing left to review.'));
             };
+            // Download once the end-of-game changes (including the last period's end) are in the saved game.
+            useEffect(() => {
+                if (game && backupFileFor.current && game.backup?.savedAt === backupFileFor.current) {
+                    backupFileFor.current = null;
+                    if (!downloadBackup({ date: game.date, ...game.backup })) showToast("Couldn't save the backup file. The database copy will still be made.");
+                }
+            }, [game]);
 
             // ----- possession flows -----
             const canPlay = live && periodOpen && lineupNow.length === 5;
