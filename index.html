@@ -67,7 +67,7 @@
             const info = clean({
                 ...g.info, legacyCleanup: undefined,
                 vtScore: b.displayScore.vt, oppScore: b.displayScore.opp,
-                currentLineup: C.idsToNames(b.lineup || [], roster),
+                currentLineup: C.idsToNames((b.lineup || []).slice().sort((x, y) => roster.findIndex(p => p.id === x) - roster.findIndex(p => p.id === y)), roster),
                 currentPeriod: b.period, lastUpdated: g.updatedAt
             });
             if (g.info.legacyCleanup) {

@@ -31,11 +31,11 @@
       label: '2026-27',
       // Listed in display order (lineup names, player lists, and dropdowns all follow it).
       roster: [
-        { id: 3,  name: 'Ben Hammond',       position: 'G' },
         { id: 0,  name: 'Jaylen Curry',      position: 'G' },
         { id: 11, name: 'James Caldarella',  position: 'G' },
-        { id: 1,  name: 'Ethan Copeland',    position: 'G' },
+        { id: 3,  name: 'Ben Hammond',       position: 'G' },
         { id: 33, name: 'Butta Johnson',     position: 'G' },
+        { id: 1,  name: 'Ethan Copeland',    position: 'G' },
         { id: 2,  name: 'Isaiah Elohim',     position: 'G' },
         { id: 4,  name: 'Ned Hull',          position: 'G' },
         { id: 8,  name: 'Eltayeb Eltayeb',   position: 'F', flexBig: true },
