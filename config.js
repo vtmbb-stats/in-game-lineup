@@ -48,7 +48,7 @@
         { id: 22, name: 'Solomon Davis',     position: 'C' }
       ],
       // Pre-filled when you press Start Game (jersey numbers). Can be changed in the picker.
-      defaultStarters: [3, 2, 10, 13, 6], // Hammond, Elohim, T. Johnson, Hansberry, Heide
+      defaultStarters: [0, 3, 2, 13, 6], // Curry, Hammond, Elohim, Hansberry, Heide
       schedule: [
         { date: '2026-10-06', opponent: 'Liberty', exhibition: true },
         { date: '2026-10-16', opponent: 'Wofford', site: 'away', exhibition: true },

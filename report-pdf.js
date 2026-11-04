@@ -58,7 +58,13 @@
             headStyles: { fontStyle: 'bold', textColor: GREY, fontSize: 7, lineWidth: { bottom: 0.8 }, lineColor: INK },
             // number columns: right-align the header over the numbers
         };
-        const alignHeads = (d) => { if (d.section === 'head' && d.column.index > 0) d.cell.styles.halign = 'right'; };
+        // Page 1 has room to spare, so its tables use larger text than the lineups page.
+        const bigTableStyle = {
+            ...tableStyle,
+            styles: { ...tableStyle.styles, fontSize: 10, cellPadding: { top: 4, bottom: 4, left: 4, right: 4 } },
+            headStyles: { ...tableStyle.headStyles, fontSize: 8.5 }
+        };
+        const alignHeads =(d) => { if (d.section === 'head' && d.column.index > 0) d.cell.styles.halign = 'right'; };
 
         // ---- page 1: shot chart + zones (left), usage (right) ----
         const top = header();
@@ -86,7 +92,7 @@
             leftY += 14;
         }
         doc.autoTable({
-            ...tableStyle, startY: leftY, margin: { left: M }, tableWidth: leftW,
+            ...bigTableStyle, startY: leftY, margin: { left: M }, tableWidth: leftW,
             head: [['Zone', 'FG', 'FG%', 'Pts/shot', 'Share']],
             body: opts.zones.map(z => [z.zone, `${z.fgm}-${z.fga}`, z.pct === null ? '-' : `${Math.round(z.pct * 100)}%`,
                 z.pps === null ? '-' : z.pps.toFixed(2), z.fga ? `${Math.round(z.share * 100)}%` : '-']),
@@ -100,7 +106,7 @@
         const pmCell = (v) => ({ content: C.fmtPM(v || 0), styles: { fillColor: v > 0 ? GOOD : v < 0 ? BAD : null } });
         const frac = (m, a) => (a ? `${m}-${a}` : '-');
         doc.autoTable({
-            ...tableStyle, startY: top + 8, margin: { left: rightX }, tableWidth: rightW,
+            ...bigTableStyle, startY: top + 8, margin: { left: rightX }, tableWidth: rightW,
             head: [['Player', 'Min', '+/-', 'Pts', 'FG', '3PT', 'FT', 'TO', 'USG%']],
             body: [
                 ...rows.map(r => [`#${r.id} ${r.name}`, C.formatSeconds(r.seconds), pmCell(r.plusMinus), r.pts, frac(r.fgm, r.fga),
