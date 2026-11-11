@@ -246,7 +246,7 @@
             const started = !!game?.info?.started;
             const ended = !!game?.info?.ended;
             const live = started && !ended;
-            const reviewCount = built ? built.review.unplacedSubs.length + built.review.unseenShots.length : 0;
+            const reviewCount = built ? built.review.unplacedSubs.length + built.review.unseenShots.length + built.review.unknownPoss.length : 0;
 
             // ----- persistence -----
             const mutate = (fn) => {
@@ -271,13 +271,32 @@
             const patchEvent = (id, patch) => mutate(g => { if (g.events[id]) Object.assign(g.events[id], clean(patch)); Object.keys(patch).forEach(k => { if (patch[k] === undefined || patch[k] === null) delete g.events[id][k]; }); });
             const deleteEvent = (id) => mutate(g => { delete g.events[id]; });
             // Scorer's change: switch a shot between a 2 and a 3. After the game, keep the saved final score in step.
+            const syncFinal = (g) => {
+                if (!g.info.ended) return;
+                const b = C.buildPlayLog(g.info, g.events, roster);
+                g.info.finalVtScore = b.displayScore.vt; g.info.finalOppScore = b.displayScore.opp;
+            };
             const changeShotValue = (id, pts) => mutate(g => {
                 if (!g.events[id]) return;
                 g.events[id].pts = pts;
-                if (g.info.ended) {
-                    const b = C.buildPlayLog(g.info, g.events, roster);
-                    g.info.finalVtScore = b.displayScore.vt; g.info.finalOppScore = b.displayScore.opp;
-                }
+                syncFinal(g);
+            });
+            // Fill in a possession that wasn't seen: the placeholder is replaced, in the same spot in the log,
+            // by the plays that really happened (parts, in order). The last one ends the possession.
+            const resolveUnknown = (id, parts) => mutate(g => {
+                const ph = g.events[id];
+                if (!ph || ph.type !== 'unknown' || !parts.length) return;
+                const later = Object.values(g.events).filter(e => e.seq > ph.seq).map(e => e.seq);
+                const next = later.length ? Math.min(...later) : ph.seq + 1;
+                const step = (next - ph.seq) / (parts.length + 1);
+                delete g.events[id];
+                parts.forEach((p, i) => {
+                    const nid = i === 0 ? id : newId();
+                    const last = i === parts.length - 1;
+                    g.events[nid] = clean({ ...p, id: nid, seq: i === 0 ? ph.seq : ph.seq + step * i,
+                        poss: last ? ph.team : undefined, possVoid: last && ph.possVoid ? true : undefined });
+                });
+                syncFinal(g);
             });
 
             // ----- upload whenever there are new changes and we're connected -----
@@ -403,7 +422,7 @@
             // ----- possession flows -----
             const canPlay = live && periodOpen && lineupNow.length === 5;
             const needPeriod = () => { showToast(!started ? 'Start the game first.' : ended ? 'This game has ended.' : 'Start the next period first.'); };
-            const busy = flow && flow.k !== 'afterMake';
+            const busy = flow && flow.k !== 'afterMake' && flow.k !== 'afterUnknown';
             const begin = (f) => {
                 if (!canPlay) { needPeriod(); return; }
                 if (busy) { showToast('Finish the current entry first, or press Esc to cancel it.'); return; }
@@ -482,6 +501,15 @@
                 const e = commit({ type: 'shot', team: 'opp', pts, made: true, poss: 'opp' });
                 setFlow({ k: 'afterMake', team: 'opp', eventId: e.id });
             };
+            // A possession the logger didn't see. Counts right away (so the ball and possession counts stay right);
+            // points can be added now if known, and the details filled in later from Review.
+            const unknownPoss = (team) => {
+                if (!canPlay) { needPeriod(); return; }
+                if (busy) { showToast('Finish the current entry first, or press Esc to cancel it.'); return; }
+                const e = commit({ type: 'unknown', team, poss: team });
+                setFlow({ k: 'afterUnknown', team, eventId: e.id, pts: 0 });
+            };
+            const unknownPts = (pts) => { patchEvent(flow.eventId, { pts: pts || null }); setFlow({ ...flow, pts }); };
             const simple = (ev) => {
                 if (!canPlay) { needPeriod(); return; }
                 if (busy) { showToast('Finish the current entry first, or press Esc to cancel it.'); return; }
@@ -499,6 +527,7 @@
                         : `${opponent} ${e.made ? 'made' : 'missed'}${e.made ? ' ' + e.pts : ''}${e.andOne ? ' + and-1' : ''}${reb(e)}`;
                     case 'ft': return `${e.team === 'vt' ? who(e.shooter) : opponent} FT ${e.idx} of ${e.of}${e.oneAndOne ? ' (1-and-1)' : ''}: ${e.made ? 'made' : 'missed'}${reb(e)}`;
                     case 'to': return `${e.team === 'vt' ? 'VT turnover: ' + who(e.player) : opponent + ' turnover'}`;
+                    case 'unknown': return `${e.team === 'vt' ? 'VT' : opponent} possession not seen${e.pts ? ` (${e.pts} point${e.pts > 1 ? 's' : ''} scored)` : ''}: fill in from Review`;
                     case 'expired': return `Time expired on ${e.team === 'vt' ? 'VT' : opponent}'s possession`;
                     case 'foul': return 'Foul on the floor';
                     case 'garbage': return `${C.formatSeconds(e.clock)} Garbage time starts`;
@@ -564,6 +593,7 @@
                         if (f.step === 'ballTo' && 'vok'.includes(k)) { ballTo(k === 'v' ? 'vt' : k === 'o' ? 'opp' : 'expired'); return; }
                         if (f.k === 'vtShot' && f.step !== 'pts' && k === 'p') { setFlow({ ...f, pts: f.pts === 3 ? 2 : 3 }); return; }
                         if (f.k === 'afterMake' && ((f.team === 'vt' && k === 'a') || (f.team === 'opp' && k === 's'))) { andOne(); return; }
+                        if (f.k === 'afterUnknown' && '0123'.includes(k)) { unknownPts(+k); return; }
                     }
                     if (k === 'b') { openSub(); return; }
                     if (k === 'u') { didntHappen(); return; }
@@ -575,6 +605,8 @@
                     if (k === 'r') { begin({ k: 'oppMiss', step: 'reb' }); return; }
                     if (k === 'd') { startFTs('opp'); return; }
                     if (k === 'g') { simple({ type: 'to', team: 'opp', poss: 'opp' }); return; }
+                    if (k === 'y') { unknownPoss('vt'); return; }
+                    if (k === 'h') { unknownPoss('opp'); return; }
                 };
                 window.addEventListener('keydown', onKey);
                 return () => window.removeEventListener('keydown', onKey);
@@ -635,6 +667,11 @@
                     <button className="btn bg-gray-600 text-white" onClick={() => ballTo('expired')}>Time expired<Key k="K" /></button>
                 </>);
                 if (f.k === 'afterMake') return { title: `${f.team === 'vt' ? last(f.shooter) : opponent} made it.`, body: row(<button className="btn bg-purple-600 text-white" onClick={andOne}>And-1<Key k={f.team === 'vt' ? 'A' : 'S'} /></button>), hint: 'Or just keep going with the next play.' };
+                if (f.k === 'afterUnknown') return {
+                    title: `${f.team === 'vt' ? 'VT' : opponent} possession not seen: saved.`,
+                    body: row([0, 1, 2, 3].map(p => <button key={p} className={`btn ${f.pts === p ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-900'}`} onClick={() => unknownPts(p)}>{p === 0 ? 'No points' : `${p} point${p > 1 ? 's' : ''}`}<Key k={String(p)} /></button>)),
+                    hint: 'If you know the points scored, pick them so the score stays right. Otherwise keep going. Fill in what happened later from Review.'
+                };
                 if (f.k === 'vtShot') {
                     if (f.step === 'pts') return { title: 'Shot (spot not seen): 2 or 3?', body: row(<><button className="btn bg-gray-800 text-white" onClick={() => setFlow({ ...f, pts: 2, step: 'shooter' })}>2-pointer<Key k="2" /></button><button className="btn bg-gray-800 text-white" onClick={() => setFlow({ ...f, pts: 3, step: 'shooter' })}>3-pointer<Key k="3" /></button></>) };
                     const ptsBtn = <button className="btn bg-gray-200 text-gray-900" onClick={() => setFlow({ ...f, pts: f.pts === 3 ? 2 : 3 })}>It's a {f.pts === 3 ? '2' : '3'}<Key k="P" /></button>;
@@ -730,7 +767,7 @@
                                     <div className="rounded-lg shadow p-4 bg-orange-50 border-2 border-orange-300 grid gap-3">
                                         <div className="flex justify-between items-start gap-3">
                                             <div className="text-lg font-semibold">{prompt.title}</div>
-                                            {flow.k !== 'afterMake' && <button className="text-sm text-gray-600 underline" onClick={() => setFlow(null)}>Cancel (Esc)</button>}
+                                            {flow.k !== 'afterMake' && flow.k !== 'afterUnknown' && <button className="text-sm text-gray-600 underline" onClick={() => setFlow(null)}>Cancel (Esc)</button>}
                                         </div>
                                         {prompt.body}
                                         {prompt.hint && <div className="text-xs text-gray-600">{prompt.hint}</div>}
@@ -764,6 +801,7 @@
                                             <button className="btn bg-orange-600 text-white" onClick={() => startFTs('vt')} disabled={!canPlay}>Free throws<Key k="F" /></button>
                                             <button className="btn bg-orange-600 text-white" onClick={() => begin({ k: 'vtTO', step: 'player' })} disabled={!canPlay}>Turnover<Key k="T" /></button>
                                             <button className="btn bg-orange-100 text-orange-900" onClick={() => simple({ type: 'expired', team: 'vt', poss: 'vt' })} disabled={!canPlay} title="The clock ran out while VT had the ball. Ends VT's possession.">Time expired</button>
+                                            <button className="btn bg-orange-100 text-orange-900" onClick={() => unknownPoss('vt')} disabled={!canPlay} title="A VT possession you didn't see. Counts it now; fill in what happened later from Review.">Didn't see it<Key k="Y" /></button>
                                         </div>
                                     </div>
                                     <div>
@@ -775,6 +813,7 @@
                                             <button className="btn bg-blue-600 text-white" onClick={() => startFTs('opp')} disabled={!canPlay}>Free throws<Key k="D" /></button>
                                             <button className="btn bg-blue-600 text-white" onClick={() => simple({ type: 'to', team: 'opp', poss: 'opp' })} disabled={!canPlay}>Turnover<Key k="G" /></button>
                                             <button className="btn bg-blue-100 text-blue-900" onClick={() => simple({ type: 'expired', team: 'opp', poss: 'opp' })} disabled={!canPlay} title={`The clock ran out while ${opponent} had the ball. Ends their possession.`}>Time expired</button>
+                                            <button className="btn bg-blue-100 text-blue-900" onClick={() => unknownPoss('opp')} disabled={!canPlay} title={`A ${opponent} possession you didn't see. Counts it now; fill in what happened later from Review.`}>Didn't see it<Key k="H" /></button>
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
@@ -795,7 +834,7 @@
                                     <h3 className="font-semibold mb-2">Recent plays <span className="text-xs font-normal text-gray-500">(newest first)</span></h3>
                                     <ul className="text-sm divide-y divide-gray-100 overflow-y-auto min-h-0" style={{ flex: '1 1 0' }}>
                                         {recent.map(e => (
-                                            <li key={e.id} className={`py-1.5 flex justify-between gap-2 ${e.possVoid ? 'text-gray-400 line-through' : ''} ${e.needsPlacement || (e.type === 'shot' && e.team === 'vt' && (e.x === null || e.x === undefined)) ? 'text-amber-700' : ''}`}>
+                                            <li key={e.id} className={`py-1.5 flex justify-between gap-2 ${e.possVoid ? 'text-gray-400 line-through' : ''} ${e.needsPlacement || e.type === 'unknown' || (e.type === 'shot' && e.team === 'vt' && (e.x === null || e.x === undefined)) ? 'text-amber-700' : ''}`}>
                                                 <span>{describe(e)}</span>
                                                 {e.type === 'sub' && <button className="text-xs underline text-gray-600 shrink-0" onClick={() => setModal({ kind: 'editSub', sub: e, clock: e.clock === null || e.clock === undefined ? '' : C.formatSeconds(e.clock) })}>Fix time</button>}
                                             </li>
@@ -949,7 +988,7 @@
 
                     {modal?.kind === 'review' && built && (
                         <ReviewModal built={built} events={events} roster={roster} describe={describe} opponent={opponent} courtSide={courtSide}
-                            onClose={() => setModal(null)} patchEvent={patchEvent} placeSub={placeSub} changeShotValue={changeShotValue} />
+                            onClose={() => setModal(null)} patchEvent={patchEvent} placeSub={placeSub} changeShotValue={changeShotValue} resolveUnknown={resolveUnknown} />
                     )}
 
                     {modal?.kind === 'log' && built && (
@@ -967,9 +1006,9 @@
                     <details className="mt-3 text-xs text-gray-600 bg-white rounded-lg shadow p-3">
                         <summary className="cursor-pointer font-semibold">Keyboard shortcuts</summary>
                         <div className="grid grid-cols-3 gap-2 mt-2">
-                            <div><b>VT</b>: click court = shot · Q shot (spot not seen) · 1–5 player · M make · X miss · P switch 2/3 · A and-1 · F free throws · T turnover</div>
-                            <div><b>{opponent}</b>: W made 2 · E made 3 · R missed · D free throws · S and-1 · G turnover</div>
-                            <div><b>Rebounds</b>: V VT · O {opponent} · N none, then V / O / K (time expired). <b>Other</b>: B sub · U didn't happen · Ctrl+Z undo · Esc cancel</div>
+                            <div><b>VT</b>: click court = shot · Q shot (spot not seen) · 1–5 player · M make · X miss · P switch 2/3 · A and-1 · F free throws · T turnover · Y possession not seen</div>
+                            <div><b>{opponent}</b>: W made 2 · E made 3 · R missed · D free throws · S and-1 · G turnover · H possession not seen</div>
+                            <div><b>Rebounds</b>: V VT · O {opponent} · N none, then V / O / K (time expired). <b>Not seen</b>: then 0–3 for points scored, if known. <b>Other</b>: B sub · U didn't happen · Ctrl+Z undo · Esc cancel</div>
                         </div>
                     </details>
                 </div>
@@ -977,7 +1016,8 @@
         };
 
         // Lists everything that still needs attention: shots with no spot, subs with no placement.
-        const ReviewModal = ({ built, events, roster, describe, opponent, onClose, patchEvent, placeSub, changeShotValue, courtSide }) => {
+        const ReviewModal = ({ built, events, roster, describe, opponent, onClose, patchEvent, placeSub, changeShotValue, resolveUnknown, courtSide }) => {
+            const [filling, setFilling] = useState(null);         // the unseen possession being filled in
             const [placingShot, setPlacingShot] = useState(null);
             const [placingSub, setPlacingSub] = useState(null);   // { sub, before, clock }
             const [showMissed, setShowMissed] = useState(false);
@@ -993,8 +1033,10 @@
                 });
                 return rows;
             }, [events]);
-            const unseen = built.review.unseenShots, unplaced = built.review.unplacedSubs;
+            const unseen = built.review.unseenShots, unplaced = built.review.unplacedSubs, unknown = built.review.unknownPoss;
             const name = (id) => roster.find(p => p.id === id)?.name || `#${id}`;
+            if (filling) return <FillPossession ph={filling} events={events} roster={roster} opponent={opponent} describe={describe}
+                onCancel={() => setFilling(null)} onSave={(parts) => { resolveUnknown(filling.id, parts); setFilling(null); }} />;
             if (placingShot) {
                 const s = events.find(e => e.id === placingShot.id) || placingShot;
                 const geo = s.x !== null && s.x !== undefined ? (C.isThree(s.x, s.y) ? 3 : 2) : null;
@@ -1055,7 +1097,24 @@
             }
             return (
                 <Modal title="Review" onClose={onClose} wide>
-                    {!unseen.length && !unplaced.length && <p className="text-green-700 font-medium">Nothing to review. Every shot has a spot and every sub is placed.</p>}
+                    {!unseen.length && !unplaced.length && !unknown.length && <p className="text-green-700 font-medium">Nothing to review. Every shot has a spot, every sub is placed and every possession is filled in.</p>}
+                    {unknown.length > 0 && (
+                        <div className="mb-6">
+                            <h4 className="font-semibold mb-2">Possessions to fill in ({unknown.length})</h4>
+                            <ul className="divide-y divide-gray-100 border border-gray-200 rounded">
+                                {unknown.map(e => {
+                                    const i = events.findIndex(x => x.id === e.id);
+                                    const prev = events.slice(0, i).reverse().find(x => x.type !== 'sub');
+                                    return (
+                                        <li key={e.id} className="flex justify-between items-center gap-3 px-3 py-2 text-sm">
+                                            <span>{describe(e).replace(/: fill in from Review$/, '')}{prev && <span className="text-gray-500"> · after: {describe(prev)}</span>}</span>
+                                            <button className="btn bg-amber-600 text-white shrink-0" onClick={() => setFilling(e)}>Fill in</button>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </div>
+                    )}
                     {unplaced.length > 0 && (
                         <div className="mb-6">
                             <h4 className="font-semibold mb-2">Subs to place ({unplaced.length})</h4>
@@ -1101,6 +1160,98 @@
                         </div>
                     </details>
                     <button className="btn w-full border border-gray-300 mt-6" onClick={onClose}>Close</button>
+                </Modal>
+            );
+        };
+
+        // Fill in what happened on a possession that wasn't seen. Builds the plays that replace the placeholder.
+        const FillPossession = ({ ph, events, roster, opponent, describe, onCancel, onSave }) => {
+            const team = ph.team, isVT = team === 'vt', other = isVT ? 'opp' : 'vt';
+            const teamName = isVT ? 'VT' : opponent, otherName = isVT ? opponent : 'VT';
+            const [f, setF] = useState({ outcome: null, pts: 2, shooter: null, andOne: false, andOneMade: true, ftCount: 2, ftMade: 2, end: 'reb' });
+            const set = (patch) => setF(prev => ({ ...prev, ...patch }));
+            // Who was on the floor at that moment
+            const floor = useMemo(() => {
+                let fl = [];
+                events.filter(e => e.seq < ph.seq).forEach(e => {
+                    if (e.type === 'period_start') fl = [...e.lineup];
+                    if (e.type === 'sub') fl = fl.filter(id => !(e.out || []).includes(id)).concat(e.in || []);
+                });
+                return fl.sort((a, b) => roster.findIndex(p => p.id === a) - roster.findIndex(p => p.id === b));
+            }, [events, ph, roster]);
+            const nm = (id) => roster.find(p => p.id === id)?.name || `#${id}`;
+            const needsShooter = isVT && ['made', 'missed', 'ft', 'to'].includes(f.outcome);
+            const hasFTs = f.outcome === 'ft' || (f.outcome === 'made' && f.andOne);
+            const ftN = f.outcome === 'ft' ? f.ftCount : 1;
+            const ftM = f.outcome === 'ft' ? Math.min(f.ftMade, f.ftCount) : (f.andOneMade ? 1 : 0);
+            const endsInMiss = f.outcome === 'missed' || (hasFTs && ftM < ftN);
+            const points = (f.outcome === 'made' ? f.pts : 0) + (hasFTs ? ftM : 0);
+            const ready = !!f.outcome && (!needsShooter || f.shooter !== null || f.outcome === 'to');
+            const build = () => {
+                const who = isVT && f.shooter !== null ? f.shooter : undefined;
+                const endFields = f.end === 'reb' ? { reb: other } : { reb: 'none', ballTo: f.end === 'expired' ? 'expired' : other };
+                const parts = [];
+                if (f.outcome === 'made' || f.outcome === 'missed')
+                    parts.push({ type: 'shot', team, pts: f.pts, made: f.outcome === 'made', shooter: who,
+                        x: isVT ? null : undefined, y: isVT ? null : undefined, andOne: hasFTs || undefined,
+                        ...(f.outcome === 'missed' ? endFields : {}) });
+                if (f.outcome === 'to') parts.push({ type: 'to', team, player: who });
+                if (f.outcome === 'expired') parts.push({ type: 'expired', team });
+                if (hasFTs) {
+                    // Makes first, then misses, so the last free throw carries the rebound when one was missed.
+                    for (let i = 1; i <= ftN; i++) {
+                        const made = i <= ftM;
+                        parts.push({ type: 'ft', team, shooter: who, idx: i, of: ftN, made, andOne: f.outcome === 'made' || undefined,
+                            ...(i === ftN && !made ? endFields : {}) });
+                    }
+                }
+                return parts;
+            };
+            const choice = (active, label, onClick, key) => (
+                <button key={key ?? label} className={`btn border ${active ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-300'}`} onClick={onClick}>{label}</button>
+            );
+            const row = (label, children) => <div className="mb-4"><div className="text-sm font-medium mb-1.5">{label}</div><div className="flex flex-wrap gap-2">{children}</div></div>;
+            return (
+                <Modal title={`What happened on this ${teamName} possession?`} onClose={onCancel} wide>
+                    <p className="text-sm text-gray-600 mb-4">{describe(ph).replace(/: fill in from Review$/, '')}. It stays in the same place in the game, and the possession still ends with the ball going to {otherName}.</p>
+                    {row('Outcome', [
+                        choice(f.outcome === 'made', 'Made shot', () => set({ outcome: 'made' })),
+                        choice(f.outcome === 'missed', 'Missed shot', () => set({ outcome: 'missed' })),
+                        choice(f.outcome === 'ft', 'Fouled: free throws', () => set({ outcome: 'ft' })),
+                        choice(f.outcome === 'to', 'Turnover', () => set({ outcome: 'to' })),
+                        choice(f.outcome === 'expired', 'Time expired', () => set({ outcome: 'expired' }))
+                    ])}
+                    {(f.outcome === 'made' || f.outcome === 'missed') && row('Shot', [
+                        choice(f.pts === 2, '2-pointer', () => set({ pts: 2 })),
+                        choice(f.pts === 3, '3-pointer', () => set({ pts: 3 }))
+                    ])}
+                    {needsShooter && row(f.outcome === 'to' ? 'Who turned it over? (optional)' : f.outcome === 'ft' ? 'Who shot the free throws?' : 'Who shot it?',
+                        floor.map(id => choice(f.shooter === id, `#${id} ${nm(id)}`, () => set({ shooter: id }), id)))}
+                    {f.outcome === 'made' && row('And-1?', [
+                        choice(!f.andOne, 'No', () => set({ andOne: false })),
+                        choice(f.andOne && f.andOneMade, 'And-1, free throw made', () => set({ andOne: true, andOneMade: true })),
+                        choice(f.andOne && !f.andOneMade, 'And-1, free throw missed', () => set({ andOne: true, andOneMade: false }))
+                    ])}
+                    {f.outcome === 'ft' && <>
+                        {row('How many free throws?', [1, 2, 3].map(n => choice(f.ftCount === n, String(n), () => set({ ftCount: n, ftMade: Math.min(f.ftMade, n) }), n)))}
+                        {row('How many made?', Array.from({ length: f.ftCount + 1 }, (_, n) => choice(ftM === n, String(n), () => set({ ftMade: n }), n)))}
+                    </>}
+                    {endsInMiss && row(`After the miss, the ball went to ${otherName}:`, [
+                        choice(f.end === 'reb', `${otherName} rebound`, () => set({ end: 'reb' })),
+                        choice(f.end === 'none', 'No rebound (out of bounds)', () => set({ end: 'none' })),
+                        choice(f.end === 'expired', 'Time expired', () => set({ end: 'expired' }))
+                    ])}
+                    {f.outcome && (
+                        <p className="text-sm text-gray-700">
+                            {teamName} scores {points} point{points === 1 ? '' : 's'} on this possession
+                            {(ph.pts || 0) !== points ? ` (it was entered as ${ph.pts || 0}, so the score changes by ${points - (ph.pts || 0) > 0 ? '+' : ''}${points - (ph.pts || 0)})` : ''}.
+                        </p>
+                    )}
+                    <div className="flex gap-3 mt-5">
+                        <div className="flex-1"></div>
+                        <button className="btn border border-gray-300" onClick={onCancel}>Back</button>
+                        <button className="btn bg-green-600 text-white" disabled={!ready} onClick={() => onSave(build())}>Save</button>
+                    </div>
                 </Modal>
             );
         };

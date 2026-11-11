@@ -14,6 +14,8 @@
 //   ft           { team, shooter? (vt), made, idx, of, oneAndOne?, reb?, ballTo? }
 //   to           { team, player? (vt) }
 //   expired      { team }               — time ran out on that team's possession
+//   unknown      { team, pts? }         — a possession the logger didn't see; filled in later from the Review list.
+//                                         pts (optional) = points scored on it, if known. Always ends that team's possession.
 //   foul         { }                    — (no longer logged) older 'foul on the floor' notes; ignored by all stats
 //   garbage      { clock }              — garbage time starts here
 //   adjust       { team, pts }          — manual score correction
@@ -83,7 +85,7 @@
         const addPeriodPts = (team, pts) => { const p = periodScores[period] || (periodScores[period] = { vt: 0, opp: 0 }); p[team] += pts; };
         const poss = { vt: 0, opp: 0 };
         let lineup = null, period = 0, garbage = false, seg = null;
-        const review = { unplacedSubs: [], unseenShots: [] };
+        const review = { unplacedSubs: [], unseenShots: [], unknownPoss: [] };
 
         const open = (clock) => {
             seg = {
@@ -174,6 +176,12 @@
                 case 'expired':
                     countPoss(e);
                     break;
+                case 'unknown':
+                    outsideStint(e);
+                    if (e.pts) { score[e.team] += e.pts; addPeriodPts(e.team, e.pts); }
+                    review.unknownPoss.push(e);
+                    countPoss(e);
+                    break;
                 case 'adjust':
                     score[e.team] += e.pts; addPeriodPts(e.team, e.pts);
                     break;
@@ -189,6 +197,7 @@
             if (opts.current && !info?.ended) close(null, { isCurrent: true });
             else close(null);
         }
+        if (review.unknownPoss.length) warnings.push(`${review.unknownPoss.length} ${review.unknownPoss.length > 1 ? 'possessions still need' : 'possession still needs'} an outcome filled in. Shooting and turnover numbers leave those out until then.`);
         if (review.unplacedSubs.length) warnings.push(`${review.unplacedSubs.length} ${review.unplacedSubs.length > 1 ? 'subs still need' : 'sub still needs'} to be placed. Lineup stats near an unplaced sub are approximate until it's placed.`);
 
         // displayScore is what the scoreboard shows (restarts at each reset); score is the full running total.
@@ -203,7 +212,7 @@
             startingLineup: info?.startingLineup,
             current: opts.current ? opts.legacyCurrent : undefined
         });
-        return { ...legacy, shots: [], review: { unplacedSubs: [], unseenShots: [] } };
+        return { ...legacy, shots: [], review: { unplacedSubs: [], unseenShots: [], unknownPoss: [] } };
     };
 
     const dataPath = (info, date) => (info?.format === 2 ? `events/${date}` : `lineup-changes/${date}`);
