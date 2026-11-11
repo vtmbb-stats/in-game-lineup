@@ -102,9 +102,12 @@
             const out = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const k = localStorage.key(i);
-                if (!k || !k.startsWith('vtlt-game-')) continue;
-                const g = store.load(k.slice('vtlt-game-'.length));
-                if (g && g.info?.format === 2 && g.version !== g.uploadedVersion) out.push(g);
+                // Only real game copies (vtlt-game-YYYY-MM-DD). Anything else with this prefix, such as a hand-made
+                // backup, is ignored: uploading it would overwrite that game online (Mercer was reverted this way).
+                const m = k && k.match(/^vtlt-game-(\d{4}-\d{2}-\d{2})$/);
+                if (!m) continue;
+                const g = store.load(m[1]);
+                if (g && g.date === m[1] && g.info?.format === 2 && g.version !== g.uploadedVersion) out.push(g);
             }
             return out;
         };
