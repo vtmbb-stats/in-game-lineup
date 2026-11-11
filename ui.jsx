@@ -443,7 +443,7 @@
                     const pool = (games || []).filter(g => v || !g.exhibition);
                     set({ includeExhibitions: v, from: pool[0]?.date || '', to: pool[pool.length - 1]?.date || '' });
                 }} />
-                {garbage && <Toggle label="Garbage Time" value={f.includeGarbageTime} onChange={(v) => set({ includeGarbageTime: v })} darkMode={darkMode} />}
+                {garbage && CFG().SHOW_GARBAGE_TIME_FILTER && <Toggle label="Garbage Time" value={f.includeGarbageTime} onChange={(v) => set({ includeGarbageTime: v })} darkMode={darkMode} />}
                 <Toggle label="Losses" value={f.includeLosses} onChange={(v) => set({ includeLosses: v })} darkMode={darkMode} />
                 <Toggle label="High Major Only" value={f.highMajorOnly} onChange={(v) => set({ highMajorOnly: v })} onText="Yes" offText="No" darkMode={darkMode} />
                 <Toggle label="ACC Only" value={f.conferenceOnly} onChange={(v) => set({ conferenceOnly: v })} onText="Yes" offText="No" darkMode={darkMode} />

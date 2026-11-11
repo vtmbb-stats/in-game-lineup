@@ -154,6 +154,10 @@
     email: 'bakerd23@vt.edu'
   };
 
+  // Show the Garbage Time switch on the viewing pages. Off while no game has garbage time marked;
+  // with it off, everything counts (garbage time included). Turn back on once it's being marked.
+  const SHOW_GARBAGE_TIME_FILTER = false;
+
   // ESPN team IDs, used for logos. Add new opponents here (find the number in the team's
   // espn.com URL, e.g. espn.com/mens-college-basketball/team/_/id/2335/liberty-flames).
   const TEAM_IDS = {
@@ -202,6 +206,7 @@
     SEASONS,
     CURRENT_SEASON,
     INPUT_SIGN_IN,
+    SHOW_GARBAGE_TIME_FILTER,
     TEAM_IDS,
     teamLogo,
     seasonKeys,

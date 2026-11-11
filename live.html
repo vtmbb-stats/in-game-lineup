@@ -155,7 +155,7 @@
                             <Select value={timeframe} onChange={setTimeframe} darkMode={darkMode}>
                                 {TIMEFRAMES.map(tf => <option key={tf.value} value={tf.value}>{tf.label}</option>)}
                             </Select>
-                            <Toggle label="Garbage Time" value={includeGarbageTime} onChange={setIncludeGarbageTime} darkMode={darkMode} />
+                            {CFG.SHOW_GARBAGE_TIME_FILTER && <Toggle label="Garbage Time" value={includeGarbageTime} onChange={setIncludeGarbageTime} darkMode={darkMode} />}
                             <DarkToggle darkMode={darkMode} setDarkMode={setDarkMode} />
                         </div>
                     </div>

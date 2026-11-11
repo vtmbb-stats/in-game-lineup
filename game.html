@@ -122,7 +122,7 @@
                         score: { vt: finalVt ?? 0, opp: finalOpp ?? 0, opponent },
                         sections: sections ? `By section: ${sections}` : '',
                         filterNote: [periodsOff.length ? `Stats count: ${periods.filter((_, i) => !periodsOff.includes(i + 1)).map(p => p.label).join(', ')}` : 'Stats count: all periods',
-                            includeGarbageTime ? 'garbage time included' : 'garbage time excluded'].join(' - '),
+                            CFG.SHOW_GARBAGE_TIME_FILTER ? (includeGarbageTime ? 'garbage time included' : 'garbage time excluded') : null].filter(Boolean).join(' - '),
                         courtSvg: pdfCourtRef.current?.querySelector('svg'),
                         shotLine: `${made}-${teamShots.length} FG, ${threes.filter(s => s.made).length}-${threes.length} 3PT`,
                         zones: C.zoneSummary(teamShots),
@@ -151,7 +151,7 @@
                                     </optgroup>
                                 ))}
                             </select>
-                            <Toggle label="Garbage Time" value={includeGarbageTime} onChange={setIncludeGarbageTime} darkMode={darkMode} />
+                            {CFG.SHOW_GARBAGE_TIME_FILTER && <Toggle label="Garbage Time" value={includeGarbageTime} onChange={setIncludeGarbageTime} darkMode={darkMode} />}
                             {info?.started && v2 && (
                                 <button onClick={downloadPdf} disabled={pdfBusy}
                                     className={`px-4 py-2 rounded-md font-semibold ${pdfBusy ? 'opacity-60' : ''} ${darkMode ? 'bg-orange-600 text-white hover:bg-orange-700' : 'bg-orange-600 text-white hover:bg-orange-700'}`}>
