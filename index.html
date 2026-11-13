@@ -285,19 +285,19 @@
                 syncFinal(g);
             });
             // Fill in a possession that wasn't seen: the placeholder is replaced, in the same spot in the log,
-            // by the plays that really happened (parts, in order). The last one ends the possession.
+            // by the plays that really happened (parts, in order, each carrying its own possession end).
             const resolveUnknown = (id, parts) => mutate(g => {
                 const ph = g.events[id];
                 if (!ph || ph.type !== 'unknown' || !parts.length) return;
                 const later = Object.values(g.events).filter(e => e.seq > ph.seq).map(e => e.seq);
                 const next = later.length ? Math.min(...later) : ph.seq + 1;
                 const step = (next - ph.seq) / (parts.length + 1);
+                const lastPoss = parts.map(p => !!p.poss).lastIndexOf(true);
                 delete g.events[id];
                 parts.forEach((p, i) => {
                     const nid = i === 0 ? id : newId();
-                    const last = i === parts.length - 1;
                     g.events[nid] = clean({ ...p, id: nid, seq: i === 0 ? ph.seq : ph.seq + step * i,
-                        poss: last ? ph.team : undefined, possVoid: last && ph.possVoid ? true : undefined });
+                        possVoid: i === lastPoss && ph.possVoid ? true : undefined });
                 });
                 syncFinal(g);
             });
@@ -1167,12 +1167,24 @@
             );
         };
 
-        // Fill in what happened on a possession that wasn't seen. Builds the plays that replace the placeholder.
+        // Fill in what happened while the logger wasn't watching. Plays are added one at a time, for either
+        // team (offensive rebounds, several possessions, anything), and replace the placeholder in the same spot.
         const FillPossession = ({ ph, events, roster, opponent, describe, onCancel, onSave }) => {
-            const team = ph.team, isVT = team === 'vt', other = isVT ? 'opp' : 'vt';
-            const teamName = isVT ? 'VT' : opponent, otherName = isVT ? opponent : 'VT';
-            const [f, setF] = useState({ outcome: null, pts: 2, shooter: null, andOne: false, andOneMade: true, ftCount: 2, ftMade: 2, end: 'reb' });
-            const set = (patch) => setF(prev => ({ ...prev, ...patch }));
+            const tName = (t) => (t === 'vt' ? 'VT' : opponent);
+            const otherOf = (t) => (t === 'vt' ? 'opp' : 'vt');
+            const blank = (team) => ({ team, kind: null, pts: 2, shooter: null, andOne: false, andOneMade: true, ftCount: 2, ftMade: 2, lastMade: false, reb: null, ballTo: null });
+            const [plays, setPlays] = useState([]);              // each: array of log entries
+            const [d, setD] = useState(blank(ph.team));        // the play being entered
+            const set = (patch) => setD(prev => ({ ...prev, ...patch }));
+            const allParts = plays.flat();
+            // Who has the ball after a list of entries (starting with the team whose possession wasn't seen)
+            const ballAfter = (parts) => parts.reduce((b, e) => {
+                if (e.poss) return otherOf(e.poss);
+                if ((e.type === 'shot' || e.type === 'ft') && !e.made && (e.reb === 'vt' || e.reb === 'opp')) return e.reb;
+                if (e.ballTo === 'vt' || e.ballTo === 'opp') return e.ballTo;
+                return b;
+            }, ph.team);
+            const ball = ballAfter(allParts);
             // Who was on the floor at that moment
             const floor = useMemo(() => {
                 let fl = [];
@@ -1182,78 +1194,140 @@
                 });
                 return fl.sort((a, b) => roster.findIndex(p => p.id === a) - roster.findIndex(p => p.id === b));
             }, [events, ph, roster]);
+            const next = events.find(e => e.seq > ph.seq && e.type !== 'sub');
             const nm = (id) => roster.find(p => p.id === id)?.name || `#${id}`;
-            const needsShooter = isVT && ['made', 'missed', 'ft', 'to'].includes(f.outcome);
-            const hasFTs = f.outcome === 'ft' || (f.outcome === 'made' && f.andOne);
-            const ftN = f.outcome === 'ft' ? f.ftCount : 1;
-            const ftM = f.outcome === 'ft' ? Math.min(f.ftMade, f.ftCount) : (f.andOneMade ? 1 : 0);
-            const endsInMiss = f.outcome === 'missed' || (hasFTs && ftM < ftN);
-            const points = (f.outcome === 'made' ? f.pts : 0) + (hasFTs ? ftM : 0);
-            const ready = !!f.outcome && (!needsShooter || f.shooter !== null || f.outcome === 'to');
+
+            // ----- the play being entered -----
+            const isVT = d.team === 'vt';
+            const needsShooter = isVT && ['made', 'missed', 'ft'].includes(d.kind);
+            const hasFTs = d.kind === 'ft' || (d.kind === 'made' && d.andOne);
+            const ftN = d.kind === 'ft' ? d.ftCount : 1;
+            const ftM = d.kind === 'ft' ? Math.min(d.ftMade, d.ftCount) : (d.andOneMade ? 1 : 0);
+            // Order of the free throws; the last one decides whether there's a rebound
+            const ftOrder = (() => {
+                const made = Array(ftM).fill(true), missed = Array(ftN - ftM).fill(false);
+                return ftM > 0 && ftM < ftN && d.lastMade ? [...missed, ...made] : [...made, ...missed];
+            })();
+            const endsInMiss = d.kind === 'missed' || (hasFTs && ftOrder[ftOrder.length - 1] === false);
+            const ready = !!d.kind && (!needsShooter || d.shooter !== null) &&
+                (!endsInMiss || (!!d.reb && (d.reb !== 'none' || !!d.ballTo)));
+            const possOfMiss = () => {
+                if (d.reb === 'vt' || d.reb === 'opp') return d.reb === d.team ? undefined : d.team;
+                if (d.ballTo === 'expired') return d.team;
+                return d.ballTo === d.team ? undefined : d.team;
+            };
+            const missEnd = () => ({ reb: d.reb, ballTo: d.reb === 'none' ? d.ballTo : undefined, poss: possOfMiss() });
             const build = () => {
-                const who = isVT && f.shooter !== null ? f.shooter : undefined;
-                const endFields = f.end === 'reb' ? { reb: other } : { reb: 'none', ballTo: f.end === 'expired' ? 'expired' : other };
+                const team = d.team, who = isVT && d.shooter !== null ? d.shooter : undefined;
+                const loc = isVT ? { x: null, y: null } : {};
                 const parts = [];
-                if (f.outcome === 'made' || f.outcome === 'missed')
-                    parts.push({ type: 'shot', team, pts: f.pts, made: f.outcome === 'made', shooter: who,
-                        x: isVT ? null : undefined, y: isVT ? null : undefined, andOne: hasFTs || undefined,
-                        ...(f.outcome === 'missed' ? endFields : {}) });
-                if (f.outcome === 'to') parts.push({ type: 'to', team, player: who });
-                if (f.outcome === 'expired') parts.push({ type: 'expired', team });
-                if (hasFTs) {
-                    // Makes first, then misses, so the last free throw carries the rebound when one was missed.
-                    for (let i = 1; i <= ftN; i++) {
-                        const made = i <= ftM;
-                        parts.push({ type: 'ft', team, shooter: who, idx: i, of: ftN, made, andOne: f.outcome === 'made' || undefined,
-                            ...(i === ftN && !made ? endFields : {}) });
-                    }
-                }
+                if (d.kind === 'made') parts.push({ type: 'shot', team, pts: d.pts, made: true, shooter: who, ...loc, andOne: d.andOne || undefined, poss: d.andOne ? undefined : team });
+                if (d.kind === 'missed') parts.push({ type: 'shot', team, pts: d.pts, made: false, shooter: who, ...loc, ...missEnd() });
+                if (d.kind === 'to') parts.push({ type: 'to', team, player: who, poss: team });
+                if (d.kind === 'expired') parts.push({ type: 'expired', team, poss: team });
+                if (hasFTs) ftOrder.forEach((made, i) => {
+                    const lastFT = i === ftOrder.length - 1;
+                    parts.push({ type: 'ft', team, shooter: who, idx: i + 1, of: ftN, made, andOne: d.kind === 'made' || undefined,
+                        ...(lastFT ? (made ? { poss: team } : missEnd()) : {}) });
+                });
                 return parts;
             };
+            const addPlay = () => { const parts = build(); setPlays(p => [...p, parts]); setD(blank(ballAfter([...allParts, ...parts]))); };
+            const removeLast = () => { const rest = plays.slice(0, -1); setPlays(rest); setD(blank(ballAfter(rest.flat()))); };
+            const toSave = ready ? [...allParts, ...build()] : allParts;
+            const saveCount = plays.length + (ready ? 1 : 0);
+
+            // ----- totals -----
+            const ptsOf = (parts, team) => parts.reduce((a, e) => a + (e.team !== team || !e.made ? 0 : e.type === 'shot' ? e.pts : e.type === 'ft' ? 1 : 0), 0);
+            const was = { vt: ph.team === 'vt' ? ph.pts || 0 : 0, opp: ph.team === 'opp' ? ph.pts || 0 : 0 };
+            const now = { vt: ptsOf(toSave, 'vt'), opp: ptsOf(toSave, 'opp') };
+            const diff = (t) => now[t] - was[t];
+            const signed = (n) => `${n >= 0 ? '+' : ''}${n}`;
+            const possN = { vt: toSave.filter(e => e.poss === 'vt').length, opp: toSave.filter(e => e.poss === 'opp').length };
+            const endBall = ballAfter(toSave);
+            const endsPoss = toSave.length > 0 && !!toSave[toSave.length - 1].poss;
+
             const choice = (active, label, onClick, key) => (
                 <button key={key ?? label} className={`btn border ${active ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-300'}`} onClick={onClick}>{label}</button>
             );
             const row = (label, children) => <div className="mb-4"><div className="text-sm font-medium mb-1.5">{label}</div><div className="flex flex-wrap gap-2">{children}</div></div>;
             return (
-                <Modal title={`What happened on this ${teamName} possession?`} onClose={onCancel} wide>
-                    <p className="text-sm text-gray-600 mb-4">{describe(ph).replace(/: fill in from Review$/, '')}. It stays in the same place in the game, and the possession still ends with the ball going to {otherName}.</p>
-                    {row('Outcome', [
-                        choice(f.outcome === 'made', 'Made shot', () => set({ outcome: 'made' })),
-                        choice(f.outcome === 'missed', 'Missed shot', () => set({ outcome: 'missed' })),
-                        choice(f.outcome === 'ft', 'Fouled: free throws', () => set({ outcome: 'ft' })),
-                        choice(f.outcome === 'to', 'Turnover', () => set({ outcome: 'to' })),
-                        choice(f.outcome === 'expired', 'Time expired', () => set({ outcome: 'expired' }))
-                    ])}
-                    {(f.outcome === 'made' || f.outcome === 'missed') && row('Shot', [
-                        choice(f.pts === 2, '2-pointer', () => set({ pts: 2 })),
-                        choice(f.pts === 3, '3-pointer', () => set({ pts: 3 }))
-                    ])}
-                    {needsShooter && row(f.outcome === 'to' ? 'Who turned it over? (optional)' : f.outcome === 'ft' ? 'Who shot the free throws?' : 'Who shot it?',
-                        floor.map(id => choice(f.shooter === id, `#${id} ${nm(id)}`, () => set({ shooter: id }), id)))}
-                    {f.outcome === 'made' && row('And-1?', [
-                        choice(!f.andOne, 'No', () => set({ andOne: false })),
-                        choice(f.andOne && f.andOneMade, 'And-1, free throw made', () => set({ andOne: true, andOneMade: true })),
-                        choice(f.andOne && !f.andOneMade, 'And-1, free throw missed', () => set({ andOne: true, andOneMade: false }))
-                    ])}
-                    {f.outcome === 'ft' && <>
-                        {row('How many free throws?', [1, 2, 3].map(n => choice(f.ftCount === n, String(n), () => set({ ftCount: n, ftMade: Math.min(f.ftMade, n) }), n)))}
-                        {row('How many made?', Array.from({ length: f.ftCount + 1 }, (_, n) => choice(ftM === n, String(n), () => set({ ftMade: n }), n)))}
-                    </>}
-                    {endsInMiss && row(`After the miss, the ball went to ${otherName}:`, [
-                        choice(f.end === 'reb', `${otherName} rebound`, () => set({ end: 'reb' })),
-                        choice(f.end === 'none', 'No rebound (out of bounds)', () => set({ end: 'none' })),
-                        choice(f.end === 'expired', 'Time expired', () => set({ end: 'expired' }))
-                    ])}
-                    {f.outcome && (
-                        <p className="text-sm text-gray-700">
-                            {teamName} scores {points} point{points === 1 ? '' : 's'} on this possession
-                            {(ph.pts || 0) !== points ? ` (it was entered as ${ph.pts || 0}, so the score changes by ${points - (ph.pts || 0) > 0 ? '+' : ''}${points - (ph.pts || 0)})` : ''}.
-                        </p>
+                <Modal title="What happened while you weren't watching?" onClose={onCancel} wide>
+                    <p className="text-sm text-gray-600 mb-1">{describe(ph).replace(/: fill in from Review$/, '')}.</p>
+                    <p className="text-sm text-gray-600 mb-4">Add each play in order, for either team. Together they take its place in the log. The next play you logged after it: <i>{next ? describe(next) : 'none yet'}</i>.</p>
+
+                    {plays.length > 0 && (
+                        <ol className="mb-4 text-sm border border-gray-200 rounded divide-y divide-gray-100">
+                            {plays.map((parts, i) => parts.map((e, j) => (
+                                <li key={`${i}-${j}`} className="px-3 py-1.5 flex justify-between gap-3">
+                                    <span>{j === 0 ? `${i + 1}. ` : <span className="inline-block w-4"></span>}{describe(e)}</span>
+                                    {e.poss && <span className="text-xs text-gray-500 shrink-0">end of {tName(e.poss)} possession</span>}
+                                </li>
+                            )))}
+                            <li className="px-3 py-1.5 text-right"><button className="underline text-red-700 text-xs" onClick={removeLast}>Remove the last play</button></li>
+                        </ol>
                     )}
+
+                    <div className="border border-gray-200 rounded p-3 mb-4">
+                        <div className="text-sm text-gray-500 mb-3">{plays.length ? `Play ${plays.length + 1}` : 'First play'} · {tName(ball)} has the ball</div>
+                        {row('Team', [
+                            choice(d.team === 'vt', 'VT', () => setD(blank('vt'))),
+                            choice(d.team === 'opp', opponent, () => setD(blank('opp')))
+                        ])}
+                        {row('What happened', [
+                            choice(d.kind === 'made', 'Made shot', () => set({ kind: 'made', reb: null, ballTo: null })),
+                            choice(d.kind === 'missed', 'Missed shot', () => set({ kind: 'missed', reb: null, ballTo: null })),
+                            choice(d.kind === 'ft', 'Fouled: free throws', () => set({ kind: 'ft', reb: null, ballTo: null })),
+                            choice(d.kind === 'to', 'Turnover', () => set({ kind: 'to' })),
+                            choice(d.kind === 'expired', 'Time expired', () => set({ kind: 'expired' }))
+                        ])}
+                        {(d.kind === 'made' || d.kind === 'missed') && row('Shot', [
+                            choice(d.pts === 2, '2-pointer', () => set({ pts: 2 })),
+                            choice(d.pts === 3, '3-pointer', () => set({ pts: 3 }))
+                        ])}
+                        {isVT && ['made', 'missed', 'ft', 'to'].includes(d.kind) && row(d.kind === 'to' ? 'Who turned it over? (optional)' : d.kind === 'ft' ? 'Who shot the free throws?' : 'Who shot it?',
+                            floor.map(id => choice(d.shooter === id, `#${id} ${nm(id)}`, () => set({ shooter: d.shooter === id && d.kind === 'to' ? null : id }), id)))}
+                        {d.kind === 'made' && row('And-1?', [
+                            choice(!d.andOne, 'No', () => set({ andOne: false, reb: null, ballTo: null })),
+                            choice(d.andOne && d.andOneMade, 'And-1, free throw made', () => set({ andOne: true, andOneMade: true })),
+                            choice(d.andOne && !d.andOneMade, 'And-1, free throw missed', () => set({ andOne: true, andOneMade: false }))
+                        ])}
+                        {d.kind === 'ft' && <>
+                            {row('How many free throws?', [1, 2, 3].map(n => choice(d.ftCount === n, String(n), () => set({ ftCount: n, ftMade: Math.min(d.ftMade, n) }), n)))}
+                            {row('How many made?', Array.from({ length: d.ftCount + 1 }, (_, n) => choice(ftM === n, String(n), () => set({ ftMade: n }), n)))}
+                            {ftM > 0 && ftM < ftN && row('The last free throw was', [
+                                choice(!d.lastMade, 'Missed', () => set({ lastMade: false })),
+                                choice(d.lastMade, 'Made', () => set({ lastMade: true }))
+                            ])}
+                        </>}
+                        {endsInMiss && row('Rebound', [
+                            choice(d.reb === d.team, `${tName(d.team)} (offensive)`, () => set({ reb: d.team, ballTo: null })),
+                            choice(d.reb === otherOf(d.team), `${tName(otherOf(d.team))} (defensive)`, () => set({ reb: otherOf(d.team), ballTo: null })),
+                            choice(d.reb === 'none', 'No rebound (out of bounds / time ran out)', () => set({ reb: 'none' }))
+                        ])}
+                        {endsInMiss && d.reb === 'none' && row('Ball to', [
+                            choice(d.ballTo === 'vt', 'VT', () => set({ ballTo: 'vt' })),
+                            choice(d.ballTo === 'opp', opponent, () => set({ ballTo: 'opp' })),
+                            choice(d.ballTo === 'expired', 'Time expired', () => set({ ballTo: 'expired' }))
+                        ])}
+                        <button className="btn bg-gray-800 text-white" disabled={!ready} onClick={addPlay}>Add this play, then enter the next one</button>
+                    </div>
+
+                    {toSave.length > 0 && <div className="text-sm text-gray-700 space-y-1">
+                        <p>Points on these plays: VT {now.vt}, {opponent} {now.opp}
+                            {(diff('vt') || diff('opp')) ? ` (the score changes by VT ${signed(diff('vt'))}, ${opponent} ${signed(diff('opp'))} from what was entered)` : ''}.</p>
+                        <p>Possessions counted: VT {possN.vt}, {opponent} {possN.opp} (the placeholder counted 1 for {tName(ph.team)}).</p>
+                        {(endBall !== otherOf(ph.team) || !endsPoss) && (
+                            <p className="p-2 rounded bg-amber-50 border border-amber-200">
+                                {endsPoss ? `After these plays the ball goes to ${tName(endBall)}.` : `After these plays ${tName(endBall)} still has the ball, so that possession carries on into the next play you logged.`}
+                                {' '}Check that this matches the next play in your log{next ? `: "${describe(next)}"` : ''}.
+                            </p>
+                        )}
+                    </div>}
                     <div className="flex gap-3 mt-5">
                         <div className="flex-1"></div>
                         <button className="btn border border-gray-300" onClick={onCancel}>Back</button>
-                        <button className="btn bg-green-600 text-white" disabled={!ready} onClick={() => onSave(build())}>Save</button>
+                        <button className="btn bg-green-600 text-white" disabled={!toSave.length} onClick={() => onSave(toSave)}>Save {saveCount} play{saveCount === 1 ? '' : 's'}</button>
                     </div>
                 </Modal>
             );
